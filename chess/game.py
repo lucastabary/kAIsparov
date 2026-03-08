@@ -3,6 +3,7 @@ from chess.pieces import PieceType, Player, Piece, BOARD_SIZE, PIECES_MOVES
 class ChessGame():
     def __init__(self):
         self.grid: list[list[Piece]] = self._build_grid()
+        self.player_pieces = self._attribute_pieces()
         self.turn: Player = Player.WHITE
         self.count = 0
     
@@ -38,16 +39,29 @@ class ChessGame():
 
         return grid
 
+    def _attribute_pieces(self):
+        player_pieces = {Player.WHITE: [], Player.BLACK: []}
+        for j in [1,0]:
+            for i in range(BOARD_SIZE):
+                player_pieces[Player.WHITE].append(self.grid[i][j])
+        for j in [BOARD_SIZE-2, BOARD_SIZE-1]:
+            for i in range(BOARD_SIZE):
+                player_pieces[Player.BLACK].append(self.grid[i][j])
+        return player_pieces
+
     def print_grid(self):
         print(f"turn: {self.turn.name} | count: {self.count}")
         for j in range(BOARD_SIZE-1, -1, -1):
-            print(f"{j+1} ", end="")
+            print(f"{j} ", end="")
             for i in range(BOARD_SIZE):
                 if self.grid[i][j] is None:
                     print("  ", end=" ")
                 else:
                     print(self.grid[i][j], end=" ")
             print()
+        print("  ", end="")
+        for i in range(BOARD_SIZE):
+            print(f"{i}  ", end="")
     
     def _is_coord_in_grid(self, coord: tuple[int, int]) -> bool:
         return not(coord[0] < 0 or coord[0] >= BOARD_SIZE or coord[1] < 0 or coord[1] >= BOARD_SIZE)
@@ -181,6 +195,13 @@ class ChessGame():
                     rook.hasMoved = True
         self.count += 1
 
-        self.turn = Player.BLACK if self.turn == Player.WHITE else Player.WHITE
+        other_player = Player.BLACK if self.turn == Player.WHITE else Player.WHITE
 
+        if dest_piece is not None: self.player_pieces[other_player].remove(dest_piece)
+
+        if dest_piece is not None and dest_piece.type == PieceType.KING:
+            print(f"Game over! {self.turn.name} wins by capturing the king.")
+        else:
+            self.turn = other_player
+            self.print_grid()
         return dest_piece
