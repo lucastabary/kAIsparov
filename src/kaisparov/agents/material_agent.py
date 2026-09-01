@@ -22,7 +22,7 @@ class MaterialAgent:
         self._rng = random.Random(seed)
 
     def select_move(self, game: ChessGame) -> Move | None:
-        moves = all_moves(game.grid, game.turn)
+        moves = all_moves(game.grid, game.turn, game.en_passant_target)
         if not moves:
             return None
 

@@ -77,6 +77,65 @@ def test_castling_offered_when_path_clear():
     assert (2, 0) in dests  # queenside
 
 
+def test_no_castling_from_nonstandard_king_square():
+    # King off its home file: castling must not be offered even with unmoved rooks
+    # (guards the random curriculum positions).
+    game = empty_game()
+    place(game, (2, 0), Player.WHITE, PieceType.KING)
+    place(game, (0, 0), Player.WHITE, PieceType.ROOK)
+    place(game, (7, 0), Player.WHITE, PieceType.ROOK)
+    dests = set(game.possible_moves((2, 0)))
+    assert (0, 0) not in dests and (4, 0) not in dests  # no two-square king jump
+
+
+# ---------------------------------------------------------------------- en passant
+def test_en_passant_capture():
+    game = empty_game()  # White to move
+    place(game, (4, 1), Player.WHITE, PieceType.PAWN)
+    place(game, (3, 3), Player.BLACK, PieceType.PAWN)
+
+    game.play((4, 1), (4, 3))  # White double push
+    assert game.en_passant_target == (4, 2)
+    assert (4, 2) in game.possible_moves((3, 3))  # Black may capture en passant
+
+    captured = game.play((3, 3), (4, 2))  # Black takes en passant
+    assert captured is not None and captured.type == PieceType.PAWN
+    assert captured.player == Player.WHITE
+    assert game.grid[4][3] is None  # the double-pushed pawn is removed
+    assert game.grid[4][2] is not None and game.grid[4][2].player == Player.BLACK
+    assert game.grid[3][3] is None
+
+
+def test_en_passant_make_unmake_restores_state():
+    game = empty_game()
+    place(game, (4, 1), Player.WHITE, PieceType.PAWN)
+    place(game, (3, 3), Player.BLACK, PieceType.PAWN)
+    game.play((4, 1), (4, 3))  # arm en passant
+
+    before = serialize(game)
+    ep_before = game.en_passant_target
+    undo = game.make((3, 3), (4, 2))  # en passant capture
+    assert game.grid[4][3] is None
+    game.unmake(undo)
+    assert serialize(game) == before
+    assert game.en_passant_target == ep_before
+    assert game.turn == Player.BLACK
+
+
+def test_en_passant_only_available_immediately():
+    game = empty_game()
+    place(game, (4, 1), Player.WHITE, PieceType.PAWN)
+    place(game, (3, 3), Player.BLACK, PieceType.PAWN)
+    place(game, (0, 6), Player.BLACK, PieceType.KING)
+    place(game, (0, 0), Player.WHITE, PieceType.KING)
+
+    game.play((4, 1), (4, 3))  # White double push -> en passant armed
+    game.play((0, 6), (0, 5))  # Black plays elsewhere -> window closes
+    assert game.en_passant_target is None
+    game.play((0, 0), (0, 1))  # White plays; back to Black
+    assert (4, 2) not in game.possible_moves((3, 3))  # en passant no longer legal
+
+
 # ------------------------------------------------------------------ make / unmake
 def test_make_unmake_restores_state():
     game = ChessGame()

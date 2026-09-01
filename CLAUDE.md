@@ -29,8 +29,8 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
   White advances toward higher `row`. Node index = `row * 8 + col`. All of this
   lives in `core/coords.py` — use it, don't re-derive.
 - **Variant**: capture-the-king. Moves are pseudo-legal (not filtered for leaving
-  your own king in check); the game ends when a king is captured. No en passant,
-  promotion, or draws. This is intentional, not a bug.
+  your own king in check); the game ends when a king is captured. Castling and en
+  passant are implemented; no promotion or draws. This is intentional, not a bug.
 - **Style**: snake_case, English identifiers, ruff-formatted (line length 100).
 - **Experiment tracking** is the `runs/` registry. Do **not** reintroduce the old
   per-package `model_info.json` / `weights/` system — it was removed on purpose.

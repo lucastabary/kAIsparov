@@ -17,9 +17,11 @@ class Undo:
     dest: Coord
     piece: Piece
     captured: Piece | None
+    captured_square: Coord | None  # where the captured piece sat (differs from dest on en passant)
     piece_had_moved: bool
     castle: tuple[Piece, Coord, Coord, bool] | None
     prev_turn: Player
+    prev_en_passant: Coord | None
     turn_advanced: bool
 
 
@@ -36,6 +38,8 @@ class ChessGame:
         )
         self.turn: Player = turn
         self.count = 0
+        # Square a pawn just skipped on a double push; capturable en passant next ply.
+        self.en_passant_target: Coord | None = None
 
     # ------------------------------------------------------------------ setup
     @staticmethod
@@ -86,11 +90,13 @@ class ChessGame:
         if turn is not None:
             self.turn = turn
         self.count = 0
+        self.en_passant_target = None
 
     def copy(self) -> ChessGame:
         """Return a deep, independent copy of the current state."""
         clone = ChessGame(initial_board=self.grid, turn=self.turn)
         clone.count = self.count
+        clone.en_passant_target = self.en_passant_target
         return clone
 
     # ------------------------------------------------------------------ moves
@@ -98,7 +104,7 @@ class ChessGame:
         """Pseudo-legal destinations for the piece on ``source`` (empty if none)."""
         if not coords.in_bounds(source):
             return []
-        return movegen.pseudo_legal_moves(self.grid, source)
+        return movegen.pseudo_legal_moves(self.grid, source, self.en_passant_target)
 
     def is_move_valid(self, source: Coord, dest: Coord) -> bool:
         if not coords.in_bounds(source) or not coords.in_bounds(dest):
@@ -118,9 +124,26 @@ class ChessGame:
         piece = self.grid[sx][sy]
         assert piece is not None, f"no piece to move on {source}"
 
-        captured = self.grid[dx][dy]
         piece_had_moved = piece.has_moved
+        prev_en_passant = self.en_passant_target
 
+        # En passant: a pawn moving diagonally onto the (empty) skipped square captures
+        # the pawn beside it, on the mover's own rank.
+        is_en_passant = (
+            piece.type == PieceType.PAWN
+            and dest == self.en_passant_target
+            and dx != sx
+            and self.grid[dx][dy] is None
+        )
+        if is_en_passant:
+            captured_square: Coord = (dx, sy)
+            captured = self.grid[dx][sy]
+        else:
+            captured_square = (dx, dy)
+            captured = self.grid[dx][dy]
+
+        if captured is not None:
+            self.grid[captured_square[0]][captured_square[1]] = None
         self.grid[dx][dy] = piece
         self.grid[sx][sy] = None
         piece.has_moved = True
@@ -138,6 +161,12 @@ class ChessGame:
                 self.grid[rook_src[0]][rook_src[1]] = None
                 rook.has_moved = True
 
+        # Arm en passant only right after a pawn double push.
+        if piece.type == PieceType.PAWN and abs(dy - sy) == 2:
+            self.en_passant_target = (sx, (sy + dy) // 2)
+        else:
+            self.en_passant_target = None
+
         self.count += 1
         prev_turn = self.turn
         king_captured = captured is not None and captured.type == PieceType.KING
@@ -146,7 +175,16 @@ class ChessGame:
             self.turn = Player.BLACK if self.turn == Player.WHITE else Player.WHITE
 
         return Undo(
-            source, dest, piece, captured, piece_had_moved, castle, prev_turn, turn_advanced
+            source=source,
+            dest=dest,
+            piece=piece,
+            captured=captured,
+            captured_square=captured_square if captured is not None else None,
+            piece_had_moved=piece_had_moved,
+            castle=castle,
+            prev_turn=prev_turn,
+            prev_en_passant=prev_en_passant,
+            turn_advanced=turn_advanced,
         )
 
     def unmake(self, undo: Undo) -> None:
@@ -155,7 +193,9 @@ class ChessGame:
         dx, dy = undo.dest
 
         self.grid[sx][sy] = undo.piece
-        self.grid[dx][dy] = undo.captured
+        self.grid[dx][dy] = None  # clear dest; the captured piece may sit elsewhere (en passant)
+        if undo.captured is not None and undo.captured_square is not None:
+            self.grid[undo.captured_square[0]][undo.captured_square[1]] = undo.captured
         undo.piece.has_moved = undo.piece_had_moved
 
         if undo.castle is not None:
@@ -166,6 +206,7 @@ class ChessGame:
 
         self.count -= 1
         self.turn = undo.prev_turn
+        self.en_passant_target = undo.prev_en_passant
 
     def play(self, source: Coord, dest: Coord) -> Piece | None:
         """Validate then apply a move. Returns the captured piece, or ``None``.

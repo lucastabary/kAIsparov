@@ -52,7 +52,7 @@ class ChessEnv:
         return self.game
 
     def legal_moves(self) -> list[Move]:
-        return all_moves(self.game.grid, self.game.turn)
+        return all_moves(self.game.grid, self.game.turn, self.game.en_passant_target)
 
     def step(self, move: Move) -> StepResult:
         if self.done:

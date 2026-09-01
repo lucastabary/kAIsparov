@@ -16,5 +16,5 @@ class RandomAgent:
         self._rng = random.Random(seed)
 
     def select_move(self, game: ChessGame) -> Move | None:
-        moves = all_moves(game.grid, game.turn)
+        moves = all_moves(game.grid, game.turn, game.en_passant_target)
         return self._rng.choice(moves) if moves else None

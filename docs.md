@@ -37,8 +37,9 @@ chess (piece relationships, board structure), not only how strong it gets.
 
 **Rule simplification (important).** To keep the RL problem tractable the engine
 plays a *capture-the-king* variant: moves are **pseudo-legal** (a side may leave its
-own king attacked), and a game ends when a king is actually captured. There is no
-check restriction, en passant, promotion, or draw-by-rule. This is intentional.
+own king attacked), and a game ends when a king is actually captured. Castling and
+en passant are implemented; there is no check restriction, promotion, or
+draw-by-rule. This is intentional.
 
 ---
 

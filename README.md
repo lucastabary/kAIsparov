@@ -46,8 +46,9 @@ pygame interface to play against a trained agent.
 
 > ⚠️ **Rule simplification.** To keep the RL problem tractable, the engine uses a
 > "capture-the-king" win condition: players are not required to get out of check,
-> and the game ends when a king is captured. En passant, promotion and draw rules
-> are not implemented yet. This is a research simplification, not a bug.
+> and the game ends when a king is captured. Castling and en passant *are*
+> implemented; promotion and draw rules are not. This is a research simplification,
+> not a bug.
 
 ---
 
