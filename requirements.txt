@@ -1,0 +1,13 @@
+# Runtime dependencies (pinned to a known-good, reproducible set).
+#
+# PyTorch is built against CUDA 11.8 here. Install the matching wheel with:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+# For a CPU-only setup, swap the index for:
+#   https://download.pytorch.org/whl/cpu
+
+torch==2.0.1
+torch-geometric==2.7.0
+numpy==1.26.4
+pygame==2.1.0
+pyyaml==6.0
+tensorboard==2.12.3

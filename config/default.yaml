@@ -1,0 +1,40 @@
+# Default training configuration for kAIsparov.
+# Mirrors the code defaults in kaisparov.training.config.TrainConfig.
+# Run with:  python -m kaisparov.train --config config/default.yaml
+
+model: gnn_v1
+hidden_dim: 8
+epochs: 50
+seed: 0
+device: auto            # auto | cpu | cuda
+checkpoint_every: 10
+runs_dir: runs
+notes: ""
+
+ppo:
+  learning_rate: 0.001
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+  update_epochs: 4
+  self_play: true
+
+rollout:
+  episodes_per_epoch: 8
+  max_steps_per_episode: 100
+
+curriculum:
+  name: "Phase 1: 6 pieces"
+  max_pieces_per_side: 6
+  allow_major: false
+  allow_minor: true
+  allow_pawns: true
+
+eval:
+  enabled: true
+  every: 5
+  games: 20
+  max_plies: 200

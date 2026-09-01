@@ -1,0 +1,21 @@
+# Fast CPU smoke run — validates the whole train -> eval -> track pipeline in ~1 min.
+#   kaisparov train --config config/experiments/smoke.yaml
+# Copy this file to start a new experiment; keep one YAML per experiment for repro.
+
+model: gnn_v1
+hidden_dim: 8
+epochs: 6
+seed: 0
+device: cpu
+checkpoint_every: 3
+notes: "smoke test of the pipeline"
+
+rollout:
+  episodes_per_epoch: 2
+  max_steps_per_episode: 30
+
+eval:
+  enabled: true
+  every: 3
+  games: 4
+  max_plies: 50

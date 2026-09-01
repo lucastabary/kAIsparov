@@ -1,2 +1,41 @@
-*/__pycache__
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets / local config
 .env
+
+# Model weights & training artifacts (tracked out of git; use releases / DVC)
+*.pth
+*.pt
+*.ckpt
+runs/
+wandb/
+lightning_logs/
+
+# Datasets / generated data
+data/
