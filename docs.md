@@ -291,8 +291,12 @@ CPU-only work.
 ## 9. Configuration
 
 `training/config.py` defines a typed `TrainConfig` with nested `PPOSettings`,
-`RolloutSettings`, `CurriculumSettings`, `EvalSettings`. It loads/saves YAML (unknown
-keys ignored) and is stored verbatim in each run for reproducibility.
+`RolloutSettings`, `CurriculumSettings`, `EvalSettings`, `RewardSettings`. It
+loads/saves YAML (unknown keys ignored) and is stored verbatim in each run for
+reproducibility.
+
+> **Every parameter is documented in [`config/README.md`](config/README.md)** — the
+> full reference for writing training YAMLs.
 
 - `config/default.yaml` — the documented defaults.
 - `config/experiments/smoke.yaml` — a ~1-minute CPU sanity run.

@@ -115,7 +115,8 @@ Everything runs through one command — `kaisparov <train|eval|play|runs>`
 ### Train
 
 Training is config-driven ([config/default.yaml](config/default.yaml)); CLI flags
-override individual fields.
+override individual fields. **Every config parameter is documented in
+[config/README.md](config/README.md).**
 
 ```bash
 kaisparov train --config config/default.yaml
