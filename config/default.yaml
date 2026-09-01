@@ -34,6 +34,8 @@ rollout:
   episodes_per_epoch: 8
   max_steps_per_episode: 100
 
+# Curriculum is optional: remove this whole section (or set `curriculum: null`) to
+# train from the normal starting position (32 pieces).
 curriculum:
   name: "Phase 1: 6 pieces"
   max_pieces_per_side: 6

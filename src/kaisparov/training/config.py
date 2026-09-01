@@ -112,7 +112,8 @@ class TrainConfig:
 
     ppo: PPOSettings = field(default_factory=PPOSettings)
     rollout: RolloutSettings = field(default_factory=RolloutSettings)
-    curriculum: CurriculumSettings = field(default_factory=CurriculumSettings)
+    # None = train from the normal starting position (no curriculum).
+    curriculum: CurriculumSettings | None = None
     eval: EvalSettings = field(default_factory=EvalSettings)
     reward: RewardSettings = field(default_factory=RewardSettings)
 

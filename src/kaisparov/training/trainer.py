@@ -55,16 +55,19 @@ class Trainer:
             gae_lambda=config.ppo.gae_lambda,
             self_play=config.ppo.self_play,
         )
-        self.curriculum = PieceCountCurriculum(
-            PhaseConfig(
-                name=config.curriculum.name,
-                max_pieces_per_side=config.curriculum.max_pieces_per_side,
-                allow_major=config.curriculum.allow_major,
-                allow_minor=config.curriculum.allow_minor,
-                allow_pawns=config.curriculum.allow_pawns,
-            ),
-            seed=config.seed,
-        )
+        # No curriculum -> games start from the normal chess position.
+        self.curriculum: PieceCountCurriculum | None = None
+        if config.curriculum is not None:
+            self.curriculum = PieceCountCurriculum(
+                PhaseConfig(
+                    name=config.curriculum.name,
+                    max_pieces_per_side=config.curriculum.max_pieces_per_side,
+                    allow_major=config.curriculum.allow_major,
+                    allow_minor=config.curriculum.allow_minor,
+                    allow_pawns=config.curriculum.allow_pawns,
+                ),
+                seed=config.seed,
+            )
         self._processor = self.spec.processor_class()
         self._num_params = sum(p.numel() for p in self.agent.parameters())
         self.reward_fn = make_reward_fn(config.reward)
@@ -129,7 +132,11 @@ class Trainer:
     # ------------------------------------------------------------------ training
     def train(self) -> str:
         cfg = self.config
-        print(f"Run {self.run.run_id} | device={self.device} | params={self._num_params}")
+        start = "curriculum" if self.curriculum is not None else "standard position"
+        print(
+            f"Run {self.run.run_id} | device={self.device} | params={self._num_params} | "
+            f"start={start}"
+        )
         if cfg.title:
             print(f"  {cfg.title}")
         game = ChessGame()

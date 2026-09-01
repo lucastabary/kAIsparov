@@ -13,6 +13,17 @@ def test_defaults():
     assert c.eval.every == 5
 
 
+def test_curriculum_is_optional():
+    # Omitting the curriculum -> None -> training uses the normal starting position.
+    assert TrainConfig().curriculum is None
+    assert TrainConfig.from_dict({}).curriculum is None
+    assert TrainConfig.from_dict({"curriculum": None}).curriculum is None
+
+    c = TrainConfig.from_dict({"curriculum": {"max_pieces_per_side": 4}})
+    assert c.curriculum is not None
+    assert c.curriculum.max_pieces_per_side == 4
+
+
 def test_from_dict_nested_and_ignores_unknown():
     c = TrainConfig.from_dict(
         {
