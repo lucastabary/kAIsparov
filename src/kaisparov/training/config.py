@@ -50,6 +50,46 @@ class EvalSettings:
 
 
 @dataclass
+class RewardSettings:
+    """Weighted reward-shaping terms (from the mover's point of view, per ply)."""
+
+    preset: str = ""  # name if resolved from config/rewards.yaml (for the record)
+    material: float = 1.0  # * value of the captured piece
+    king_capture: float = 0.0  # extra bonus for capturing the king (winning)
+    check: float = 0.0  # bonus if the move leaves the opponent in check
+    step_penalty: float = 0.0  # subtracted every ply (rewards decisive play)
+
+
+def _load_reward_presets() -> dict[str, Any]:
+    for candidate in (
+        Path("config/rewards.yaml"),
+        Path(__file__).resolve().parents[3] / "config" / "rewards.yaml",
+    ):
+        if candidate.exists():
+            with candidate.open("r", encoding="utf-8") as stream:
+                return yaml.safe_load(stream) or {}
+    return {}
+
+
+def _build_reward(value: Any) -> RewardSettings:
+    """Build RewardSettings from a preset name (str) or an inline mapping (dict)."""
+    known = {f.name for f in fields(RewardSettings)}
+    if isinstance(value, str):
+        presets = _load_reward_presets()
+        if value not in presets:
+            raise ValueError(
+                f"Unknown reward preset '{value}'. Available: {sorted(presets)} "
+                "(define them in config/rewards.yaml)."
+            )
+        data = {"preset": value, **(presets[value] or {})}
+    elif isinstance(value, dict):
+        data = dict(value)
+    else:
+        return RewardSettings()
+    return RewardSettings(**{k: v for k, v in data.items() if k in known})
+
+
+@dataclass
 class TrainConfig:
     model: str = "gnn_v1"
     hidden_dim: int = 8
@@ -74,6 +114,7 @@ class TrainConfig:
     rollout: RolloutSettings = field(default_factory=RolloutSettings)
     curriculum: CurriculumSettings = field(default_factory=CurriculumSettings)
     eval: EvalSettings = field(default_factory=EvalSettings)
+    reward: RewardSettings = field(default_factory=RewardSettings)
 
     # --------------------------------------------------------------- (de)serialize
     @classmethod
@@ -90,7 +131,9 @@ class TrainConfig:
         for key, value in data.items():
             if key not in known:
                 continue  # ignore unknown top-level keys
-            if key in nested and isinstance(value, dict):
+            if key == "reward":  # str preset or inline mapping
+                kwargs[key] = _build_reward(value)
+            elif key in nested and isinstance(value, dict):
                 sub_cls = nested[key]
                 sub_known = {f.name for f in fields(sub_cls)}
                 kwargs[key] = sub_cls(**{k: v for k, v in value.items() if k in sub_known})

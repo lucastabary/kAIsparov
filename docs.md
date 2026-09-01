@@ -82,8 +82,8 @@ Pure Python, no torch, no pygame — fast and unit-tested.
   sliding pieces). Move generation is then table lookups, not recomputed ranges.
 - **`movegen.py`** — `pseudo_legal_moves(grid, source)` and `all_moves(grid, player)`.
   Pure functions over a grid.
-- **`rules.py`** — `is_in_check` / `find_king` (available even though the variant
-  doesn't require them).
+- **`rules.py`** — `is_in_check` / `find_king` (used by the `check` reward-shaping
+  term; not required by the variant's move legality).
 - **`board.py`** — `ChessGame`, the mutable state. Key methods:
   - `make(source, dest) -> Undo` and `unmake(undo)` — apply/reverse a move in **O(1)**
     (no board cloning). This is the throughput lever for rollouts and any future
@@ -301,6 +301,12 @@ keys ignored) and is stored verbatim in each run for reproducibility.
 
 **Documenting a run.** `title` and `description` fields let you record the intent of
 each experiment; they're stored in `run.json` and shown by `kaisparov runs`.
+
+**Reward shaping.** The `reward` field configures the self-play reward (mover's point
+of view, per ply) — weighted terms `material`, `king_capture`, `check`, `step_penalty`.
+Reference a named preset from `config/rewards.yaml` (`reward: aggressive`) or write the
+terms inline. The resolved reward is stored in `run.json`, so every experiment records
+its shaping. `training/reward.py` turns the settings into the function the rollout uses.
 
 **Resuming from a config.** Set `resume_from_run: <run_id>` in the YAML to continue an
 earlier run. You **don't redefine the architecture** — `model`/`hidden_dim` are

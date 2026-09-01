@@ -1,0 +1,30 @@
+# Reward-shaping presets. Reference one by name from a training config:
+#     reward: aggressive
+# ...or write the terms inline in the training config instead:
+#     reward:
+#       material: 1.0
+#       check: 0.05
+#
+# Terms (all from the mover's point of view, applied per ply):
+#   material      * value of the captured piece (pawn .01 … queen .09, king 1.0)
+#   king_capture  extra bonus for capturing the king (winning the game)
+#   check         bonus if the move leaves the opponent in check
+#   step_penalty  subtracted every ply (encourages decisive play)
+
+material_only:
+  material: 1.0
+
+aggressive:
+  material: 1.0
+  check: 0.05
+
+decisive:
+  material: 1.0
+  step_penalty: 0.002
+  king_capture: 0.5
+
+checkmate_hunter:
+  material: 0.5
+  check: 0.1
+  king_capture: 1.0
+  step_penalty: 0.001

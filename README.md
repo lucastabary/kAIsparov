@@ -129,6 +129,10 @@ stopped. On resume the **architecture is inherited** from the parent — you don
 redefine `model`/`hidden_dim`, just list what changes. Set `title` / `description` in
 the config to document each experiment (shown by `kaisparov runs`).
 
+Reward shaping is config-driven too: `reward: aggressive` picks a preset from
+[config/rewards.yaml](config/rewards.yaml), or write the terms (`material`, `check`,
+`king_capture`, `step_penalty`) inline. The resolved shaping is saved in `run.json`.
+
 Each run creates a self-contained directory under `runs/<run_id>/` with the
 resolved config, per-epoch metrics, TensorBoard logs, and checkpoints — plus a
 `run.json` capturing git commit, seed, device, parameter count, the full metric

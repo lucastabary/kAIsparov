@@ -53,6 +53,7 @@ def collect_data(
     model_module=None,
     deterministic: bool = False,
     curriculum: BaseCurriculum | None = None,
+    reward_fn=None,
 ) -> None:
     module = _resolve_module(model_module, model_name)
     processor = module.PROCESSOR_CLASS()
@@ -99,7 +100,10 @@ def collect_data(
                     legal_mask=legal_mask,
                 )
                 captured = g.play(*action.move_coords)
-                reward = module.compute_reward(g, captured)
+                if reward_fn is not None:
+                    reward = reward_fn(g, captured)
+                else:
+                    reward = module.compute_reward(g, captured)
                 king_captured = captured is not None and captured.type == PieceType.KING
 
                 steps[i] += 1

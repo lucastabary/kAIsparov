@@ -46,3 +46,11 @@ eval:
   every: 5
   games: 20
   max_plies: 200
+
+# Reward shaping: a preset name from config/rewards.yaml, e.g. `reward: aggressive`,
+# or write the terms inline (mover's point of view, per ply):
+reward:
+  material: 1.0        # * value of the captured piece
+  king_capture: 0.0    # extra bonus for capturing the king
+  check: 0.0           # bonus if the move gives check
+  step_penalty: 0.0    # subtracted every ply (rewards decisive play)

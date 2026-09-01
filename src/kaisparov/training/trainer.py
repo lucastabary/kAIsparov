@@ -16,6 +16,7 @@ from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.tracking.run import RunManager
 from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
+from kaisparov.training.reward import make_reward_fn
 
 BEST_METRIC = "elo_vs_random"
 
@@ -66,6 +67,7 @@ class Trainer:
         )
         self._processor = self.spec.processor_class()
         self._num_params = sum(p.numel() for p in self.agent.parameters())
+        self.reward_fn = make_reward_fn(config.reward)
 
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
         self.start_epoch = 0
@@ -145,6 +147,7 @@ class Trainer:
                     max_steps_per_episode=cfg.rollout.max_steps_per_episode,
                     model_module=self.module,
                     curriculum=self.curriculum,
+                    reward_fn=self.reward_fn,
                 )
                 metrics = self.spec.train_one_epoch(
                     self.agent,
