@@ -9,7 +9,15 @@ seed: 0
 device: auto            # auto | cpu | cuda
 checkpoint_every: 10
 runs_dir: runs
+
+# Document your approach — shown by `kaisparov runs`.
+title: "gnn_v1 baseline"
+description: "First PPO self-play run of the relational GCN backend."
 notes: ""
+
+# To continue a previous run, set its id here (architecture + any field you don't
+# override are inherited). Leave null for a fresh run.
+resume_from_run: null
 
 ppo:
   learning_rate: 0.001

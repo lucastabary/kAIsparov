@@ -123,9 +123,11 @@ kaisparov train --epochs 100 --hidden-dim 16 --cpu   # override on top of defaul
 kaisparov train --resume <run_id> --epochs 50        # continue an earlier run (CPU-friendly)
 ```
 
-`--resume` reloads a run's **latest** checkpoint *and* its optimizer + RNG state, so
-training continues exactly where it stopped; it also continues the epoch numbering and
-links the new run to its parent. Training in chunks on a laptop stays one clean lineage.
+`--resume` (or `resume_from_run: <run_id>` in the YAML) reloads a run's **latest**
+checkpoint *and* its optimizer + RNG state, so training continues exactly where it
+stopped. On resume the **architecture is inherited** from the parent — you don't
+redefine `model`/`hidden_dim`, just list what changes. Set `title` / `description` in
+the config to document each experiment (shown by `kaisparov runs`).
 
 Each run creates a self-contained directory under `runs/<run_id>/` with the
 resolved config, per-epoch metrics, TensorBoard logs, and checkpoints — plus a

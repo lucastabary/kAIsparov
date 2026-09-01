@@ -92,12 +92,13 @@ def _cmd_list(reg: Registry, _: argparse.Namespace) -> None:
     if not runs:
         print(f"No runs found under {reg.root}/")
         return
-    print(f"{'run_id':<28} {'model':<8} {'status':<10} {'epochs':>6}  latest eval")
-    print("-" * 90)
+    print(f"{'run_id':<28} {'status':<10} {'epochs':>6}  {'title':<24} latest eval")
+    print("-" * 100)
     for run in runs:
+        title = (run.get("title") or "")[:24]
         print(
-            f"{run['run_id']:<28} {run.get('model', '?'):<8} "
-            f"{run.get('status', '?'):<10} {run.get('epochs_completed', 0):>6}  {_fmt_eval(run)}"
+            f"{run['run_id']:<28} {run.get('status', '?'):<10} "
+            f"{run.get('epochs_completed', 0):>6}  {title:<24} {_fmt_eval(run)}"
         )
 
 

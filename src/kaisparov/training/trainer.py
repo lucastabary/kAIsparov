@@ -86,6 +86,8 @@ class Trainer:
             seed=config.seed,
             device=str(self.device),
             num_params=self._num_params,
+            title=config.title,
+            description=config.description,
             notes=config.notes,
             parent_run_id=config.parent_run_id,
             resumed_from=config.resume_from,
@@ -126,6 +128,8 @@ class Trainer:
     def train(self) -> str:
         cfg = self.config
         print(f"Run {self.run.run_id} | device={self.device} | params={self._num_params}")
+        if cfg.title:
+            print(f"  {cfg.title}")
         game = ChessGame()
         last_eval: dict[str, float] = {}
         metrics: dict[str, float] = {}

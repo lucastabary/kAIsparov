@@ -296,10 +296,21 @@ keys ignored) and is stored verbatim in each run for reproducibility.
 
 - `config/default.yaml` — the documented defaults.
 - `config/experiments/smoke.yaml` — a ~1-minute CPU sanity run.
+- `config/experiments/resume_example.yaml` — how to continue a run from a config.
 - Keep **one YAML per experiment** under `config/experiments/`.
 
-CLI flags (`--epochs`, `--hidden-dim`, `--seed`, `--episodes`, `--cpu`, …) override
-individual fields on top of the config.
+**Documenting a run.** `title` and `description` fields let you record the intent of
+each experiment; they're stored in `run.json` and shown by `kaisparov runs`.
+
+**Resuming from a config.** Set `resume_from_run: <run_id>` in the YAML to continue an
+earlier run. You **don't redefine the architecture** — `model`/`hidden_dim` are
+inherited from the parent (they must match its weights), as is any other field you
+don't override. Only list what changes (e.g. more `epochs`, a new `learning_rate`, a
+fresh `title`). This is equivalent to `--resume <run_id>` on the CLI, and restores the
+optimizer + RNG state (see §8).
+
+CLI flags (`--epochs`, `--seed`, `--episodes`, `--title`, `--description`, `--cpu`, …)
+override individual fields on top of the config.
 
 ---
 

@@ -1,0 +1,18 @@
+# Example: continue a previous run.
+#   kaisparov train --config config/experiments/resume_example.yaml
+#
+# Set resume_from_run to a real run id (see `kaisparov runs list`). You do NOT
+# redefine the architecture — model/hidden_dim (and anything you omit) are inherited
+# from the parent run. Only list what you want to change.
+
+resume_from_run: 20260101-000000_gnn_v1   # <-- replace with a real run id
+
+title: "continue baseline, lower LR"
+description: |
+  Resuming the baseline for 40 more epochs with a smaller learning rate to see if
+  the Elo-vs-random curve keeps climbing. Optimizer + RNG state are restored, so
+  this is a true continuation.
+
+epochs: 40
+ppo:
+  learning_rate: 0.0005
