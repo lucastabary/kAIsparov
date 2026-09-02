@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,22 @@ from torch.utils.tensorboard import SummaryWriter
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _retry_io(action: Callable[[], object], attempts: int = 12, delay: float = 0.2) -> bool:
+    """Run a file op, retrying transient Windows locks (OneDrive / antivirus / editors).
+
+    Returns True on success. Training must never crash because a synced folder briefly
+    held a file open, so callers treat a False as "skip this write, retry next time".
+    """
+    for i in range(attempts):
+        try:
+            action()
+            return True
+        except PermissionError:
+            if i < attempts - 1:
+                time.sleep(delay)
+    return False
 
 
 def _git_info() -> dict[str, Any]:
@@ -108,14 +126,23 @@ class RunManager:
 
     def _save_meta(self) -> None:
         self._meta["updated_at"] = _utc_now()
+        payload = json.dumps(self._meta, indent=2, ensure_ascii=False)
         tmp = self.run_path.with_suffix(".json.tmp")
-        with tmp.open("w", encoding="utf-8") as stream:
-            json.dump(self._meta, stream, indent=2, ensure_ascii=False)
-        tmp.replace(self.run_path)
+        tmp.write_text(payload, encoding="utf-8")
+        if not _retry_io(lambda: tmp.replace(self.run_path)):
+            # Persistent lock on the atomic swap — write in place instead (loses
+            # atomicity once), and if even that is locked, skip: next save rewrites it.
+            _retry_io(lambda: self.run_path.write_text(payload, encoding="utf-8"))
+            tmp.unlink(missing_ok=True)
 
     def _append_jsonl(self, record: dict[str, Any]) -> None:
-        with self.metrics_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+
+        def _append() -> None:
+            with self.metrics_path.open("a", encoding="utf-8") as stream:
+                stream.write(line)
+
+        _retry_io(_append)
 
     # ------------------------------------------------------------------- logging
     def log_metrics(self, epoch: int, metrics: dict[str, float], section: str = "train") -> None:
@@ -144,7 +171,7 @@ class RunManager:
         trainer_state: dict[str, Any] | None = None,
     ) -> Path:
         path = self.dir / "checkpoints" / f"epoch{epoch}.pth"
-        torch.save(model.state_dict(), path)  # pure weights (inference-friendly)
+        _retry_io(lambda: torch.save(model.state_dict(), path))  # pure weights (inference-friendly)
 
         record: dict[str, Any] = {
             "epoch": epoch,
@@ -156,7 +183,7 @@ class RunManager:
         # the model checkpoint stays a plain state_dict for inference.
         if trainer_state is not None:
             state_path = self.dir / "checkpoints" / f"epoch{epoch}.state.pth"
-            torch.save(trainer_state, state_path)
+            _retry_io(lambda: torch.save(trainer_state, state_path))
             record["state_file"] = state_path.name
         self._meta["checkpoints"].append(record)
 
@@ -175,7 +202,8 @@ class RunManager:
         )
         if better:
             best_path = self.dir / "checkpoints" / "best.pth"
-            shutil.copyfile(self.dir / "checkpoints" / record["file"], best_path)
+            src = self.dir / "checkpoints" / record["file"]
+            _retry_io(lambda: shutil.copyfile(src, best_path))
             self._meta["best_checkpoint"] = {
                 "epoch": record["epoch"],
                 "file": record["file"],
