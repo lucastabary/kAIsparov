@@ -146,7 +146,7 @@ class Trainer:
         with self.run:
             for epoch in range(self.start_epoch + 1, self.start_epoch + cfg.epochs + 1):
                 self.buffer.clear()
-                self.spec.collect_data(
+                rollout_stats = self.spec.collect_data(
                     self.agent,
                     game,
                     self.buffer,
@@ -168,12 +168,14 @@ class Trainer:
                     max_grad_norm=cfg.ppo.max_grad_norm,
                 )
                 self.run.log_metrics(epoch, metrics, section="train")
+                if rollout_stats:
+                    self.run.log_metrics(epoch, rollout_stats, section="rollout")
 
                 if cfg.eval.enabled and epoch % cfg.eval.every == 0:
                     last_eval = self.evaluate()
                     self.run.log_eval(epoch, last_eval)
 
-                self._print_progress(epoch, metrics, last_eval)
+                self._print_progress(epoch, metrics, rollout_stats, last_eval)
 
                 if cfg.checkpoint_every > 0 and epoch % cfg.checkpoint_every == 0:
                     self.run.save_checkpoint(
@@ -209,12 +211,16 @@ class Trainer:
             "elo_vs_material": vs_material.elo_diff,
         }
 
-    def _print_progress(self, epoch: int, metrics: dict, last_eval: dict) -> None:
+    def _print_progress(
+        self, epoch: int, metrics: dict, rollout_stats: dict, last_eval: dict
+    ) -> None:
         line = (
             f"[epoch {epoch:>3}] loss={metrics.get('loss', 0):+.4f} "
             f"policy={metrics.get('policy_loss', 0):+.4f} "
             f"value={metrics.get('value_loss', 0):.4f} "
-            f"entropy={metrics.get('entropy', 0):.3f}"
+            f"entropy={metrics.get('entropy', 0):.3f} "
+            f"| king_capture={rollout_stats.get('king_capture_rate', 0):.0%} "
+            f"plies={rollout_stats.get('avg_plies', 0):.0f}"
         )
         if last_eval and self.config.eval.every and epoch % self.config.eval.every == 0:
             line += (

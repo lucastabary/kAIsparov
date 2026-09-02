@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from kaisparov.models.base_model import BaseModel
 
-CollectDataFn = Callable[..., None]
+CollectDataFn = Callable[..., dict[str, float]]  # returns rollout stats
 TrainOneEpochFn = Callable[..., dict[str, float]]
 
 

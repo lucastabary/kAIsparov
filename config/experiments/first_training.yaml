@@ -1,0 +1,34 @@
+# First real training run — short, CPU-friendly.
+#   kaisparov train --config config/experiments/first_training.yaml
+# Watch it live:  tensorboard --logdir runs/
+
+title: "first training - 6 pieces, all types"
+description: |
+  First self-play run. Curriculum starts each game with 6 pieces per side of every
+  type (majors, minors, pawns), games capped at 40 plies.
+
+model: rgcn
+hidden_dim: 8
+epochs: 300
+seed: 0
+device: auto        # -> CPU on this machine
+checkpoint_every: 10
+
+rollout:
+  episodes_per_epoch: 8
+  max_steps_per_episode: 40    # block each game at 40 plies
+
+curriculum:
+  name: "8 pieces, all types"
+  max_pieces_per_side: 8       # 1 king + 7 random others per side
+  allow_major: true            # queens / rooks
+  allow_minor: true            # bishops / knights
+  allow_pawns: true
+
+eval:
+  enabled: true
+  every: 10
+  games: 20
+  max_plies: 40
+
+reward: material_only

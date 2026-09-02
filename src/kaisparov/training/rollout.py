@@ -54,7 +54,7 @@ def collect_data(
     deterministic: bool = False,
     curriculum: BaseCurriculum | None = None,
     reward_fn=None,
-) -> None:
+) -> dict[str, float]:
     module = _resolve_module(model_module, model_name)
     processor = module.PROCESSOR_CLASS()
     device = _model_device(agent)
@@ -65,6 +65,9 @@ def collect_data(
     pending: list[list[dict]] = [[] for _ in range(num_episodes)]
     steps = [0] * num_episodes
     active = [True] * num_episodes
+
+    # How episodes ended, for live monitoring.
+    n_king = n_truncated = n_stalemate = total_plies = 0
 
     def flush(i: int) -> None:
         transitions = pending[i]
@@ -90,6 +93,8 @@ def collect_data(
                 g = games[i]
                 legal_mask = module.get_legal_mask(g, edge_index)
                 if not legal_mask.any():
+                    n_stalemate += 1
+                    total_plies += steps[i]
                     flush(i)
                     continue
 
@@ -120,7 +125,21 @@ def collect_data(
                     }
                 )
                 if done:
+                    if king_captured:
+                        n_king += 1
+                    else:
+                        n_truncated += 1
+                    total_plies += steps[i]
                     flush(i)
+
+    n = max(num_episodes, 1)
+    return {
+        "king_capture_rate": n_king / n,
+        "truncated_rate": n_truncated / n,
+        "stalemate_rate": n_stalemate / n,
+        "avg_plies": total_plies / n,
+        "transitions": float(len(buffer)),
+    }
 
 
 __all__ = ["collect_data"]

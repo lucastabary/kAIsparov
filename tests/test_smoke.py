@@ -14,8 +14,8 @@ from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 
 def test_training_step_runs():
     device = torch.device("cpu")
-    module = load_backend("gnn_v1")
-    spec = load_backend_spec("gnn_v1")
+    module = load_backend("rgcn")
+    spec = load_backend_spec("rgcn")
 
     agent = spec.model_class.create_agent(device=device, hidden_dim=8)
     optimizer = spec.model_class.create_optimizer(agent, learning_rate=1e-3)
@@ -25,7 +25,7 @@ def test_training_step_runs():
         seed=0,
     )
 
-    spec.collect_data(
+    rollout_stats = spec.collect_data(
         agent,
         ChessGame(),
         buffer,
@@ -35,6 +35,8 @@ def test_training_step_runs():
         curriculum=curriculum,
     )
     assert len(buffer) > 0, "self-play collected no transitions"
+    for key in ("king_capture_rate", "truncated_rate", "stalemate_rate", "avg_plies"):
+        assert key in rollout_stats
 
     metrics = spec.train_one_epoch(agent, buffer, optimizer, device=device)
     for key in ("policy_loss", "value_loss", "entropy", "loss", "steps"):
