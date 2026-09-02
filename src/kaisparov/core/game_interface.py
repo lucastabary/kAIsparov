@@ -25,6 +25,7 @@ class GameInterface:
         self._screen: pygame.Surface | None = None
         self._clock: pygame.time.Clock | None = None
         self._piece_sprites: dict[tuple[Player, PieceType], pygame.Surface] = {}
+        self._highlight_surface: pygame.Surface | None = None
 
         self._colors: dict[str, Color] = {
             "bg_start": (18, 24, 38),
@@ -51,6 +52,9 @@ class GameInterface:
         self._screen = pygame.display.set_mode((self.window_width, self.window_height))
         self._clock = pygame.time.Clock()
         self._build_piece_sprites()
+        # Translucent tint for the last move's from/to squares (chess.com-style).
+        self._highlight_surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+        self._highlight_surface.fill((245, 214, 71, 90))
         self._initialized = True
 
     def _make_font(self, size: int, bold: bool = False) -> pygame.font.Font:
@@ -61,54 +65,53 @@ class GameInterface:
                 return font
         return pygame.font.SysFont(None, size, bold=bold)
 
+    def _make_piece_font(self, size: int) -> pygame.font.Font:
+        # Fonts that carry monochrome chess glyphs (U+2654–265F), best first.
+        for name in ("Segoe UI Symbol", "DejaVu Sans", "Arial Unicode MS", "FreeSerif"):
+            path = pygame.font.match_font(name)
+            if path:
+                return pygame.font.Font(path, size)
+        return pygame.font.SysFont(None, size)
+
     def _build_piece_sprites(self) -> None:
-        glyph_font = self._make_font(44, bold=True)
-        shadow_font = self._make_font(44, bold=True)
-        piece_labels = {
-            PieceType.KING: "K",
-            PieceType.QUEEN: "Q",
-            PieceType.BISHOP: "B",
-            PieceType.ROOK: "R",
-            PieceType.KNIGHT: "N",
-            PieceType.PAWN: "P",
+        # Solid chess figures (drawn, not letters), colored per side with an outline.
+        glyphs = {
+            PieceType.KING: "♚",
+            PieceType.QUEEN: "♛",
+            PieceType.ROOK: "♜",
+            PieceType.BISHOP: "♝",
+            PieceType.KNIGHT: "♞",
+            PieceType.PAWN: "♟",
         }
+        font = self._make_piece_font(int(self.cell_size * 0.74))
+        outline_offsets = [(-2, 0), (2, 0), (0, -2), (0, 2), (-2, -2), (2, 2), (-2, 2), (2, -2)]
 
         for player in (Player.WHITE, Player.BLACK):
-            for piece_type in (
-                PieceType.KING,
-                PieceType.QUEEN,
-                PieceType.BISHOP,
-                PieceType.ROOK,
-                PieceType.KNIGHT,
-                PieceType.PAWN,
-            ):
-                glyph = piece_labels[piece_type]
+            if player == Player.WHITE:
+                fill, outline = (248, 249, 252), (24, 28, 38)
+            else:
+                fill, outline = (30, 34, 46), (232, 236, 244)
 
+            for piece_type, glyph in glyphs.items():
                 surface = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
                 center = (self.cell_size // 2, self.cell_size // 2)
 
-                # Soft token behind the glyph for a sprite-like look and better readability.
-                if player == Player.WHITE:
-                    token_color = (242, 244, 248, 232)
-                    ring_color = (182, 190, 206, 228)
-                    glyph_color = (26, 34, 47)
-                else:
-                    token_color = (39, 52, 72, 238)
-                    ring_color = (122, 148, 186, 220)
-                    glyph_color = (246, 251, 255)
+                outline_img = font.render(glyph, True, outline)
+                for dx, dy in outline_offsets:
+                    surface.blit(
+                        outline_img, outline_img.get_rect(center=(center[0] + dx, center[1] + dy))
+                    )
 
-                pygame.draw.circle(surface, token_color, center, 30)
-                pygame.draw.circle(surface, ring_color, center, 30, width=2)
-
-                shadow = shadow_font.render(glyph, True, (0, 0, 0, 170))
-                glyph_img = glyph_font.render(glyph, True, glyph_color)
-
-                shadow_rect = shadow.get_rect(center=(center[0] + 2, center[1] + 3))
-                glyph_rect = glyph_img.get_rect(center=center)
-                surface.blit(shadow, shadow_rect)
-                surface.blit(glyph_img, glyph_rect)
+                fill_img = font.render(glyph, True, fill)
+                surface.blit(fill_img, fill_img.get_rect(center=center))
 
                 self._piece_sprites[(player, piece_type)] = surface
+
+    def _last_move_display_cells(self, use_pov: bool) -> set[tuple[int, int]]:
+        """Display coords of the last move's from/to squares (empty if no move yet)."""
+        if self.game is None or self.game.last_move is None:
+            return set()
+        return {self._to_display_coord(square, use_pov=use_pov) for square in self.game.last_move}
 
     def _draw_gradient_background(self) -> None:
         assert self._screen is not None
@@ -133,6 +136,8 @@ class GameInterface:
         )
         pygame.draw.rect(self._screen, self._colors["board_border"], board_rect, border_radius=12)
 
+        last_move_cells = self._last_move_display_cells(use_pov)
+
         for x in range(BOARD_SIZE):
             for y in range(BOARD_SIZE):
                 rect = pygame.Rect(
@@ -145,6 +150,9 @@ class GameInterface:
                 is_light = (x + y) % 2 == 0
                 cell_color = self._colors["board_light"] if is_light else self._colors["board_dark"]
                 pygame.draw.rect(self._screen, cell_color, rect)
+
+                if (x, y) in last_move_cells and self._highlight_surface is not None:
+                    self._screen.blit(self._highlight_surface, rect.topleft)
 
                 piece = grid[x][y]
                 if piece is not None:

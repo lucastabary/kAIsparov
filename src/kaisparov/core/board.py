@@ -22,6 +22,7 @@ class Undo:
     castle: tuple[Piece, Coord, Coord, bool] | None
     prev_turn: Player
     prev_en_passant: Coord | None
+    prev_last_move: tuple[Coord, Coord] | None
     turn_advanced: bool
 
 
@@ -40,6 +41,8 @@ class ChessGame:
         self.count = 0
         # Square a pawn just skipped on a double push; capturable en passant next ply.
         self.en_passant_target: Coord | None = None
+        # (source, dest) of the last move played — for UI highlighting.
+        self.last_move: tuple[Coord, Coord] | None = None
 
     # ------------------------------------------------------------------ setup
     @staticmethod
@@ -91,12 +94,14 @@ class ChessGame:
             self.turn = turn
         self.count = 0
         self.en_passant_target = None
+        self.last_move = None
 
     def copy(self) -> ChessGame:
         """Return a deep, independent copy of the current state."""
         clone = ChessGame(initial_board=self.grid, turn=self.turn)
         clone.count = self.count
         clone.en_passant_target = self.en_passant_target
+        clone.last_move = self.last_move
         return clone
 
     # ------------------------------------------------------------------ moves
@@ -126,6 +131,7 @@ class ChessGame:
 
         piece_had_moved = piece.has_moved
         prev_en_passant = self.en_passant_target
+        prev_last_move = self.last_move
 
         # En passant: a pawn moving diagonally onto the (empty) skipped square captures
         # the pawn beside it, on the mover's own rank.
@@ -168,6 +174,7 @@ class ChessGame:
             self.en_passant_target = None
 
         self.count += 1
+        self.last_move = (source, dest)
         prev_turn = self.turn
         king_captured = captured is not None and captured.type == PieceType.KING
         turn_advanced = not king_captured
@@ -184,6 +191,7 @@ class ChessGame:
             castle=castle,
             prev_turn=prev_turn,
             prev_en_passant=prev_en_passant,
+            prev_last_move=prev_last_move,
             turn_advanced=turn_advanced,
         )
 
@@ -207,6 +215,7 @@ class ChessGame:
         self.count -= 1
         self.turn = undo.prev_turn
         self.en_passant_target = undo.prev_en_passant
+        self.last_move = undo.prev_last_move
 
     def play(self, source: Coord, dest: Coord) -> Piece | None:
         """Validate then apply a move. Returns the captured piece, or ``None``.

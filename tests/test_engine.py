@@ -149,6 +149,15 @@ def test_make_unmake_restores_state():
     assert game.count == 0
 
 
+def test_last_move_tracked_and_reversible():
+    game = ChessGame()
+    assert game.last_move is None
+    undo = game.make((4, 1), (4, 3))
+    assert game.last_move == ((4, 1), (4, 3))
+    game.unmake(undo)
+    assert game.last_move is None
+
+
 def test_castling_make_unmake_moves_and_restores_rook():
     game = empty_game()
     place(game, (4, 0), Player.WHITE, PieceType.KING)
