@@ -101,9 +101,9 @@ round-trip invariant.
 
 ## 4. Board → graph, and the model (`models/`)
 
-### Encoding (`gnn_v1/processor.py`, `base_processor.py`)
+### Encoding (`rgcn/processor.py`, `base_processor.py`)
 
-`GNN1Processor.graphify(game)` builds a PyG `Data`:
+`RGCNProcessor.graphify(game)` builds a PyG `Data`:
 
 - **Nodes**: the 64 squares. Node features are **12-dim, relative to the side to
   move**: indices 0–5 mark an *ally* piece of a given type on that square, 6–11 an
@@ -113,9 +113,9 @@ round-trip invariant.
   `create_static_full_chess_graph()`. Each edge is one piece's possible movement, and
   carries a **relation type** (`edge_type`): `0` knight, `1` rook, `2` bishop, `3`
   king, `4` white pawn, `5` black pawn — 6 relations. (Castling is *not* an edge, so
-  `gnn_v1` cannot emit castling moves; a documented limitation.)
+  `rgcn` cannot emit castling moves; a documented limitation.)
 
-### Network (`gnn_v1/model.py`)
+### Network (`rgcn/model.py`)
 
 `ChessRGCN` is a Relational GCN: 4 `RGCNConv` layers (with residual connections)
 producing per-node embeddings. On top:
@@ -264,6 +264,19 @@ checkpoints/
 `run.json` captures: status, timestamps, **git commit + dirty flag**, device, seed,
 `num_params`, notes, the full config, `epochs_completed`, every checkpoint, the
 `eval_history`, the `best_checkpoint`, and lineage (`parent_run_id`, `resumed_from`).
+
+### Logged metrics (`metrics.jsonl` + TensorBoard)
+
+Watch them live with `tensorboard --logdir runs/`:
+
+- **`train/`** — `loss`, `policy_loss`, `value_loss`, `entropy`, `steps` (per epoch).
+- **`rollout/`** — how self-play games ended: `king_capture_rate`, `truncated_rate`
+  (hit the ply cap), `stalemate_rate` (no legal move), `avg_plies`, `transitions`.
+- **`eval/`** — every `eval.every` epochs: `winrate_vs_random`, `elo_vs_random`,
+  `winrate_vs_material`, `elo_vs_material`.
+
+The per-epoch console line also shows the two losses, entropy, `king_capture`, and
+`plies`.
 
 ### Querying (`Registry`, torch-free)
 

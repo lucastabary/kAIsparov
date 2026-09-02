@@ -5,7 +5,7 @@
 # redefine the architecture — model/hidden_dim (and anything you omit) are inherited
 # from the parent run. Only list what you want to change.
 
-resume_from_run: 20260101-000000_gnn_v1   # <-- replace with a real run id
+resume_from_run: 20260101-000000_rgcn   # <-- replace with a real run id
 
 title: "continue baseline, lower LR"
 description: |

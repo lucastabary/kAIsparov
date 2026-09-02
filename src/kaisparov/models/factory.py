@@ -6,9 +6,9 @@ import importlib
 
 from kaisparov.models.backend_spec import BackendSpec
 
-DEFAULT_MODEL = "gnn_v1"
+DEFAULT_MODEL = "rgcn"
 MODEL_MODULES = {
-    "gnn_v1": "kaisparov.models.gnn_v1",
+    "rgcn": "kaisparov.models.rgcn",
 }
 
 

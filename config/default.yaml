@@ -2,7 +2,7 @@
 # Mirrors the code defaults in kaisparov.training.config.TrainConfig.
 # Run with:  python -m kaisparov.train --config config/default.yaml
 
-model: gnn_v1
+model: rgcn
 hidden_dim: 8
 epochs: 50
 seed: 0
@@ -11,7 +11,7 @@ checkpoint_every: 10
 runs_dir: runs
 
 # Document your approach — shown by `kaisparov runs`.
-title: "gnn_v1 baseline"
+title: "rgcn baseline"
 description: "First PPO self-play run of the relational GCN backend."
 notes: ""
 

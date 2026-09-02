@@ -20,7 +20,7 @@ integer/bitboard representation:
 **Cost / caveats:**
 - Significant rewrite of `core/board.py` + `core/movegen.py`; keep `core/coords.py`
   as the geometry source of truth.
-- Ripples into `models/gnn_v1/processor.py` (`graphify` reads `grid[col][row]`) and
+- Ripples into `models/rgcn/processor.py` (`graphify` reads `grid[col][row]`) and
   the pygame UI — introduce an accessor so callers don't touch the raw representation.
 - Keep the perft tests green (they're the safety net for any engine rewrite).
 

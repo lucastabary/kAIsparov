@@ -2,7 +2,7 @@
 #   kaisparov train --config config/experiments/smoke.yaml
 # Copy this file to start a new experiment; keep one YAML per experiment for repro.
 
-model: gnn_v1
+model: rgcn
 hidden_dim: 8
 epochs: 6
 seed: 0

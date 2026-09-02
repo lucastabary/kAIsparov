@@ -7,7 +7,7 @@ Guidance for AI assistants (and humans) working in this repo.
 kAIsparov is a **research platform for GNNs that play chess**. A board is a graph
 (64 square-nodes, piece movements as typed edges); the goal is to compare
 different **GNN architectures** and **training methods** on the same task, sharing
-one engine, one evaluation arena, and one experiment tracker. `gnn_v1` (a
+one engine, one evaluation arena, and one experiment tracker. `rgcn` (a
 relational GCN actor–critic trained with PPO self-play) is the first backend.
 
 ## Layout (`src/kaisparov/`)
@@ -58,5 +58,6 @@ pytest                                          # tests (torch-free where possib
   committed.
 - Tests avoid importing the pygame UI so they run headless; if you must import
   `kaisparov.play` in a headless check, set `SDL_VIDEODRIVER=dummy`.
-- Adding a backend = a new `models/<name>/` folder with a `BACKEND_SPEC`, then a
-  line in `models/factory.py`. Nothing else should need to change.
+- Adding a backend = a new `models/<arch>/` folder (named by architecture, e.g.
+  `rgcn`, `gat`) with a `BACKEND_SPEC` and a `README.md` describing the model (see
+  `models/rgcn/README.md`), then a line in `models/factory.py`. Nothing else changes.

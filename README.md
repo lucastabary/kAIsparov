@@ -15,7 +15,7 @@ transformers next) and **many training methods** (PPO self-play today; supervise
 DQN, AlphaZero-style search later) can be swapped in and compared on identical
 footing — same engine, same evaluation, same experiment tracking.
 
-The first backend (`gnn_v1`) is a relational GCN actor–critic trained with
+The first backend (`rgcn`) is a relational GCN actor–critic trained with
 **PPO self-play**. It ships with a custom, dependency-free chess engine and a
 pygame interface to play against a trained agent.
 
@@ -60,7 +60,7 @@ flowchart LR
         B[ChessGame<br/>board + moves + rules]
     end
     subgraph models["models/ — neural backends"]
-        P[GNN1Processor<br/>board → graph]
+        P[RGCNProcessor<br/>board → graph]
         M[ChessRGCN<br/>actor + critic]
     end
     subgraph training["training/ — PPO self-play"]
@@ -80,7 +80,7 @@ The seams that keep it extensible:
 |-------|----------------|-----------------|
 | `core/` | Rules & board state, no ML deps | Swap in a new variant / engine |
 | `envs/` | Reward / terminal / legal actions | Reward shaping, new variants |
-| `models/<name>/` | Graph encoding + network | Add `gnn_v2/` with its own `BackendSpec` |
+| `models/<name>/` | Graph encoding + network | Add `models/<arch>/` with its own `BackendSpec` |
 | `agents/` | Policies (random / material / neural) | New baselines or search agents |
 | `training/` | Config, trainer, PPO, curriculum | Curriculum phases, algorithms |
 | `eval/` | Arena: matches, win-rates, Elo | New metrics / opponents |
@@ -161,7 +161,7 @@ Pit agents against each other and print win-rates and a rough Elo gap:
 
 ```bash
 kaisparov eval --games 60                                    # baselines only
-kaisparov eval --games 40 --model gnn_v1 \
+kaisparov eval --games 40 --model rgcn \
     --checkpoint runs/<run_id>/checkpoints/best.pth          # include the neural agent
 ```
 
@@ -193,7 +193,7 @@ kAIsparov/
 ├─ src/kaisparov/
 │  ├─ core/        # chess engine: coords, board, movegen, rules, pieces, UI
 │  ├─ envs/        # ChessEnv — Gym-like reset/step/reward/terminal
-│  ├─ models/      # neural backends (base classes + gnn_v1) and factory
+│  ├─ models/      # neural backends (base classes + rgcn) and factory
 │  ├─ agents/      # policies: RandomAgent, MaterialAgent, NeuralAgent
 │  ├─ eval/        # arena: play matches, win-rates, Elo
 │  ├─ training/    # config, Trainer, PPO, rollout buffer (GAE), curriculum
@@ -212,7 +212,7 @@ kAIsparov/
 
 ## 🧠 How it works
 
-1. **Encode** — `GNN1Processor.graphify` turns the board into a PyG `Data`:
+1. **Encode** — `RGCNProcessor.graphify` turns the board into a PyG `Data`:
    12-dim node features (6 ally piece types + 6 enemy) over a *static* graph whose
    edges encode every piece's movement geometry (6 relations).
 2. **Reason** — `ChessRGCN` runs 4 relational graph-conv layers with residuals,
@@ -223,7 +223,7 @@ kAIsparov/
 4. **Learn** — self-play trajectories feed a PPO buffer with GAE advantages, and
    `train_one_epoch` runs clipped policy + value + entropy updates.
 
-`gnn_v1` is one point in this space. The architecture (how nodes reason) and the
+`rgcn` is one point in this space. The architecture (how nodes reason) and the
 training method (how the policy learns) are independent axes you can vary.
 
 ---
@@ -234,23 +234,25 @@ A backend is a self-contained folder `models/<name>/` exposing a `BACKEND_SPEC`.
 To try a new GNN (say a graph-attention net) or a new learner:
 
 ```python
-# models/gnn_v2/__init__.py
+# models/gat/__init__.py  (name backends by architecture, e.g. gat, graph_transformer)
 BACKEND_SPEC = BackendSpec(
-    name="gnn_v2",
-    model_class=GNN2Model,  # your nn.Module (any GNN architecture)
-    processor_class=GNN2Processor,  # board -> graph encoding
+    name="gat",
+    model_class=GATModel,  # your nn.Module (any GNN architecture)
+    processor_class=GATProcessor,  # board -> graph encoding
     buffer_class=PPOBuffer,  # or a different learner's buffer
     collect_data=collect_data,  # how experience is gathered
     train_one_epoch=train_one_epoch,
 )
 ```
 
-Register it in `models/factory.py`, then everything else — self-play, the arena,
-Elo evaluation, run tracking — works unchanged:
+Add a `README.md` to the folder describing the model (like
+[models/rgcn/README.md](src/kaisparov/models/rgcn/README.md)), register it in
+`models/factory.py`, then everything else — self-play, the arena, Elo evaluation,
+run tracking — works unchanged:
 
 ```bash
-kaisparov train --model gnn_v2
-kaisparov eval  --model gnn_v2 --checkpoint runs/<id>/checkpoints/best.pth
+kaisparov train --model gat
+kaisparov eval  --model gat --checkpoint runs/<id>/checkpoints/best.pth
 ```
 
 The engine, environment, agents, and tracker never need to know which model is
@@ -266,7 +268,7 @@ running, which is what makes architecture-vs-architecture comparison clean.
 - [x] **Phase 3** — `ChessEnv` (Gym-like) + baseline agents (random / material) + evaluation arena
 - [x] **Phase 4** — config-driven `Trainer`, TensorBoard, negamax self-play credit, periodic Elo eval, run tracking + registry
 - [x] **Phase 5** — unified `kaisparov` CLI (`train` / `eval` / `play` / `runs`), Elo evaluation vs baselines
-- [ ] **Next** — longer training runs to actually beat the baselines; a second GNN backend (`gnn_v2`)
+- [ ] **Next** — longer training runs to actually beat the baselines; a second GNN backend (e.g. `gat`)
 
 ---
 

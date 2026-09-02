@@ -7,7 +7,7 @@ from kaisparov.training.config import TrainConfig
 
 def test_defaults():
     c = TrainConfig()
-    assert c.model == "gnn_v1"
+    assert c.model == "rgcn"
     assert c.ppo.gamma == 0.99
     assert c.ppo.self_play is True
     assert c.eval.every == 5
@@ -27,7 +27,7 @@ def test_curriculum_is_optional():
 def test_from_dict_nested_and_ignores_unknown():
     c = TrainConfig.from_dict(
         {
-            "model": "gnn_v1",
+            "model": "rgcn",
             "epochs": 3,
             "ppo": {"gamma": 0.5, "bogus": 123},
             "unknown_top": 9,

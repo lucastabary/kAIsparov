@@ -32,7 +32,7 @@ kaisparov train --config config/default.yaml
 
 | Parameter | Type | Default | What it does |
 |-----------|------|---------|--------------|
-| `model` | str | `gnn_v1` | Which model backend to train (a folder under `src/kaisparov/models/`, loaded by name). |
+| `model` | str | `rgcn` | Which model backend to train (a folder under `src/kaisparov/models/`, loaded by name). |
 | `hidden_dim` | int | `8` | Hidden size of the network — the main architecture knob. Must match the checkpoint when resuming. |
 | `epochs` | int | `50` | Number of training epochs. One epoch = collect self-play data, then run the PPO update. |
 | `seed` | int | `0` | Random seed for torch / numpy / python (reproducibility). |
@@ -151,7 +151,7 @@ saved in `run.json`.
 Set `resume_from_run` to a run id (see `kaisparov runs list`) to **continue** it:
 
 ```yaml
-resume_from_run: 20260901-120000_gnn_v1
+resume_from_run: 20260901-120000_rgcn
 title: "continue baseline, lower LR"
 epochs: 40
 ppo:
@@ -203,7 +203,7 @@ epochs: 10
 **A real experiment:**
 
 ```yaml
-model: gnn_v1
+model: rgcn
 hidden_dim: 16
 epochs: 200
 seed: 0

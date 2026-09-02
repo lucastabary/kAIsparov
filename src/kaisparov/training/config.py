@@ -91,7 +91,7 @@ def _build_reward(value: Any) -> RewardSettings:
 
 @dataclass
 class TrainConfig:
-    model: str = "gnn_v1"
+    model: str = "rgcn"
     hidden_dim: int = 8
     epochs: int = 50
     seed: int = 0

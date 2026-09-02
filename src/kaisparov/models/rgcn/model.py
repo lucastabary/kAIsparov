@@ -27,11 +27,11 @@ class ChessRGCN(torch.nn.Module):
         return x
 
 
-class GNN1Model(BaseModel):
+class RGCNModel(BaseModel):
     """GNN actor-critic model for chess graph states."""
 
     INPUT_DIM = 12  # 6 for ally pieces + 6 for enemy pieces
-    MODEL_NAME = "gnn_v1"
+    MODEL_NAME = "rgcn"
 
     def __init__(self, hidden_dim=8):
         super().__init__()

@@ -26,7 +26,7 @@ def compute_reward(game: ChessGame, captured_piece: Piece | None) -> float:
     return reward
 
 
-class GNN1Processor(BaseProcessor):
+class RGCNProcessor(BaseProcessor):
     def __init__(self):
         self.static_graph_edges = create_static_full_chess_graph()
 
@@ -105,7 +105,7 @@ def get_legal_mask(game: ChessGame, edge_index: torch.Tensor) -> torch.Tensor:
 
 
 __all__ = [
-    "GNN1Processor",
+    "RGCNProcessor",
     "PPOBuffer",
     "ModelAction",
     "coord_to_index",
