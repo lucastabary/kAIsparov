@@ -10,6 +10,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 Recent additions:
 
+- **Run lineage view**: `kaisparov runs graph` renders the run registry as a
+  self-contained `git log --graph`-style HTML page (one lane per resume family,
+  forks where runs share a parent, status-coloured dots). Clicking a run shows its
+  full config with the parameters that changed from its parent highlighted like a
+  diff. Torch-free (`tracking/lineage_view.py`).
 - **Full developer docs** (`docs.md`), `CLAUDE.md`, and this changelog.
 - **Exact resume**: `--resume <run_id>` continues from a run's *latest* checkpoint,
   restoring optimizer moments and RNG state (a separate `*.state.pth` file), so a

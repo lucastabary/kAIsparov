@@ -153,7 +153,14 @@ kaisparov runs list                       # all runs, newest first
 kaisparov runs show <run_id>              # full metadata for one run
 kaisparov runs lineage <run_id>          # the resume chain a run belongs to
 kaisparov runs best --metric elo_vs_random
+kaisparov runs graph                      # git-log-style HTML of the run lineage
 ```
+
+`runs graph` renders every run as a `git log --graph`-style page (`runs/lineage.html`,
+opened in your browser): newest first, one lane per resume family, dots coloured by
+status. Click a run to see its full parameters, with the values that **changed from
+its parent** highlighted like a commit diff. Pass `--no-open` to only write the file,
+or `-o <path>` to choose where.
 
 ### Evaluate
 

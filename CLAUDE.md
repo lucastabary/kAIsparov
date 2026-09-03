@@ -43,7 +43,7 @@ pip install -e .
 
 kaisparov train --config config/default.yaml   # or: python -m kaisparov.cli train
 kaisparov eval  --games 60
-kaisparov runs  list | show <id> | best
+kaisparov runs  list | show <id> | lineage <id> | best | graph  # graph = HTML lineage view
 kaisparov play  --vs-ai
 
 ruff check . && ruff format --check .           # lint + format

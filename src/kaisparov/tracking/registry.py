@@ -119,6 +119,19 @@ def _cmd_lineage(reg: Registry, args: argparse.Namespace) -> None:
         )
 
 
+def _cmd_graph(reg: Registry, args: argparse.Namespace) -> None:
+    from kaisparov.tracking.lineage_view import build_html
+
+    html = build_html(reg.list_runs(), root=str(reg.root))
+    out = Path(args.output)
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote lineage graph to {out}")
+    if not args.no_open:
+        import webbrowser
+
+        webbrowser.open(out.resolve().as_uri())
+
+
 def _cmd_best(reg: Registry, args: argparse.Namespace) -> None:
     result = reg.best_run(args.metric, mode=args.mode)
     if result is None:
@@ -148,6 +161,10 @@ def main(argv: list[str] | None = None) -> None:
     best.add_argument("--metric", default="elo_vs_random")
     best.add_argument("--mode", default="max", choices=["max", "min"])
 
+    graph = sub.add_parser("graph", help="Render the lineage as a git-log-style HTML page")
+    graph.add_argument("-o", "--output", default="runs/lineage.html", help="Output HTML file")
+    graph.add_argument("--no-open", action="store_true", help="Do not open a browser")
+
     args = parser.parse_args(argv)
     reg = Registry(args.runs_dir)
     commands = {
@@ -155,6 +172,7 @@ def main(argv: list[str] | None = None) -> None:
         "show": _cmd_show,
         "lineage": _cmd_lineage,
         "best": _cmd_best,
+        "graph": _cmd_graph,
     }
     commands[args.command](reg, args)
 

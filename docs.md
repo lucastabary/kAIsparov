@@ -281,9 +281,17 @@ The per-epoch console line also shows the two losses, entropy, `king_capture`, a
 ### Querying (`Registry`, torch-free)
 
 `Registry` reads runs back without importing torch. CLI: `kaisparov runs list |
-show <id> | lineage <id> | best --metric elo_vs_random`. `resolve_checkpoint(run_id,
+show <id> | lineage <id> | best --metric elo_vs_random | graph`. `resolve_checkpoint(run_id,
 which)` returns a checkpoint path where `which` defaults to **`"latest"`** (the most
 recent epoch), or `"best"`, or an epoch number.
+
+`kaisparov runs graph` (module `tracking/lineage_view.py`, also torch-free) turns the
+registry into a self-contained HTML page laid out like `git log --graph`: newest run
+at the top, one lane per resume family, forks where two runs resume the same parent,
+dots coloured by status. Clicking a run opens a panel with its full (flattened) config;
+parameters that **differ from the run's parent** are highlighted with their old value,
+so a resume reads like a diff. Writes `runs/lineage.html` and opens it (`--no-open` /
+`-o <path>` to control that).
 
 ### Resume & lineage
 
@@ -347,7 +355,7 @@ One entry point, `kaisparov <command>` (or `python -m kaisparov.cli <command>`;
 | `kaisparov train` | Train (config-driven; `--resume <id>` to continue a run). |
 | `kaisparov eval`  | Play matches between agents; win-rates + Elo. |
 | `kaisparov play`  | Pygame board: human vs human, or `--vs-ai` (newest run's latest checkpoint by default; `--best` for best-Elo, `--checkpoint` for a path). |
-| `kaisparov runs`  | `list` / `show` / `lineage` / `best` over recorded runs. |
+| `kaisparov runs`  | `list` / `show` / `lineage` / `best` / `graph` (git-log-style HTML) over recorded runs. |
 
 `tensorboard --logdir runs/` watches loss + Elo curves live.
 
