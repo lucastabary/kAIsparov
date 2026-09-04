@@ -120,16 +120,24 @@ def _format(stats: MatchStats) -> str:
     )
 
 
-def _load_neural(model_name, checkpoint, device, hidden_dim):
-    from kaisparov.agents.neural_agent import NeuralAgent
+def _load_neural(model_name, checkpoint, device, hidden_dim, minimax_depth=0):
     from kaisparov.models.factory import load_backend_spec
 
     spec = load_backend_spec(model_name)
     model, path = spec.model_class.load_agent_for_inference(
         device=device, model_path=checkpoint, hidden_dim=hidden_dim
     )
+    processor = spec.processor_class()
+    if minimax_depth > 0:
+        from kaisparov.agents.minimax_agent import MinimaxAgent
+
+        print(f"Loaded neural agent from {path} (minimax depth {minimax_depth})")
+        return MinimaxAgent(model, processor, depth=minimax_depth)
+
+    from kaisparov.agents.neural_agent import NeuralAgent
+
     print(f"Loaded neural agent from {path}")
-    return NeuralAgent(model, spec.processor_class(), deterministic=True)
+    return NeuralAgent(model, processor, deterministic=True)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -140,6 +148,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--model", default=None, help="Also evaluate this neural backend.")
     parser.add_argument("--checkpoint", default=None, help="Explicit weights path for --model.")
     parser.add_argument("--hidden-dim", type=int, default=8)
+    parser.add_argument(
+        "--minimax-depth", type=int, default=0, help="Wrap --model in a minimax search."
+    )
     parser.add_argument("--cpu", action="store_true")
     args = parser.parse_args(argv)
 
@@ -156,7 +167,9 @@ def main(argv: list[str] | None = None) -> None:
         import torch
 
         device = torch.device("cpu" if args.cpu or not torch.cuda.is_available() else "cuda")
-        neural = _load_neural(args.model, args.checkpoint, device, args.hidden_dim)
+        neural = _load_neural(
+            args.model, args.checkpoint, device, args.hidden_dim, args.minimax_depth
+        )
         print(_format(evaluate(neural, random_agent, args.games, max_plies=args.max_plies)))
         print(_format(evaluate(neural, material_agent, args.games, max_plies=args.max_plies)))
     print()

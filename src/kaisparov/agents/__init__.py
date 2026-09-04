@@ -14,14 +14,30 @@ from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
 
 if TYPE_CHECKING:
+    from kaisparov.agents.minimax_agent import MinimaxAgent
     from kaisparov.agents.neural_agent import NeuralAgent
+    from kaisparov.agents.neural_analyzer import NeuralAnalyzer
 
-__all__ = ["Policy", "Move", "RandomAgent", "MaterialAgent", "NeuralAgent"]
+__all__ = [
+    "Policy",
+    "Move",
+    "RandomAgent",
+    "MaterialAgent",
+    "NeuralAgent",
+    "MinimaxAgent",
+    "NeuralAnalyzer",
+]
+
+_LAZY = {
+    "NeuralAgent": "kaisparov.agents.neural_agent",
+    "MinimaxAgent": "kaisparov.agents.minimax_agent",
+    "NeuralAnalyzer": "kaisparov.agents.neural_analyzer",
+}
 
 
 def __getattr__(name: str) -> Any:
-    if name == "NeuralAgent":
-        from kaisparov.agents.neural_agent import NeuralAgent
+    if name in _LAZY:
+        import importlib
 
-        return NeuralAgent
+        return getattr(importlib.import_module(_LAZY[name]), name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
