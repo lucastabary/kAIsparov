@@ -117,7 +117,7 @@ def _render_graph(ordered: list[dict[str, Any]], node_lane: dict[str, int]) -> s
         x, y = _cx(rid), _cy(rid)
         color = _LANE_COLORS[node_lane[rid] % len(_LANE_COLORS)]
         parent = run.get("parent_run_id")
-        if parent in row_of:  # draw a link down to the ancestor
+        if parent is not None and parent in row_of:  # draw a link down to the ancestor
             px, py = _cx(parent), _cy(parent)
             if px == x:
                 path = f"M{x},{y} L{px},{py}"

@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import copy
 import random
+from typing import TYPE_CHECKING
 
 import torch
+
+if TYPE_CHECKING:
+    from kaisparov.agents.base import Policy
 
 
 class OpponentPool:
@@ -66,6 +70,7 @@ class OpponentPool:
         for param in frozen.parameters():
             param.requires_grad_(False)
         processor = self.spec.processor_class()
+        agent: Policy
         if self.search_depth >= 1:
             from kaisparov.agents.minimax_agent import MinimaxAgent
 

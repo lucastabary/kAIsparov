@@ -28,11 +28,12 @@ import argparse
 
 import pygame
 
+from kaisparov.agents.base import Policy
 from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
 from kaisparov.core.game_interface import GameInterface, MatchSetup, ModelOption, MoveArrow
 from kaisparov.core.pieces import PieceType, Player
-from kaisparov.insights import PositionAnalysis
+from kaisparov.insights import Analyzer, PositionAnalysis
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 
 
@@ -238,10 +239,10 @@ def _prepare_match(setup: MatchSetup, args, device):
     keys they win; otherwise we fall back to the default checkpoint resolution (the
     path taken by the ``--vs-ai`` / ``--ai-vs-ai`` command-line shortcuts).
     """
-    controllers: dict[Player, object | None] = {Player.WHITE: None, Player.BLACK: None}
-    analyzers: dict[Player, object | None] = {Player.WHITE: None, Player.BLACK: None}
+    controllers: dict[Player, Policy | None] = {Player.WHITE: None, Player.BLACK: None}
+    analyzers: dict[Player, Analyzer | None] = {Player.WHITE: None, Player.BLACK: None}
     model_cache: dict = {}
-    shared_analyzer: object | None = None
+    shared_analyzer: Analyzer | None = None
 
     if setup.mode == "vs_ai":
         ai_color = _other(setup.human_color)
@@ -349,8 +350,8 @@ def _pump_events(ui: GameInterface, delay_ms: int) -> bool:
 def run_match(
     ui: GameInterface,
     game: ChessGame,
-    controllers: dict[Player, object | None],
-    analyzers: dict[Player, object | None],
+    controllers: dict[Player, Policy | None],
+    analyzers: dict[Player, Analyzer | None],
     dev_mode: bool,
     *,
     view_pov: bool = True,
@@ -471,6 +472,7 @@ def main(argv: list[str] | None = None) -> None:
     # A command-line mode plays the first match without the menu; afterwards (and on
     # "back to menu" from any game) control returns to the in-window menu.
     cli_setup = _setup_from_args(args)
+    setup: MatchSetup | None
     try:
         while True:
             if cli_setup is not None:
