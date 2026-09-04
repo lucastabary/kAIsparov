@@ -28,15 +28,27 @@ position (the value), sharing the same node embeddings.
 
 **Nodes** — the 64 squares (node index = `row * 8 + col`, see `core/coords.py`).
 
-**Node features** — a 12-dim one-hot per square, **relative to the side to move**:
+**Node features** — a 14-dim vector per square, **relative to the side to move**:
 
-| index | 0 | 1 | 2 | 3 | 4 | 5 | 6–11 |
-|-------|---|---|---|---|---|---|------|
-| means | ally king | ally queen | ally bishop | ally rook | ally knight | ally pawn | same six, but **enemy** |
+| index | 0 | 1 | 2 | 3 | 4 | 5 | 6–11 | 12 | 13 |
+|-------|---|---|---|---|---|---|------|----|----|
+| means | ally king | ally queen | ally bishop | ally rook | ally knight | ally pawn | same six, but **enemy** | attacked by enemy | defended by ally |
 
 Encoding pieces as *ally/enemy* rather than *white/black* means the network always
 sees the position from the mover's perspective — no separate side-to-move plane, and
 White and Black share weights.
+
+Indices 12–13 are a **blocking-aware control map** (`core/rules.attacked_squares`):
+whether each square is attacked by the opponent / defended by the mover, computed
+from the *actual* position (sliders stop at the first blocker; pawns control their
+diagonals). This is deliberate. The static edge set (below) encodes moves *on an
+empty board*, so message passing alone cannot tell a real check from one blocked by
+an intervening piece — the net could learn to attack (a 1-hop, edge-local pattern:
+"my piece → enemy king") but never to perceive its *own* king in check, and so never
+learned to defend it. Feature 12 on the ally king's square is exactly "in check";
+on empty squares it marks unsafe destinations (e.g. a king's escape squares). The
+legal mask already does this blocking-aware work for the mover's own moves, but
+nothing exposed the *opponent's* threats until these two features.
 
 **Edges** — a **static** graph (identical for every position), built once by
 `create_static_full_chess_graph()`. Every geometrically possible piece motion on an
@@ -60,7 +72,7 @@ only the node features (and which edges are *legal*, applied later as a mask).
 
 `ChessRGCN` — the shared backbone:
 
-- 4 × `RGCNConv` layers (`in=12 → hidden → hidden → hidden → hidden`), each with
+- 4 × `RGCNConv` layers (`in=14 → hidden → hidden → hidden → hidden`), each with
   **6 relation-specific weight sets**.
 - ReLU + **residual connections** on the two middle layers.
 - Output: a `hidden`-dim embedding per node.
@@ -118,8 +130,8 @@ message flow, and edge scores are all small enough to inspect directly (see
 - ✅ Relational bias matched to chess; White/Black weight sharing; native edge actions.
 - ✅ Small and interpretable.
 - ⚠️ **Cannot castle** (no castling edges).
-- ⚠️ Minimal 12-dim features (piece type + side only) — no positional/rank features,
-  no move history.
+- ⚠️ Compact 14-dim features (piece type + side + attacked/defended control flags) —
+  no positional/rank features, no move history.
 - ⚠️ The static full-move graph is dense (`E = 2536`); most edges are illegal in any
   given position and get masked out.
 

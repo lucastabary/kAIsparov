@@ -4,7 +4,8 @@ import torch
 from torch_geometric.data import Data
 
 from kaisparov.core.board import ChessGame
-from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType
+from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
+from kaisparov.core.rules import attacked_squares
 from kaisparov.core.utils import coord_to_index, get_piece_value, index_to_coord
 from kaisparov.models.base_processor import (
     BaseProcessor,
@@ -42,7 +43,15 @@ class RGCNProcessor(BaseProcessor):
         piece_to_idx = {pt: i for i, pt in enumerate(piece_order)}
 
         current_player = game.turn
-        x = torch.zeros((BOARD_SIZE * BOARD_SIZE, 12), dtype=torch.float32)
+        enemy_player = Player.BLACK if current_player == Player.WHITE else Player.WHITE
+
+        # 14 features/node: 6 ally piece-type one-hot, 6 enemy piece-type one-hot,
+        # then two position-aware, blocking-aware control flags (see below). Without
+        # the control flags a static geometric graph cannot tell a real attack from a
+        # blocked line, so "my king is in check" is not perceivable and the policy
+        # learns to attack but never to defend the king. These flags hand that
+        # blocking-aware reasoning to the engine, which already knows it.
+        x = torch.zeros((BOARD_SIZE * BOARD_SIZE, 14), dtype=torch.float32)
 
         for col in range(BOARD_SIZE):
             for row in range(BOARD_SIZE):
@@ -56,6 +65,14 @@ class RGCNProcessor(BaseProcessor):
                     x[node_idx, piece_idx] = 1.0
                 else:
                     x[node_idx, 6 + piece_idx] = 1.0
+
+        # Feature 12: attacked by the opponent (side NOT to move) — set on the ally
+        # king's square exactly when it is in check, and on empty squares that are
+        # unsafe to move onto. Feature 13: defended by the side to move.
+        for cx, cy in attacked_squares(game.grid, enemy_player):
+            x[coord_to_index((cx, cy)), 12] = 1.0
+        for cx, cy in attacked_squares(game.grid, current_player):
+            x[coord_to_index((cx, cy)), 13] = 1.0
 
         static_edge_index, static_edge_type = self.static_graph_edges
         return Data(x=x, edge_index=static_edge_index, edge_type=static_edge_type)

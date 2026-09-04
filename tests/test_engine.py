@@ -202,3 +202,45 @@ def test_perft_matches_standard_chess_from_start():
     assert _perft(game, 1) == 20
     assert _perft(game, 2) == 400
     assert _perft(game, 3) == 8902
+
+
+# --------------------------------------------------------- control / attack map
+def test_attacked_squares_slider_stops_at_blocker():
+    from kaisparov.core.rules import attacked_squares
+
+    # White rook on a1; nothing in the way -> controls the whole a-file and rank 1.
+    game = empty_game()
+    place(game, (0, 0), Player.WHITE, PieceType.ROOK)
+    controlled = attacked_squares(game.grid, Player.WHITE)
+    assert (0, 7) in controlled  # far end of the file
+
+    # Drop a blocker on a4: the rook attacks up to and including a4, nothing beyond.
+    place(game, (0, 3), Player.WHITE, PieceType.PAWN)
+    controlled = attacked_squares(game.grid, Player.WHITE)
+    assert (0, 3) in controlled  # the blocker square itself is attacked
+    assert (0, 4) not in controlled and (0, 7) not in controlled  # shadowed
+
+
+def test_attacked_squares_pawn_controls_diagonals_not_push():
+    from kaisparov.core.rules import attacked_squares
+
+    game = empty_game()
+    place(game, (3, 3), Player.WHITE, PieceType.PAWN)
+    controlled = attacked_squares(game.grid, Player.WHITE)
+    assert (2, 4) in controlled and (4, 4) in controlled  # forward diagonals
+    assert (3, 4) not in controlled  # the push square is not an attack
+
+
+def test_attacked_squares_matches_is_in_check_on_king_square():
+    from kaisparov.core.rules import attacked_squares, is_in_check
+
+    # Enemy rook checks the king along the file, unless blocked.
+    game = empty_game()
+    place(game, (0, 0), Player.WHITE, PieceType.KING)
+    place(game, (0, 7), Player.BLACK, PieceType.ROOK)
+    assert is_in_check(game.grid, Player.WHITE)
+    assert (0, 0) in attacked_squares(game.grid, Player.BLACK)
+
+    place(game, (0, 3), Player.WHITE, PieceType.PAWN)  # block the file
+    assert not is_in_check(game.grid, Player.WHITE)
+    assert (0, 0) not in attacked_squares(game.grid, Player.BLACK)

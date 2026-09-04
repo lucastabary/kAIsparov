@@ -30,7 +30,11 @@ class ChessRGCN(torch.nn.Module):
 class RGCNModel(BaseModel):
     """GNN actor-critic model for chess graph states."""
 
-    INPUT_DIM = 12  # 6 for ally pieces + 6 for enemy pieces
+    # 6 ally piece-type one-hot + 6 enemy piece-type one-hot + 2 control flags
+    # (attacked-by-enemy, defended-by-ally). The two control flags are what let the
+    # net perceive its own king in check / a hanging piece on a blocking-blind static
+    # graph; see RGCNProcessor.graphify.
+    INPUT_DIM = 14
     MODEL_NAME = "rgcn"
 
     def __init__(self, hidden_dim=8):
