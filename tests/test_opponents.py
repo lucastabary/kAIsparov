@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
+from kaisparov.agents.material_agent import MaterialAgent
+from kaisparov.agents.minimax_agent import MinimaxAgent
 from kaisparov.agents.random_agent import RandomAgent
 from kaisparov.core.board import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
@@ -49,6 +51,63 @@ def test_pool_baselines_available_from_start():
     # A seeded baseline makes the pool usable before any snapshot exists.
     assert len(pool) == 1
     assert pool.sample() is not None
+
+
+def test_pool_group_weight_zero_excludes_snapshots():
+    # snapshot_weight=0 -> once both groups exist, only baselines are ever drawn,
+    # no matter how many snapshots have accumulated (the dilution fix).
+    spec, agent = _spec_and_agent()
+    material = MaterialAgent(seed=0)
+    pool = OpponentPool(
+        spec,
+        torch.device("cpu"),
+        hidden_dim=8,
+        seed=0,
+        baselines=[material],
+        baseline_weight=1.0,
+        snapshot_weight=0.0,
+    )
+    for _ in range(3):
+        pool.snapshot(agent)
+    assert len(pool._agents) == 3
+    assert all(pool.sample() is material for _ in range(30))
+
+
+def test_pool_baseline_weights_bias():
+    # A zero weight on the second baseline means it is never chosen.
+    spec, _ = _spec_and_agent()
+    material, random_agent = MaterialAgent(seed=0), RandomAgent(seed=0)
+    pool = OpponentPool(
+        spec,
+        torch.device("cpu"),
+        hidden_dim=8,
+        seed=0,
+        baselines=[material, random_agent],
+        baseline_weights=[1.0, 0.0],
+    )
+    assert all(pool.sample() is material for _ in range(30))
+
+
+def test_pool_baseline_weights_length_mismatch_raises():
+    spec, _ = _spec_and_agent()
+    with pytest.raises(ValueError):
+        OpponentPool(
+            spec,
+            torch.device("cpu"),
+            hidden_dim=8,
+            baselines=[MaterialAgent(seed=0), RandomAgent(seed=0)],
+            baseline_weights=[1.0],  # only one weight for two baselines
+        )
+
+
+def test_pool_minimax_snapshots():
+    # search_depth >= 1 wraps frozen snapshots in a Minimax search.
+    spec, agent = _spec_and_agent()
+    pool = OpponentPool(spec, torch.device("cpu"), hidden_dim=8, seed=0, search_depth=1)
+    pool.snapshot(agent)
+    opp = pool.sample()
+    assert isinstance(opp, MinimaxAgent) and opp.depth == 1
+    assert all(not p.requires_grad for p in opp.model.parameters())
 
 
 def test_collect_vs_opponent_fills_buffer_and_reports():

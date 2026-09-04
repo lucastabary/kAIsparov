@@ -9,6 +9,8 @@ title: "scratch v2 - stage 3 (full games)"
 description: |
   Graduate to full 32-piece games from the normal starting position, reached only
   after the model can already handle king safety and material in smaller positions.
+  Weighted league + Minimax snapshots inherited from stage 1; entropy floor nudged
+  up again for the full-width action space.
 
 epochs: 200
 
@@ -16,6 +18,14 @@ curriculum: null            # standard starting position
 
 rollout:
   max_steps_per_episode: 160
+  # Depth-1 Minimax snapshots are inherited. On full 32-piece boards the branching
+  # factor is large, so this is the costliest stage for search — if the rollout is
+  # too slow on CPU, set `snapshot_search_depth: 0` here to fall back to cheap
+  # policy-sampling snapshots (Material still supplies the tactical pressure).
+  snapshot_search_depth: 1
+
+ppo:
+  entropy_coef: 0.03           # widest action space -> strongest exploration floor
 
 eval:
   max_plies: 200

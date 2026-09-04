@@ -11,9 +11,11 @@ resume_from_run: PASTE_STAGE1_RUN_ID_HERE
 title: "scratch v2 - stage 2 (16 pieces)"
 description: |
   Continue stage 1, doubling the material to 16 pieces per side and lengthening the
-  games so more complex middlegames appear. Same league + dense rewards.
+  games so more complex middlegames appear. Same league + dense rewards. The
+  weighted opponent pool and depth-1 Minimax snapshots are inherited from stage 1;
+  only the entropy floor is nudged up a touch for the harder, larger action space.
 
-epochs: 150
+epochs: 100
 
 curriculum:
   name: "16 pieces, all types"
@@ -24,9 +26,14 @@ curriculum:
 
 rollout:
   max_steps_per_episode: 100
+  # baseline_weight / snapshot_weight / baseline_weights / snapshot_search_depth
+  # are inherited from the stage-1 parent run (depth-1 stays cheap enough here).
+
+ppo:
+  entropy_coef: 0.025          # more pieces -> harder to keep exploring; hold it up
 
 eval:
   enabled: true
-  every: 30
+  every: 25
   games: 40                    # less noisy eval than 20
   max_plies: 120

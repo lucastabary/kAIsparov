@@ -37,6 +37,22 @@ class RolloutSettings:
     # e.g. ["material", "random"] — an opponent curriculum that punishes hung pieces
     # and king exposure long before the first self-snapshot exists.
     baselines: list[str] = field(default_factory=list)
+    # Weighted sampling (pool mode). By default the pool draws uniformly over
+    # baselines + snapshots, so accumulating snapshots dilute the fixed baselines
+    # (Material's share falls from 1/2 of games to ~1/7 as the pool fills). Set
+    # `baseline_weight`/`snapshot_weight` to give the two GROUPS a fixed relative
+    # share instead — the tactical teachers keep their weight no matter how many
+    # snapshots exist. Leave both None for the legacy uniform draw.
+    baseline_weight: float | None = None
+    snapshot_weight: float | None = None
+    # Relative weights of the individual baselines, same order as `baselines`
+    # (e.g. [3, 1] = Material drawn 3x as often as Random). Empty = uniform.
+    baseline_weights: list[float] = field(default_factory=list)
+    # Wrap frozen snapshots in a Minimax alpha-beta search of this depth, so past
+    # selves refute one-move blunders instead of just sampling their policy (0 = raw
+    # policy reply, the default; 1 = cheap 1-ply lookahead that still catches every
+    # king capture; 2 = stronger but ~b x costlier). Costly on CPU with many pieces.
+    snapshot_search_depth: int = 0
 
 
 @dataclass

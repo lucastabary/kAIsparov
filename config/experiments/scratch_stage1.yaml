@@ -14,17 +14,17 @@ description: |
 
 model: rgcn
 hidden_dim: 16
-epochs: 120
+epochs: 100
 seed: 0
 device: auto          # -> CPU on this machine
 checkpoint_every: 20
 
 curriculum:
   name: "8 pieces, all types"
-  max_pieces_per_side: 8
+  max_pieces_per_side: 3
   allow_major: true
   allow_minor: true
-  allow_pawns: true
+  allow_pawns: false
 
 rollout:
   episodes_per_epoch: 16       # less noisy PPO gradient than 8
@@ -33,15 +33,26 @@ rollout:
   baselines: ["material", "random"]
   pool_size: 5
   snapshot_every: 20           # also add past selves to the league
+  # Keep the tactical teachers dominant even as snapshots accumulate: draw the
+  # baselines vs the snapshots 2:1 (instead of the old uniform draw, where 5
+  # snapshots shrink Material from 1/2 of games to ~1/7 and the rush goes
+  # unpunished). Within the baselines, Material is the real teacher — 3x Random.
+  baseline_weight: 2.0
+  snapshot_weight: 1.0
+  baseline_weights: [3.0, 1.0]   # material : random
+  # Past selves look 1 ply ahead (Minimax): even with a weak critic they refuse
+  # to walk into a king capture and grab a hung king, so a rush must be *sound*.
+  # depth=1 is cheap on these 8-piece boards; raise with care on bigger stages.
+  snapshot_search_depth: 1
 
 ppo:
   learning_rate: 0.001
   update_epochs: 2             # less overfitting of each (still small) batch
-  entropy_coef: 0.015          # a touch more exploration
+  entropy_coef: 0.02           # keep exploration alive (was collapsing to ~1.5)
 
 eval:
   enabled: true
-  every: 10
+  every: 25
   games: 40                    # less noisy eval than 20
   max_plies: 120
 

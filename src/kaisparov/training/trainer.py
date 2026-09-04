@@ -99,6 +99,10 @@ class Trainer:
                 max_size=config.rollout.pool_size,
                 seed=config.seed,
                 baselines=baselines,
+                baseline_weight=config.rollout.baseline_weight,
+                snapshot_weight=config.rollout.snapshot_weight,
+                baseline_weights=config.rollout.baseline_weights,
+                search_depth=config.rollout.snapshot_search_depth,
             )
 
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
