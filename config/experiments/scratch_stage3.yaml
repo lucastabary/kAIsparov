@@ -1,0 +1,21 @@
+# Fresh training, stage 3/3 — full games from the standard starting position.
+#   1) find stage 2's run id:  kaisparov runs list
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/scratch_stage3.yaml
+
+resume_from_run: PASTE_STAGE2_RUN_ID_HERE
+
+title: "scratch v2 - stage 3 (full games)"
+description: |
+  Graduate to full 32-piece games from the normal starting position, reached only
+  after the model can already handle king safety and material in smaller positions.
+
+epochs: 200
+
+curriculum: null            # standard starting position
+
+rollout:
+  max_steps_per_episode: 160
+
+eval:
+  max_plies: 200

@@ -18,7 +18,19 @@ from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 from kaisparov.training.reward import make_reward_fn
 
-BEST_METRIC = "elo_vs_random"
+# vs_random saturates at 100% (elo capped) once the model beats a random mover, so
+# it carries no gradient for "best checkpoint" selection. vs_material is the metric
+# that actually discriminates skill here.
+BEST_METRIC = "elo_vs_material"
+
+
+def _build_baseline(name: str, seed: int):
+    """Instantiate a fixed baseline opponent by name (for the league)."""
+    if name == "random":
+        return RandomAgent(seed=seed)
+    if name == "material":
+        return MaterialAgent(seed=seed)
+    raise ValueError(f"Unknown baseline opponent '{name}' (expected 'random' or 'material').")
 
 
 def _resolve_device(spec: str) -> torch.device:
@@ -65,12 +77,29 @@ class Trainer:
                     allow_major=config.curriculum.allow_major,
                     allow_minor=config.curriculum.allow_minor,
                     allow_pawns=config.curriculum.allow_pawns,
+                    ensure_kings_safe=config.curriculum.ensure_kings_safe,
                 ),
                 seed=config.seed,
             )
         self._processor = self.spec.processor_class()
         self._num_params = sum(p.numel() for p in self.agent.parameters())
         self.reward_fn = make_reward_fn(config.reward)
+
+        # Opponent pool (league). Seeded baselines make it non-empty from epoch 1;
+        # without baselines it falls back to self-play until the first snapshot.
+        self.pool = None
+        if config.rollout.opponent == "pool":
+            from kaisparov.training.opponents import OpponentPool
+
+            baselines = [_build_baseline(n, config.seed) for n in config.rollout.baselines]
+            self.pool = OpponentPool(
+                self.spec,
+                self.device,
+                config.hidden_dim,
+                max_size=config.rollout.pool_size,
+                seed=config.seed,
+                baselines=baselines,
+            )
 
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
         self.start_epoch = 0
@@ -129,6 +158,42 @@ class Trainer:
             random.setstate(rng["python"])
         print(f"Restored optimizer + RNG state from {state_path.name}")
 
+    # ------------------------------------------------------------------ collection
+    def _collect(self, epoch: int) -> dict[str, float]:
+        """Collect an epoch of experience: self-play, or vs a pooled opponent."""
+        cfg = self.config
+        if self.pool is not None and len(self.pool) > 0:
+            from kaisparov.training.rollout_vs import collect_vs_opponent
+
+            self.buffer.self_play = False  # single-agent: opponent is the environment
+            return collect_vs_opponent(
+                self.agent,
+                self.buffer,
+                num_episodes=cfg.rollout.episodes_per_epoch,
+                max_steps_per_episode=cfg.rollout.max_steps_per_episode,
+                model_module=self.module,
+                curriculum=self.curriculum,
+                reward_settings=cfg.reward,
+                # Draw a fresh opponent per episode (not one for the whole epoch), so a
+                # single epoch's batch mixes baselines and snapshots instead of being
+                # all-vs-one — which was making game length and the critic target swing
+                # wildly from epoch to epoch.
+                sample_opponent=self.pool.sample,
+                seed=cfg.seed + epoch,
+            )
+
+        self.buffer.self_play = cfg.ppo.self_play
+        return self.spec.collect_data(
+            self.agent,
+            ChessGame(),
+            self.buffer,
+            num_episodes=cfg.rollout.episodes_per_epoch,
+            max_steps_per_episode=cfg.rollout.max_steps_per_episode,
+            model_module=self.module,
+            curriculum=self.curriculum,
+            reward_fn=self.reward_fn,
+        )
+
     # ------------------------------------------------------------------ training
     def train(self) -> str:
         cfg = self.config
@@ -139,23 +204,13 @@ class Trainer:
         )
         if cfg.title:
             print(f"  {cfg.title}")
-        game = ChessGame()
         last_eval: dict[str, float] = {}
         metrics: dict[str, float] = {}
 
         with self.run:
             for epoch in range(self.start_epoch + 1, self.start_epoch + cfg.epochs + 1):
                 self.buffer.clear()
-                rollout_stats = self.spec.collect_data(
-                    self.agent,
-                    game,
-                    self.buffer,
-                    num_episodes=cfg.rollout.episodes_per_epoch,
-                    max_steps_per_episode=cfg.rollout.max_steps_per_episode,
-                    model_module=self.module,
-                    curriculum=self.curriculum,
-                    reward_fn=self.reward_fn,
-                )
+                rollout_stats = self._collect(epoch)
                 metrics = self.spec.train_one_epoch(
                     self.agent,
                     self.buffer,
@@ -186,6 +241,9 @@ class Trainer:
                         best_mode="max",
                         trainer_state=self._trainer_state(epoch),
                     )
+
+                if self.pool is not None and epoch % cfg.rollout.snapshot_every == 0:
+                    self.pool.snapshot(self.agent)
 
             self.run.finish(final_metrics={**metrics, **last_eval})
 
@@ -222,9 +280,21 @@ class Trainer:
             f"| king_capture={rollout_stats.get('king_capture_rate', 0):.0%} "
             f"plies={rollout_stats.get('avg_plies', 0):.0f}"
         )
+        # In league (pool) mode the learner's own win/loss split is the informative
+        # signal; the self-play rollout doesn't report one, hence the guard.
+        if "winrate" in rollout_stats:
+            line += f" (w{rollout_stats['winrate']:.0%}/l{rollout_stats.get('lossrate', 0):.0%})"
+        # An epoch whose PPO passes were all skipped for a non-finite loss reports
+        # zeros above — flag it so it isn't mistaken for a genuine zero-loss epoch.
+        skips = metrics.get("nonfinite_skips", 0)
+        if skips:
+            line += f" | SKIPPED (non-finite loss ×{skips:.0f})"
         if last_eval and self.config.eval.every and epoch % self.config.eval.every == 0:
+            # vs_material is the discriminating eval (vs_random saturates at 100%); show
+            # both, and it's what BEST_METRIC selects checkpoints on.
             line += (
                 f" | vs_random={last_eval['winrate_vs_random']:.0%} "
-                f"(elo {last_eval['elo_vs_random']:+.0f})"
+                f"vs_material={last_eval['winrate_vs_material']:.0%} "
+                f"(elo {last_eval['elo_vs_material']:+.0f})"
             )
         print(line)

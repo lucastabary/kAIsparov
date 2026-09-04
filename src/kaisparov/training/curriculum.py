@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
+from kaisparov.core.rules import is_in_check
 
 Grid = list[list[Piece | None]]
 
@@ -25,6 +26,10 @@ class PhaseConfig:
     allow_major: bool = True  # queen / rook
     allow_minor: bool = True  # bishop / knight (KNIGHT)
     allow_pawns: bool = True
+    # Place each king on a square that is NOT already attacked at ply 0, so a game
+    # can't be decided by the random placement handing one side a free king capture
+    # on the first move. Kept on by default; turn off for the old raw-random behavior.
+    ensure_kings_safe: bool = True
 
     def allowed_piece_types(self) -> list[PieceType]:
         types: list[PieceType] = []
@@ -68,19 +73,41 @@ class PieceCountCurriculum(BaseCurriculum):
         black_rows = range(BOARD_SIZE // 2, BOARD_SIZE)  # 4..7
         pawn_rows = range(1, BOARD_SIZE - 1)  # never rank 0 or 7
 
-        self._place_side(grid, Player.WHITE, white_rows, pawn_rows)
-        self._place_side(grid, Player.BLACK, black_rows, pawn_rows)
+        # Non-king pieces first, then the kings — so a king can be placed on a square
+        # that accounts for every other piece already on the board (needed to keep it
+        # off an attacked square when ``ensure_kings_safe``). Black's king goes down
+        # first and White's second: White's safe-square check then also sees Black's
+        # king, which keeps the two kings from being placed adjacent (mutual capture).
+        self._place_extras(grid, Player.WHITE, white_rows, pawn_rows)
+        self._place_extras(grid, Player.BLACK, black_rows, pawn_rows)
+        self._place_king(grid, Player.BLACK, black_rows)
+        self._place_king(grid, Player.WHITE, white_rows)
         return grid
 
-    def _place_side(self, grid: Grid, player: Player, rows, pawn_rows) -> None:
+    def _place_extras(self, grid: Grid, player: Player, rows, pawn_rows) -> None:
         allowed = self.phase.allowed_piece_types()
         n_extra = max(0, self.phase.max_pieces_per_side - 1)
-
-        self._place_piece(grid, player, PieceType.KING, rows)
         for _ in range(n_extra):
             piece_type = self._rng.choice(allowed)
             candidate_rows = pawn_rows if piece_type == PieceType.PAWN else rows
             self._place_piece(grid, player, piece_type, candidate_rows)
+
+    def _place_king(self, grid: Grid, player: Player, rows) -> None:
+        free = [(col, row) for col in range(BOARD_SIZE) for row in rows if grid[col][row] is None]
+        if not free:
+            return
+        if self.phase.ensure_kings_safe:
+            # Try free squares in random order; keep the first that leaves the king
+            # unattacked. On a very dense board no such square may exist — fall through
+            # to a plain random placement rather than fail to place a king.
+            self._rng.shuffle(free)
+            for col, row in free:
+                grid[col][row] = Piece(player, PieceType.KING)
+                if not is_in_check(grid, player):
+                    return
+                grid[col][row] = None
+        col, row = self._rng.choice(free)
+        grid[col][row] = Piece(player, PieceType.KING)
 
     def _place_piece(self, grid: Grid, player: Player, piece_type: PieceType, rows) -> None:
         free = [(col, row) for col in range(BOARD_SIZE) for row in rows if grid[col][row] is None]

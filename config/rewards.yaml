@@ -1,30 +1,54 @@
 # Reward-shaping presets. Reference one by name from a training config:
-#     reward: aggressive
+#     reward: material_aware
 # ...or write the terms inline in the training config instead:
 #     reward:
-#       material: 1.0
-#       check: 0.05
+#       material: 0.1
+#       king_capture: 8.0
 #
 # Terms (all from the mover's point of view, applied per ply):
-#   material      * value of the captured piece (pawn .01 … queen .09, king 1.0)
-#   king_capture  extra bonus for capturing the king (winning the game)
-#   check         bonus if the move leaves the opponent in check
+#   material      * value of the captured NON-king piece (pawn 1, knight/bishop 3,
+#                 rook 5, queen 9). The king is NOT scored this way.
+#   king_capture  flat reward for capturing the king (= winning). Decoupled from the
+#                 king's sentinel material value so the win reward is set here alone.
+#   check         bonus if the move leaves the OPPONENT in check
+#   king_safety   penalty if the move leaves YOUR OWN king capturable (dense signal
+#                 against hanging the king — the direct fix for "gives its king away")
 #   step_penalty  subtracted every ply (encourages decisive play)
+#
+# Scale note: with material 0.1 a queen swing is 0.9 and a win is king_capture (8.0),
+# so a win dominates any single material swing (~9x) while material stays visible.
 
 material_only:
-  material: 1.0
+  material: 0.1
+  king_capture: 8.0
 
 aggressive:
-  material: 1.0
+  material: 0.1
+  king_capture: 8.0
   check: 0.05
 
 decisive:
-  material: 1.0
-  step_penalty: 0.002
-  king_capture: 0.5
+  material: 0.1
+  king_capture: 8.0
+  step_penalty: 0.005
 
 checkmate_hunter:
-  material: 0.5
+  material: 0.05
+  king_capture: 10.0
   check: 0.1
-  king_capture: 1.0
-  step_penalty: 0.001
+  step_penalty: 0.003
+
+# Winning dominates, material guides. In self-play the negamax credit turns the
+# opponent's king capture into your loss penalty, so no separate "loss" term is needed.
+win_focused:
+  material: 0.1
+  king_capture: 8.0
+  step_penalty: 0.005
+
+# Recommended default: win_focused + a dense king-safety penalty. Directly targets
+# hanging the king by penalising every ply your move leaves your king capturable.
+material_aware:
+  material: 0.1        # pawn .1, knight/bishop .3, rook .5, queen .9
+  king_capture: 8.0    # a win dominates any single material swing
+  king_safety: 0.5     # penalty per ply your move leaves your own king in check
+  step_penalty: 0.005

@@ -1,0 +1,25 @@
+# Continue the previous run, now on FULL games from the normal starting position.
+#   kaisparov train --config config/experiments/resume_full_games.yaml
+#
+# Architecture (rgcn / hidden_dim) and anything not listed here are inherited from
+# the parent run; its latest checkpoint + optimizer/RNG state are restored.
+
+resume_from_run: 20260902-225200_rgcn
+
+curriculum: null          # no curriculum -> standard chess start (32 pieces)
+
+title: "continue on full games (no curriculum)"
+description: |
+  Resume the 8-piece-curriculum run and switch to full games from the normal
+  starting position. Ply cap raised so games can actually reach a king capture
+  (40 was tuned for the small curriculum endgames).
+
+epochs: 300               # additional epochs (continues the parent's numbering)
+
+rollout:
+  max_steps_per_episode: 150
+
+eval:
+  max_plies: 150
+
+reward: win_focused       # winning dominates; negamax turns losing into the penalty

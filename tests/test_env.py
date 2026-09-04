@@ -28,7 +28,7 @@ def test_capture_reward_matches_piece_value():
     env = ChessEnv()
     env.reset(board=grid)
     result = env.step(((0, 0), (0, 5)))
-    assert result.reward == pytest.approx(0.09)  # queen value
+    assert result.reward == pytest.approx(9.0)  # queen value
     assert not result.done
 
 

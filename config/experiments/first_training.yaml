@@ -8,8 +8,8 @@ description: |
   type (majors, minors, pawns), games capped at 40 plies.
 
 model: rgcn
-hidden_dim: 8
-epochs: 300
+hidden_dim: 16
+epochs: 100
 seed: 0
 device: auto        # -> CPU on this machine
 checkpoint_every: 10
@@ -27,8 +27,8 @@ curriculum:
 
 eval:
   enabled: true
-  every: 10
+  every: 20
   games: 20
   max_plies: 40
 
-reward: material_only
+reward: win_focused

@@ -75,6 +75,9 @@ How much experience is gathered each epoch.
 |-----------|------|---------|--------------|
 | `episodes_per_epoch` | int | `8` | Self-play games collected per epoch. Also the parallel batch width — all games step together through one batched forward pass. |
 | `max_steps_per_episode` | int | `100` | Maximum plies (half-moves) before a game is truncated. |
+| `opponent` | str | `self` | `self` = self-play (negamax). `pool` = a **league**: the learner trains against frozen past snapshots of itself (breaks the "everyone rushes" collapse). |
+| `pool_size` | int | `5` | (`pool` mode) how many past snapshots to keep. |
+| `snapshot_every` | int | `20` | (`pool` mode) add the current learner to the pool every N epochs. Until the first snapshot, training is plain self-play. |
 
 ---
 

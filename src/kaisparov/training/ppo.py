@@ -114,7 +114,7 @@ def train_one_epoch(
     device: torch.device | str = "cpu",
     update_epochs: int = 4,
     clip_eps: float = 0.2,
-    value_coef: float = 0.5,
+    value_coef: float = 0.25,
     entropy_coef: float = 0.01,
     max_grad_norm: float = 0.5,
     normalize_advantages: bool = True,
@@ -124,7 +124,14 @@ def train_one_epoch(
     Returns a dict of scalar metrics (loss components + diagnostics).
     """
     if buffer.is_empty():
-        return {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "loss": 0.0, "steps": 0.0}
+        return {
+            "policy_loss": 0.0,
+            "value_loss": 0.0,
+            "entropy": 0.0,
+            "loss": 0.0,
+            "steps": 0.0,
+            "nonfinite_skips": 0.0,
+        }
 
     buffer.compute_returns_and_advantages()
     device = torch.device(device)
@@ -144,6 +151,7 @@ def train_one_epoch(
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
     metrics = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "loss": 0.0}
+    nonfinite_skips = 0
     for _ in range(update_epochs):
         action_scores, values = agent(batch)
         values = values.reshape(-1)
@@ -162,8 +170,20 @@ def train_one_epoch(
         surr1 = ratio * advantages
         surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * advantages
         policy_loss = -torch.min(surr1, surr2).mean()
-        value_loss = F.mse_loss(values, returns)
+        # Huber (smooth L1) instead of MSE: robust to the occasional huge return
+        # (a king capture is worth many material swings), so a single outlier can't
+        # dominate the critic gradient and inflate the shared trunk.
+        value_loss = F.smooth_l1_loss(values, returns)
         loss = policy_loss + value_coef * value_loss - entropy_coef * entropy
+
+        # A non-finite loss (e.g. exp(ratio) overflow) would turn every gradient into
+        # NaN; clip_grad_norm_ then propagates it (NaN norm -> NaN clip coef) and the
+        # optimizer writes NaN into every weight. Skip the step instead of corrupting
+        # the model — the next batch usually recovers.
+        if not torch.isfinite(loss):
+            optimizer.zero_grad()
+            nonfinite_skips += 1
+            continue
 
         optimizer.zero_grad()
         loss.backward()
@@ -176,6 +196,7 @@ def train_one_epoch(
         metrics["loss"] = float(loss.item())
 
     metrics["steps"] = float(len(buffer))
+    metrics["nonfinite_skips"] = float(nonfinite_skips)
     return metrics
 
 

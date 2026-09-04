@@ -7,13 +7,18 @@ truth) and are re-exported here for convenience / backward compatibility.
 from kaisparov.core.coords import coord_to_index, index_to_coord
 from kaisparov.core.pieces import PieceType
 
+# Standard chess material values. The king is a large sentinel so the greedy
+# MaterialAgent always prefers capturing it (which wins the game); training reward
+# does NOT scale a king capture by this value — it uses the flat ``king_capture``
+# term instead (see :mod:`kaisparov.training.reward`), keeping the win reward
+# controllable independently of this sentinel.
 _PIECE_VALUES: dict[PieceType, float] = {
-    PieceType.PAWN: 0.01,
-    PieceType.KNIGHT: 0.03,
-    PieceType.BISHOP: 0.03,
-    PieceType.ROOK: 0.05,
-    PieceType.QUEEN: 0.09,
-    PieceType.KING: 1.0,
+    PieceType.PAWN: 1.0,
+    PieceType.KNIGHT: 3.0,
+    PieceType.BISHOP: 3.0,
+    PieceType.ROOK: 5.0,
+    PieceType.QUEEN: 9.0,
+    PieceType.KING: 100.0,
 }
 
 

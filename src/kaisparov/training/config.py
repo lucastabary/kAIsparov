@@ -19,7 +19,7 @@ class PPOSettings:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
-    value_coef: float = 0.5
+    value_coef: float = 0.25  # keep the critic term from dominating the shared trunk
     entropy_coef: float = 0.01
     max_grad_norm: float = 0.5
     update_epochs: int = 4
@@ -30,6 +30,13 @@ class PPOSettings:
 class RolloutSettings:
     episodes_per_epoch: int = 8
     max_steps_per_episode: int = 100
+    opponent: str = "self"  # "self" (self-play) | "pool" (league vs past checkpoints)
+    pool_size: int = 5  # how many past snapshots to keep
+    snapshot_every: int = 20  # add the learner to the pool every N epochs (pool mode)
+    # Fixed baseline opponents seeded into the pool from epoch 1 (pool mode only),
+    # e.g. ["material", "random"] — an opponent curriculum that punishes hung pieces
+    # and king exposure long before the first self-snapshot exists.
+    baselines: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -39,6 +46,8 @@ class CurriculumSettings:
     allow_major: bool = False
     allow_minor: bool = True
     allow_pawns: bool = True
+    # Guarantee neither king starts on an attacked square (no ply-0 free capture).
+    ensure_kings_safe: bool = True
 
 
 @dataclass
@@ -54,9 +63,10 @@ class RewardSettings:
     """Weighted reward-shaping terms (from the mover's point of view, per ply)."""
 
     preset: str = ""  # name if resolved from config/rewards.yaml (for the record)
-    material: float = 1.0  # * value of the captured piece
-    king_capture: float = 0.0  # extra bonus for capturing the king (winning)
+    material: float = 1.0  # * value of the captured (non-king) piece
+    king_capture: float = 0.0  # flat reward for capturing the king (winning the game)
     check: float = 0.0  # bonus if the move leaves the opponent in check
+    king_safety: float = 0.0  # penalty per ply your move leaves your own king capturable
     step_penalty: float = 0.0  # subtracted every ply (rewards decisive play)
 
 
