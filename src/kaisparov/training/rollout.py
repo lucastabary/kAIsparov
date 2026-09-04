@@ -81,7 +81,10 @@ def collect_data(
     with torch.no_grad():
         while any(active):
             idxs = [i for i in range(num_episodes) if active[i]]
-            states = [processor.graphify(games[i]) for i in idxs]
+            # Graphify every still-running game at once: the RGCN processor computes
+            # the blocking-aware control features for the whole batch with vectorised
+            # bitboards instead of two attacked_squares() calls per game.
+            states = processor.graphify_batch([games[i] for i in idxs])
             batch = Batch.from_data_list(states).to(device)
             action_scores, values = agent(batch)
 

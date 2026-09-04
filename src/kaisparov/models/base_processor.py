@@ -21,6 +21,15 @@ class BaseProcessor(ABC):
     def graphify(self, game):
         """Convert a ChessGame into a model-ready object (e.g. a PyG ``Data``)."""
 
+    def graphify_batch(self, games):
+        """Convert several games at once. Default: one :meth:`graphify` per game.
+
+        Backends can override with a vectorised implementation (see the RGCN
+        processor); callers that graphify a whole epoch's active games at once
+        (the self-play rollout) should prefer this over a per-game loop.
+        """
+        return [self.graphify(game) for game in games]
+
 
 def default_coord_to_index(coord: tuple[int, int], board_size: int) -> int:
     return coord[1] * board_size + coord[0]
