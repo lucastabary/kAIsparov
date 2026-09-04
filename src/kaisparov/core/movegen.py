@@ -13,7 +13,7 @@ standard king start square (both king and rook unmoved and on their home squares
 from __future__ import annotations
 
 from kaisparov.core import attacks
-from kaisparov.core.coords import Coord, all_squares, in_bounds
+from kaisparov.core.coords import Coord
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 
 Grid = list[list["Piece | None"]]
@@ -27,7 +27,7 @@ def _sliding_rays(source: Coord, piece_type: PieceType) -> list[list[Coord]]:
         return attacks.ORTHO_RAYS[source]
     if piece_type == PieceType.BISHOP:
         return attacks.DIAG_RAYS[source]
-    return attacks.ORTHO_RAYS[source] + attacks.DIAG_RAYS[source]  # QUEEN
+    return attacks.QUEEN_RAYS[source]  # QUEEN
 
 
 def _castling_moves(grid: Grid, source: Coord, player: Player) -> list[Coord]:
@@ -91,20 +91,18 @@ def pseudo_legal_moves(
         return moves
 
     if piece.type == PieceType.PAWN:
-        direction = 1 if player == Player.WHITE else -1
+        if player == Player.WHITE:
+            pushes, captures = attacks.PAWN_PUSHES_WHITE, attacks.PAWN_CAPTURES_WHITE
+        else:
+            pushes, captures = attacks.PAWN_PUSHES_BLACK, attacks.PAWN_CAPTURES_BLACK
 
-        one = (x, y + direction)
-        if in_bounds(one) and grid[x][y + direction] is None:
+        one, two = pushes[source]
+        if one is not None and grid[one[0]][one[1]] is None:
             moves.append(one)
-            if not piece.has_moved:
-                two = (x, y + 2 * direction)
-                if in_bounds(two) and grid[x][y + 2 * direction] is None:
-                    moves.append(two)
+            if not piece.has_moved and two is not None and grid[two[0]][two[1]] is None:
+                moves.append(two)
 
-        for dx in (-1, 1):
-            capture = (x + dx, y + direction)
-            if not in_bounds(capture):
-                continue
+        for capture in captures[source]:
             target = grid[capture[0]][capture[1]]
             if target is not None and target.player != player:
                 moves.append(capture)  # normal diagonal capture
@@ -118,10 +116,13 @@ def pseudo_legal_moves(
 def all_moves(grid: Grid, player: Player, en_passant_target: Coord | None = None) -> list[Move]:
     """Every pseudo-legal ``(source, dest)`` move available to ``player``."""
     moves: list[Move] = []
-    for square in all_squares():
-        piece = grid[square[0]][square[1]]
-        if piece is None or piece.player != player:
-            continue
-        for dest in pseudo_legal_moves(grid, square, en_passant_target):
-            moves.append((square, dest))
+    for x in range(BOARD_SIZE):
+        col = grid[x]  # hoist the column lookup out of the inner loop
+        for y in range(BOARD_SIZE):
+            piece = col[y]
+            if piece is None or piece.player != player:
+                continue
+            square = (x, y)
+            for dest in pseudo_legal_moves(grid, square, en_passant_target):
+                moves.append((square, dest))
     return moves

@@ -29,10 +29,13 @@ def index_to_coord(index: int) -> Coord:
     return (index % BOARD_SIZE, index // BOARD_SIZE)
 
 
+# Every board square, row-major, built once. Iterating this tuple in hot loops
+# avoids the per-yield call overhead a generator pays on each of its 64 resumes.
+ALL_SQUARES: tuple[Coord, ...] = tuple((x, y) for x in range(BOARD_SIZE) for y in range(BOARD_SIZE))
+
+
 def all_squares() -> Iterator[Coord]:
-    for x in range(BOARD_SIZE):
-        for y in range(BOARD_SIZE):
-            yield (x, y)
+    return iter(ALL_SQUARES)
 
 
 def to_pov_coord(coord: Coord, player: Player) -> Coord:
