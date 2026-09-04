@@ -187,6 +187,28 @@ class Trainer:
             )
 
         self.buffer.self_play = cfg.ppo.self_play
+
+        from kaisparov.training.parallel_rollout import resolve_num_workers
+
+        if resolve_num_workers(cfg.rollout.num_workers) > 1 and cfg.rollout.episodes_per_epoch > 1:
+            from kaisparov.training.parallel_rollout import collect_data_parallel
+
+            return collect_data_parallel(
+                self.agent,
+                self.buffer,
+                num_workers=cfg.rollout.num_workers,
+                num_episodes=cfg.rollout.episodes_per_epoch,
+                max_steps_per_episode=cfg.rollout.max_steps_per_episode,
+                model_name=cfg.model,
+                hidden_dim=cfg.hidden_dim,
+                reward_settings=cfg.reward,
+                curriculum_settings=cfg.curriculum,
+                gamma=cfg.ppo.gamma,
+                gae_lambda=cfg.ppo.gae_lambda,
+                self_play=cfg.ppo.self_play,
+                base_seed=cfg.seed + epoch,
+            )
+
         return self.spec.collect_data(
             self.agent,
             ChessGame(),

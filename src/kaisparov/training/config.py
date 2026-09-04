@@ -30,6 +30,11 @@ class PPOSettings:
 class RolloutSettings:
     episodes_per_epoch: int = 8
     max_steps_per_episode: int = 100
+    # Self-play collection is CPU-bound in the pure-Python engine; split the epoch's
+    # episodes across this many worker processes (each with its own model copy) and
+    # merge their buffers. 1 = in-process (default). 0 = auto (os.cpu_count()). Only
+    # the self-play path is parallelised; league/pool mode stays in-process.
+    num_workers: int = 1
     opponent: str = "self"  # "self" (self-play) | "pool" (league vs past checkpoints)
     pool_size: int = 5  # how many past snapshots to keep
     snapshot_every: int = 20  # add the learner to the pool every N epochs (pool mode)
