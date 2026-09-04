@@ -13,12 +13,27 @@ Color = tuple[int, int, int]
 
 
 @dataclass(frozen=True)
+class ModelOption:
+    """One selectable AI in the menu. ``key`` is opaque to the interface — the caller
+    (``play.py``) maps it back to a policy (a run id, or a baseline like ``material``).
+    """
+
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
 class MatchSetup:
     """The choice made on the pre-game menu (see :meth:`GameInterface.select_setup`)."""
 
     mode: str  # "solo" (two humans) | "vs_ai" (human vs model) | "ai_vs_ai"
     human_color: Player = Player.WHITE  # only meaningful for "vs_ai"
     dev_mode: bool = False  # surface the model's analysis while playing
+    # Chosen model keys (see :class:`ModelOption`). ``ai_model`` is the opponent in
+    # "vs_ai"; ``white_model``/``black_model`` are the two seats in "ai_vs_ai".
+    ai_model: str | None = None
+    white_model: str | None = None
+    black_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -431,7 +446,12 @@ class GameInterface:
         }
 
     def _draw_button(
-        self, rect: pygame.Rect, label: str, hover: bool = False, active: bool = False
+        self,
+        rect: pygame.Rect,
+        label: str,
+        hover: bool = False,
+        active: bool = False,
+        font_size: int = 26,
     ) -> None:
         assert self._screen is not None
         if active:
@@ -443,7 +463,7 @@ class GameInterface:
         border = self._colors["accent"] if (active or hover) else self._colors["button_border"]
         pygame.draw.rect(self._screen, bg, rect, border_radius=12)
         pygame.draw.rect(self._screen, border, rect, width=2, border_radius=12)
-        font = self._make_font(26, bold=True)
+        font = self._make_font(font_size, bold=True)
         text = font.render(label, True, self._colors["panel_text"])
         self._screen.blit(text, text.get_rect(center=rect.center))
 
@@ -463,17 +483,19 @@ class GameInterface:
         text = font.render(label, True, self._colors["panel_text"])
         self._screen.blit(text, (box.right + 14, box.centery - text.get_height() // 2))
 
-    def select_setup(self) -> MatchSetup | None:
+    def select_setup(self, models: list[ModelOption] | None = None) -> MatchSetup | None:
         """Show the pre-game menu and return the chosen setup (``None`` if closed).
 
-        One screen: pick a mode (solo, vs AI, AI vs AI) to start immediately; the
-        colour toggle (used only vs the AI) and the developer-mode switch persist
-        until a mode is clicked.
+        Pick a mode (solo, vs AI, AI vs AI); the colour toggle (used only vs the AI)
+        and the developer-mode switch persist until a mode is clicked. Solo starts
+        immediately; the AI modes open a model-selection screen first so the user
+        chooses which trained model plays each AI seat.
         """
         self._ensure_initialized()
         assert self._screen is not None
         assert self._clock is not None
 
+        models = models or []
         color = Player.WHITE
         dev = False
         cx = self.window_width // 2
@@ -495,9 +517,13 @@ class GameInterface:
                     if layout["solo"].collidepoint(pos):
                         return MatchSetup("solo", color, dev)
                     if layout["vs_ai"].collidepoint(pos):
-                        return MatchSetup("vs_ai", color, dev)
+                        setup = self._select_models("vs_ai", color, dev, models)
+                        if setup != "back":
+                            return setup
                     if layout["ai_vs_ai"].collidepoint(pos):
-                        return MatchSetup("ai_vs_ai", color, dev)
+                        setup = self._select_models("ai_vs_ai", color, dev, models)
+                        if setup != "back":
+                            return setup
                     if layout["white"].collidepoint(pos):
                         color = Player.WHITE
                     if layout["black"].collidepoint(pos):
@@ -555,6 +581,233 @@ class GameInterface:
             )
             self._screen.blit(hint, hint.get_rect(center=(cx, 672)))
 
+            pygame.display.flip()
+            self._clock.tick(60)
+
+    # --------------------------------------------------------- model selection
+    def _model_row_rects(
+        self, area: pygame.Rect, count: int, row_h: int, scroll: int
+    ) -> list[tuple[int, pygame.Rect]]:
+        """Rects for every model row in ``area`` (some may fall outside — the caller
+        clips drawing and hit-testing to ``area``)."""
+        rects = []
+        for i in range(count):
+            y = area.y + 8 + i * row_h - scroll
+            rects.append((i, pygame.Rect(area.x + 8, y, area.width - 16, row_h - 8)))
+        return rects
+
+    def _draw_list_row(self, rect: pygame.Rect, label: str, active: bool, hover: bool) -> None:
+        assert self._screen is not None
+        if active:
+            bg = self._colors["button_active"]
+        elif hover:
+            bg = self._colors["button_hover"]
+        else:
+            bg = self._colors["button"]
+        border = self._colors["accent"] if (active or hover) else self._colors["button_border"]
+        pygame.draw.rect(self._screen, bg, rect, border_radius=8)
+        pygame.draw.rect(self._screen, border, rect, width=2, border_radius=8)
+        font = self._make_font(19, bold=active)
+        text = font.render(label, True, self._colors["panel_text"])
+        self._screen.blit(text, (rect.x + 14, rect.centery - text.get_height() // 2))
+
+    def _select_models(
+        self, mode: str, color: Player, dev: bool, models: list[ModelOption]
+    ) -> MatchSetup | str | None:
+        """Second menu screen: pick which model plays each AI seat.
+
+        Returns the finished :class:`MatchSetup`, the sentinel ``"back"`` (return to
+        the main menu), or ``None`` if the window was closed. With no models to choose
+        from, returns a setup with unset keys (the caller falls back to its default).
+        """
+        assert self._screen is not None
+        assert self._clock is not None
+        if not models:
+            return MatchSetup(mode, color, dev)
+
+        sel = {"white": 0, "black": 0, "ai": 0}
+        scroll = {"white": 0, "black": 0, "ai": 0}
+        cx = self.window_width // 2
+        row_h = 42
+        area_top, area_bottom = 150, self.window_height - 130
+
+        title_font = self._make_font(46, bold=True)
+        sub_font = self._make_font(21, bold=False)
+        col_font = self._make_font(22, bold=True)
+
+        while True:
+            mouse = pygame.mouse.get_pos()
+            if mode == "vs_ai":
+                cols = [("ai", pygame.Rect(cx - 330, area_top, 660, area_bottom - area_top))]
+                col_labels = {"ai": "IA adverse"}
+            else:
+                cw = 430
+                cols = [
+                    ("white", pygame.Rect(cx - cw - 14, area_top, cw, area_bottom - area_top)),
+                    ("black", pygame.Rect(cx + 14, area_top, cw, area_bottom - area_top)),
+                ]
+                col_labels = {"white": "IA Blancs", "black": "IA Noirs"}
+
+            back_btn = pygame.Rect(cx - 320, self.window_height - 92, 300, 56)
+            start_btn = pygame.Rect(cx + 20, self.window_height - 92, 300, 56)
+
+            row_rects = {
+                ckey: self._model_row_rects(area, len(models), row_h, scroll[ckey])
+                for ckey, area in cols
+            }
+            max_scroll = {
+                ckey: max(0, len(models) * row_h - (area.height - 16)) for ckey, area in cols
+            }
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return "back"
+                if event.type == pygame.MOUSEWHEEL:
+                    for ckey, area in cols:
+                        if area.collidepoint(mouse):
+                            scroll[ckey] = min(
+                                max_scroll[ckey], max(0, scroll[ckey] - event.y * row_h)
+                            )
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    pos = event.pos
+                    if back_btn.collidepoint(pos):
+                        return "back"
+                    if start_btn.collidepoint(pos):
+                        if mode == "vs_ai":
+                            return MatchSetup(mode, color, dev, ai_model=models[sel["ai"]].key)
+                        return MatchSetup(
+                            mode,
+                            color,
+                            dev,
+                            white_model=models[sel["white"]].key,
+                            black_model=models[sel["black"]].key,
+                        )
+                    for ckey, area in cols:
+                        if not area.collidepoint(pos):
+                            continue
+                        for idx, rect in row_rects[ckey]:
+                            if rect.collidepoint(pos):
+                                sel[ckey] = idx
+
+            self._draw_gradient_background()
+            title = title_font.render("Choix des modeles", True, self._colors["panel_text"])
+            self._screen.blit(title, title.get_rect(center=(cx, 64)))
+            hint = (
+                "Molette pour derouler la liste. Echap: retour."
+                if len(models) * row_h > (area_bottom - area_top - 16)
+                else "Cliquez un modele pour le selectionner."
+            )
+            sub = sub_font.render(hint, True, self._colors["panel_subtext"])
+            self._screen.blit(sub, sub.get_rect(center=(cx, 108)))
+
+            for ckey, area in cols:
+                label = col_font.render(col_labels[ckey], True, self._colors["accent"])
+                self._screen.blit(label, (area.x + 4, area.y - 34))
+                pygame.draw.rect(self._screen, self._colors["panel"], area, border_radius=12)
+                pygame.draw.rect(
+                    self._screen, self._colors["button_border"], area, width=1, border_radius=12
+                )
+                prev_clip = self._screen.get_clip()
+                self._screen.set_clip(area)
+                for idx, rect in row_rects[ckey]:
+                    if rect.bottom < area.y or rect.top > area.bottom:
+                        continue
+                    self._draw_list_row(
+                        rect,
+                        models[idx].label,
+                        active=idx == sel[ckey],
+                        hover=rect.collidepoint(mouse) and area.collidepoint(mouse),
+                    )
+                self._screen.set_clip(prev_clip)
+
+            self._draw_button(back_btn, "Retour", hover=back_btn.collidepoint(mouse))
+            self._draw_button(start_btn, "Commencer", hover=start_btn.collidepoint(mouse))
+
+            pygame.display.flip()
+            self._clock.tick(60)
+
+    # ---------------------------------------------------- in-game step / end
+    def _panel_button_rect(self) -> pygame.Rect:
+        panel_left = self.margin + self.board_size_px + 16
+        return pygame.Rect(panel_left + 20, self.margin + 470, self.panel_width - 56, 54)
+
+    def wait_for_step(
+        self,
+        use_pov: bool = True,
+        analysis_arrows: list[MoveArrow] | None = None,
+        status_lines: list[str] | None = None,
+        label: str = "Coup suivant  >",
+    ) -> bool:
+        """Block until the user asks for the next move (click the panel button, or
+        press Space/Enter/Right). Returns ``False`` if the window was closed."""
+        assert self._screen is not None
+        assert self._clock is not None
+        btn = self._panel_button_rect()
+        step_keys = (pygame.K_SPACE, pygame.K_RETURN, pygame.K_RIGHT)
+        while True:
+            mouse = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return False
+                if event.type == pygame.KEYDOWN and event.key in step_keys:
+                    return True
+                if (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                    and btn.collidepoint(event.pos)
+                ):
+                    return True
+            self._draw_frame(
+                use_pov=use_pov, analysis_arrows=analysis_arrows, status_lines=status_lines
+            )
+            self._draw_button(btn, label, hover=btn.collidepoint(mouse), font_size=20)
+            pygame.display.flip()
+            self._clock.tick(60)
+
+    def show_game_over(self, message: str, use_pov: bool = True) -> bool:
+        """Dim the board and show the result over a "back to menu" button.
+
+        Returns ``True`` to go back to the menu (button click or Enter/Space/Esc),
+        ``False`` if the window was closed.
+        """
+        assert self._screen is not None
+        assert self._clock is not None
+        cx, cy = self.window_width // 2, self.window_height // 2
+        banner = pygame.Rect(cx - 270, cy - 130, 540, 260)
+        btn = pygame.Rect(cx - 150, cy + 34, 300, 58)
+        title_font = self._make_font(44, bold=True)
+        msg_font = self._make_font(24, bold=False)
+        back_keys = (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE)
+        while True:
+            mouse = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return False
+                if event.type == pygame.KEYDOWN and event.key in back_keys:
+                    return True
+                if (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                    and btn.collidepoint(event.pos)
+                ):
+                    return True
+
+            self._draw_frame(use_pov=use_pov)
+            dim = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+            dim.fill((10, 14, 24, 190))
+            self._screen.blit(dim, (0, 0))
+            pygame.draw.rect(self._screen, self._colors["panel"], banner, border_radius=18)
+            pygame.draw.rect(
+                self._screen, self._colors["accent"], banner, width=2, border_radius=18
+            )
+            title = title_font.render("Partie terminee", True, self._colors["panel_text"])
+            self._screen.blit(title, title.get_rect(center=(cx, banner.y + 60)))
+            for i, line in enumerate(message.split("\n")[:2]):
+                msg = msg_font.render(line, True, self._colors["panel_subtext"])
+                self._screen.blit(msg, msg.get_rect(center=(cx, banner.y + 120 + i * 32)))
+            self._draw_button(btn, "Retour au menu", hover=btn.collidepoint(mouse), font_size=22)
             pygame.display.flip()
             self._clock.tick(60)
 
