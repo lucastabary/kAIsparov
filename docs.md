@@ -170,6 +170,12 @@ All agents implement `Policy.select_move(game) -> (source, dest) | None`:
   possible), else random. A meaningful baseline.
 - `NeuralAgent` — wraps a model + processor; `select_move` graphifies, runs the model,
   masks, and returns the chosen move. (Imported lazily so baselines stay torch-free.)
+- `MinimaxAgent` — **negamax alpha-beta search** on the model: the critic evaluates
+  leaves, the actor orders moves (better ordering → more pruning), king capture = win.
+  The search-improved player (stronger than the raw policy; the bridge to AlphaZero).
+  Use it via `kaisparov play --vs-ai --minimax-depth D` or `kaisparov eval
+  --minimax-depth D` to measure how much search improves the net. One forward per
+  node, so keep `D` small (2-3) on CPU.
 
 ---
 
@@ -213,6 +219,16 @@ game is graphified and the model runs **one batched forward pass** (`Batch.from_
 instead of one tiny forward per game. This is ~3–4× faster on CPU. Each episode's
 transitions are buffered separately and flushed **contiguously** on termination, so
 the negamax GAE sees clean episode boundaries. The agent plays both sides.
+
+### Opponents / league (`opponents.py`, `rollout_vs.py`)
+
+Set `rollout.opponent: pool` to train against a **league** of frozen past snapshots
+instead of only the current self (breaks the degenerate "everyone rushes" collapse).
+`OpponentPool` keeps the last `pool_size` snapshots, adding the learner every
+`snapshot_every` epochs. In this mode the opponent is part of the *environment*, so
+it's **single-agent** RL: only the learner's moves are stored, the per-step reward is
+`(learner captures) − (opponent captures) − step_penalty`, and the buffer uses standard
+GAE (`self_play=False`). Until the first snapshot exists, training is plain self-play.
 
 ### Curriculum (`curriculum.py`)
 
