@@ -1,4 +1,12 @@
 # Fresh training, stage 2/3 — more pieces, longer games.
+#
+# Easiest: chain all three stages in one command (no run ids to copy) —
+#   kaisparov train --config config/experiments/scratch_stage1.yaml \
+#                            config/experiments/scratch_stage2.yaml \
+#                            config/experiments/scratch_stage3.yaml
+# When chained, `resume_from_run` below is overridden by stage 1's actual run id.
+#
+# Or run this stage on its own:
 #   1) find stage 1's run id:  kaisparov runs list
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/scratch_stage2.yaml
