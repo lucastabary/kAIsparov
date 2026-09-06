@@ -20,6 +20,8 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch_geometric.data import Batch, Data
 
+from kaisparov.models.base_processor import aggregate_edge_logits_to_moves
+
 
 @dataclass
 class PPOBuffer:
@@ -140,6 +142,9 @@ def train_one_epoch(
     states = buffer.states
     edge_counts = [int(s.edge_index.shape[1]) for s in states]
     batch = Batch.from_data_list(states).to(device)
+    # Same static graph for every state -> one edge_index + node count for move aggregation.
+    edge_index0 = states[0].edge_index.to(device)
+    num_nodes = int(states[0].x.shape[0])
 
     actions = torch.tensor(buffer.actions, dtype=torch.long, device=device)
     old_log_probs = torch.tensor(buffer.log_probs, dtype=torch.float32, device=device)
@@ -160,8 +165,14 @@ def train_one_epoch(
         log_probs: list[Tensor] = []
         entropies: list[Tensor] = []
         for i, scores in enumerate(per_graph_scores):
-            dist = _masked_categorical(scores, legal_masks[i])
-            log_probs.append(dist.log_prob(actions[i]))
+            # Move-level distribution (edges of one (src,dst) move combined), matching
+            # how process_output selected the stored action. `actions[i]` is a move key.
+            move_keys, move_logits = aggregate_edge_logits_to_moves(
+                scores, edge_index0, legal_masks[i], num_nodes
+            )
+            dist = torch.distributions.Categorical(logits=move_logits)
+            pos = (move_keys == actions[i]).nonzero(as_tuple=True)[0][0]
+            log_probs.append(dist.log_prob(pos))
             entropies.append(dist.entropy())
         new_log_probs = torch.stack(log_probs)
         entropy = torch.stack(entropies).mean()

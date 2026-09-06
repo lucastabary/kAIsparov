@@ -12,6 +12,7 @@ from kaisparov.core.utils import coord_to_index, get_piece_value, index_to_coord
 from kaisparov.models.base_processor import (
     BaseProcessor,
     ModelAction,
+    aggregate_edge_logits_to_moves,
     create_static_full_chess_graph,
 )
 from kaisparov.models.base_processor import (
@@ -183,21 +184,25 @@ class RGCNProcessor(BaseProcessor):
         if not legal_mask.any():
             raise RuntimeError("No legal action available for current game state.")
 
-        masked_logits = action_scores.masked_fill(~legal_mask, float("-inf"))
-        dist = torch.distributions.Categorical(logits=masked_logits)
+        # Distribution over MOVES, not edges: several edges can denote the same
+        # (src, dst) move, and a per-edge argmax fragments a move's probability across
+        # its edges (a king step spans king+rook/bishop+queen edges, a knight jump is
+        # one), biasing greedy play against king moves. Aggregate first.
+        num_nodes = len(game.grid) ** 2
+        move_keys, move_logits = aggregate_edge_logits_to_moves(
+            action_scores, edge_index, legal_mask, num_nodes
+        )
+        dist = torch.distributions.Categorical(logits=move_logits)
 
-        action = torch.argmax(masked_logits) if deterministic else dist.sample()
-
-        action_index = int(action.item())
-        source_idx = int(edge_index[0, action_index].item())
-        dest_idx = int(edge_index[1, action_index].item())
-        source = index_to_coord(source_idx)
-        dest = index_to_coord(dest_idx)
+        move_pos = torch.argmax(move_logits) if deterministic else dist.sample()
+        move_key = int(move_keys[move_pos].item())
+        source = index_to_coord(move_key // num_nodes)
+        dest = index_to_coord(move_key % num_nodes)
 
         return ModelAction(
             move_coords=((int(source[0]), int(source[1])), (int(dest[0]), int(dest[1]))),
-            action_index=action_index,
-            log_prob=dist.log_prob(action),
+            action_index=move_key,  # now a MOVE key (src*num_nodes + dst), not an edge index
+            log_prob=dist.log_prob(move_pos),
             value=value.squeeze(),
             entropy=dist.entropy(),
         )
