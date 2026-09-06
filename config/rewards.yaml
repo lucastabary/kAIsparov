@@ -52,3 +52,14 @@ material_aware:
   king_capture: 8.0    # a win dominates any single material swing
   king_safety: 0.5     # penalty per ply your move leaves your own king in check
   step_penalty: 0.005
+
+# Pure outcome ("victory is the only thing that matters"). No shaping at all: the
+# model must learn material value, defense and king safety on its own, from the win
+# signal alone. In pool mode (rollout_vs) this yields a clean +/-1 per game: +1 on
+# the move that captures the opponent king, -1 on the learner's move that lets the
+# opponent capture *its* king, 0 everywhere else. Used by the scratch_v3 curriculum.
+#   NOTE: material MUST be set to 0.0 explicitly — RewardSettings defaults it to 1.0,
+#   so omitting it would silently leave dense material rewards on.
+king_capture_only:
+  material: 0.0
+  king_capture: 1.0

@@ -1,0 +1,56 @@
+# scratch v3 — stage 2/3 · 12 pieces + pawns, lower LR
+#   1) run stage 1, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/scratch_v3_stage2.yaml
+#
+# Inherits architecture (rgcn/hidden_dim=32), reward (king_capture_only) and any field
+# not overridden here from the stage-1 parent. Only the deltas below change.
+#
+# Stage 2 goal: real material and pawns appear. Under pure king-capture reward, "don't
+# hang your pawn" can only be taught by an opponent that actually captures it — so the
+# Material teacher and the minimax past-selves stay in the pool and do the teaching.
+
+resume_from_run: PASTE_STAGE1_RUN_ID_HERE
+
+title: "scratch v3 - stage 2 (12 pieces + pawns)"
+description: |
+  Continue stage 1 up to 12 pieces per side WITH pawns and longer games. Pure outcome
+  reward is kept; the opponent pool is adapted (below) so blunders are punished. LR
+  dropped to 3e-4 and entropy annealed for the harder, larger action space.
+
+epochs: 180
+
+# Restated for clarity even though it is inherited — pure outcome, no shaping.
+reward: king_capture_only
+
+curriculum:
+  name: "12 pieces/side, all types + pawns"
+  max_pieces_per_side: 12
+  allow_major: true
+  allow_minor: true
+  allow_pawns: true
+  ensure_kings_safe: true
+
+rollout:
+  # Pool ADAPTED for this phase: longer games, a slightly larger snapshot pool, and the
+  # baseline group weight eased (1.5 vs snapshots' 1.0) so recent minimax selves — now
+  # meaningful opponents — get more play, while Material still punishes hung pawns.
+  max_steps_per_episode: 100
+  pool_size: 6
+  snapshot_every: 15
+  baseline_weight: 1.5
+  snapshot_weight: 1.0
+  baseline_weights: [3.0, 1.0]     # material : random
+  snapshot_search_depth: 1         # depth-1 stays affordable at 12 pieces on CPU
+  # (baselines list is inherited from stage 1: ["material", "random"])
+
+ppo:
+  learning_rate: 0.0003            # fine-tune, not restart
+  entropy_coef: 0.012              # anneal down from stage 1's 0.02
+  update_epochs: 2
+
+eval:
+  enabled: true
+  every: 10
+  games: 40
+  max_plies: 160                   # longer games with more material

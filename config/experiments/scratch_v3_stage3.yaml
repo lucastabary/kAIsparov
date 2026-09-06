@@ -1,0 +1,49 @@
+# scratch v3 — stage 3/3 · the real game (standard starting position)
+#   1) run stage 2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/scratch_v3_stage3.yaml
+#
+# Inherits architecture (rgcn/hidden_dim=32) and reward (king_capture_only) from the
+# stage-2 parent. `curriculum: null` disables the piece-count curriculum, so games start
+# from the normal chess position — the actual task the model is meant to play.
+
+resume_from_run: PASTE_STAGE2_RUN_ID_HERE
+
+title: "scratch v3 - stage 3 (real game)"
+description: |
+  Final stage: full standard starting position, longest games. Pure outcome reward
+  kept. The pool tilts toward self-play (minimax past-selves) now that they are strong,
+  while the Material teacher stays on at low weight to keep punishing gross blunders.
+  Lowest LR (1e-4) and lowest entropy for stable refinement.
+
+epochs: 150
+
+reward: king_capture_only
+
+# Disable the curriculum -> start from the normal chess position ("vraie partie").
+curriculum: null
+
+rollout:
+  # Pool ADAPTED: snapshots (minimax selves) now weighted ABOVE the baselines (1.5 vs
+  # 1.0) so most games are strong self-play; Material stays in at reduced share to keep
+  # punishing hung pieces. Random is nearly absent (baseline_weights 3:1, group 1.0).
+  max_steps_per_episode: 150
+  pool_size: 8
+  snapshot_every: 15
+  baseline_weight: 1.0
+  snapshot_weight: 1.5
+  baseline_weights: [3.0, 1.0]     # material : random
+  # depth-1 kept for CPU sanity on the full board. Bump to 2 for stronger self-play if
+  # you can afford the ~branching-factor cost per opponent move.
+  snapshot_search_depth: 1
+
+ppo:
+  learning_rate: 0.0001            # refinement only
+  entropy_coef: 0.006              # sharpen the policy
+  update_epochs: 2
+
+eval:
+  enabled: true
+  every: 10
+  games: 40
+  max_plies: 200

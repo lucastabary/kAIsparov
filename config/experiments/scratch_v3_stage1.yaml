@@ -1,0 +1,58 @@
+# scratch v3 — stage 1/3 · "victory is the only thing that matters"
+#   kaisparov train --config config/experiments/scratch_v3_stage1.yaml
+#   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
+#
+# Philosophy vs v2: NO reward shaping. King-capture only (+/-1). The model must learn
+# material value, piece defense and king safety on its own via message passing. What
+# provides the pressure to *not blunder* is the OPPONENT pool (Material teacher +
+# depth-1 minimax past-selves that refute one-move blunders), not hand-crafted rewards.
+#
+# Stage 1 goal: learn to capture the enemy king and defend your own, in tiny 4-piece
+# (per side) piece-only endgames where a king capture is only a few plies away — so the
+# sparse +/-1 signal propagates over a short horizon and the critic can actually fit it.
+
+model: rgcn
+hidden_dim: 32          # fixed for the WHOLE curriculum (resume requires matching width)
+epochs: 100
+seed: 0
+device: auto            # -> CPU on this machine
+checkpoint_every: 20
+
+# Pure outcome. All shaping terms (king_safety, check, step_penalty) are OFF.
+reward: king_capture_only
+
+curriculum:
+  name: "4 pieces/side, no pawns"
+  max_pieces_per_side: 4
+  allow_major: true
+  allow_minor: true
+  allow_pawns: false
+  ensure_kings_safe: true   # no free ply-0 king capture
+
+rollout:
+  opponent: pool            # league (single-agent: only the learner's moves are stored)
+  episodes_per_epoch: 16    # less noisy PPO gradient than 8
+  max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
+  pool_size: 5
+  snapshot_every: 20        # add a past self to the league every 20 epochs
+  baselines: ["material", "random"]
+  # Keep the tactical teachers dominant: Material (which grabs a hung king/piece and
+  # thus punishes blunders) drawn 3x Random, and the baseline group weighted 2:1 vs
+  # snapshots so an accumulating pool never drowns the teacher out.
+  baseline_weight: 2.0
+  snapshot_weight: 1.0
+  baseline_weights: [3.0, 1.0]   # material : random
+  # Past selves look 1 ply ahead: they refuse to walk into a king capture and take a
+  # hung king, so the learner's win must be *sound*. depth=1 is cheap on 4-piece boards.
+  snapshot_search_depth: 1
+
+ppo:
+  learning_rate: 0.0005     # v2's 1e-3 was too hot (ratio blow-ups, regression). Halve it.
+  update_epochs: 2          # less overfitting of each small batch
+  entropy_coef: 0.02        # keep exploration alive on the small action space
+
+eval:
+  enabled: true
+  every: 10                 # catch the peak (v2 evaluated every 25 and missed it)
+  games: 40
+  max_plies: 120
