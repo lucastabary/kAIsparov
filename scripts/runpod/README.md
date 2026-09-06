@@ -36,6 +36,54 @@ on CPU; the GNN forward/backward is a rounding error next to it. So:
 5. (Optional) Add your SSH public key in RunPod → Settings, so you can `ssh` / `scp` into
    pods instead of using the web terminal.
 
+## Driving the pod from your machine (`manage_pod.py`)
+
+`manage_pod.py` wraps the official [`runpod` Python SDK](https://pypi.org/project/runpod/)
+plus your system `ssh`/`tmux`, so you can start, stop, shell into, and run jobs on the pod
+without touching the RunPod web UI. Its headline trick: **run one command and have the pod
+power itself off the moment the command finishes** (starting the pod first if it was
+stopped), so you never pay for idle GPU time.
+
+```bash
+pip install -r scripts/runpod/requirements.txt   # installs the runpod SDK
+export RUNPOD_API_KEY=...                         # RunPod → Settings → API Keys
+# (a `.env` at the repo root with RUNPOD_API_KEY=... is picked up automatically)
+```
+
+The command reads its config from the environment (all optional except the API key):
+
+| Variable | Meaning | Default |
+|----------|---------|---------|
+| `RUNPOD_API_KEY` | RunPod API key (**required**) | — |
+| `RUNPOD_POD_ID` | which pod to manage | the only pod on the account |
+| `RUNPOD_GPU_COUNT` | GPUs to attach on start | `1` |
+| `RUNPOD_SSH_USER` | SSH user on the pod | `root` |
+| `RUNPOD_SSH_KEY` | private SSH key path | `~/.ssh/id_ed25519` |
+
+Each has a matching flag (`--pod-id`, `--gpu-count`, `--ssh-key`). SSH uses the pod's
+directly-exposed TCP port for private port 22, so make sure the pod **exposes TCP port 22**
+and your **public key is registered** in RunPod → Settings → SSH Public Keys.
+
+```bash
+python scripts/runpod/manage_pod.py list             # all pods on the account
+python scripts/runpod/manage_pod.py status           # status + SSH command + tmux sessions
+python scripts/runpod/manage_pod.py start            # resume the pod, wait for SSH
+python scripts/runpod/manage_pod.py stop             # stop it (GPU billing ends; volume persists)
+python scripts/runpod/manage_pod.py ssh              # interactive shell on the pod
+python scripts/runpod/manage_pod.py ssh -- nvidia-smi  # or a one-off command
+python scripts/runpod/manage_pod.py tmux list        # the pod's tmux sessions
+python scripts/runpod/manage_pod.py tmux attach train  # attach to one (add --create to make it)
+
+# Start (if needed) → run → power off at the end. The job runs inside tmux on the
+# pod (so it survives an SSH drop) and its output is streamed here live:
+python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh
+python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
+```
+
+For `run`, `Ctrl-C` only detaches your local viewer — the command keeps running on the pod;
+reattach with `tmux attach`. The automatic power-off fires from *this* process once the
+command exits, so if you kill it you'll need to `stop` the pod yourself.
+
 ## Each training session
 
 1. **Start** a pod on the network volume (RunPod web UI, or `runpodctl`).
