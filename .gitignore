@@ -28,6 +28,8 @@ htmlcov/
 
 # Secrets / local config
 .env
+credentials.txt
+*.credentials
 
 # Model weights & training artifacts (tracked out of git; use releases / DVC)
 *.pth
