@@ -50,6 +50,20 @@ ruff check . && ruff format --check .           # lint + format
 pytest                                          # tests (torch-free where possible)
 ```
 
+## Git
+
+- **Commits**: Conventional Commits — `type(scope): imperative subject`, lowercase and
+  concise. Types in use: `feat`, `fix`, `perf`, `docs`, `tooling`; the scope is the
+  package touched (`core`, `model`, `training`, `train`, `types`, …). One logical change
+  per commit; add a body explaining the *why* when it isn't obvious from the subject.
+- **Branches**: do the work on a short-lived branch off `main` (`fix/…`, `feat/…`), then
+  merge back — fast-forward to keep history linear (no merge commit unless a real branch
+  topology needs one). `main` is the integration branch and stays green.
+- **Before committing / merging**: `ruff check . && ruff format --check .` and `pytest`
+  must pass. After code changes, also run `graphify update .` (see below).
+- **Never commit** training artifacts — `runs/`, `data/`, `*.pth` are git-ignored on
+  purpose (see Gotchas). Commit/push only when asked.
+
 ## Gotchas
 
 - **CPU-first**: development runs on CPU (no suitable GPU). `device: auto` → CPU.
