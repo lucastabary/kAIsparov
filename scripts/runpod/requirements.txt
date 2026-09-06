@@ -1,0 +1,4 @@
+# Local tooling for driving the RunPod pod from your machine (manage_pod.py).
+# Not a runtime dependency of kaisparov — install it only where you manage pods:
+#   pip install -r scripts/runpod/requirements.txt
+runpod>=1.7,<2
