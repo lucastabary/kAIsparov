@@ -101,7 +101,7 @@ def _load_model(checkpoint: str, hidden_dim: int | None, device):
     from kaisparov.models.factory import load_backend_spec
 
     spec = load_backend_spec()
-    state_dict = torch.load(checkpoint, map_location=device)
+    state_dict = torch.load(checkpoint, map_location=device, weights_only=True)
 
     if hidden_dim is None:
         hidden_dim = _infer_hidden_dim(state_dict)

@@ -37,7 +37,7 @@ class BaseModel(torch.nn.Module, ABC):
     ) -> tuple[BaseModel, str]:
         """Build the model and load a checkpoint (a plain ``state_dict``) into it."""
         agent = cls.create_agent(device=device, **kwargs)
-        state_dict = torch.load(model_path, map_location=device)
+        state_dict = torch.load(model_path, map_location=device, weights_only=True)
         agent.load_state_dict(state_dict)
         agent.eval()
         return agent, str(model_path)

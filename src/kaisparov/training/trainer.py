@@ -108,7 +108,9 @@ class Trainer:
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
         self.start_epoch = 0
         if config.resume_from is not None:
-            self.agent.load_state_dict(torch.load(config.resume_from, map_location=self.device))
+            self.agent.load_state_dict(
+                torch.load(config.resume_from, map_location=self.device, weights_only=True)
+            )
             print(f"Resumed weights from {config.resume_from}")
             self._restore_trainer_state(config.resume_from)
             if config.parent_run_id is not None:
@@ -149,7 +151,9 @@ class Trainer:
         if not state_path.exists():
             print("(no optimizer/RNG state beside the checkpoint — optimizer starts fresh)")
             return
-        state = torch.load(state_path, map_location="cpu")
+        # Our own trusted snapshot; it holds pickled RNG/optimizer state (numpy & python
+        # RNG tuples) that weights_only=True would reject, so load the full pickle.
+        state = torch.load(state_path, map_location="cpu", weights_only=False)
         self.optimizer.load_state_dict(state["optimizer"])
         for opt_state in self.optimizer.state.values():
             for key, value in opt_state.items():
