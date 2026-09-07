@@ -1,0 +1,78 @@
+# Opponent-pool presets. Reference one by name from a training config:
+#     rollout:
+#       opponent: pool
+#       pool: sound_v4
+# ...or write the same structure inline instead of a name:
+#     rollout:
+#       opponent: pool
+#       pool:
+#         opponents: [...]
+#         group_weights: {...}
+#
+# When `rollout.pool` is set it fully defines the pool and OVERRIDES the flat legacy
+# fields (baselines / *_weight / pool_size / snapshot_every / snapshot_search_depth /
+# opponent_avoid_king_suicide). Leave it unset to keep using those.
+#
+# Shape (flat, unified list):
+#   opponents: a list of entries, each:
+#     kind:   random | material | neural | minimax | snapshot
+#     group:  baseline (fixed, in the pool from epoch 1) | snapshot (frozen past-selves,
+#             added over training). Defaults: snapshot for kind=snapshot, else baseline.
+#     weight: relative sampling weight WITHIN its group (default 1.0).
+#     count:  snapshot only — max past-selves retained in the pool (default 1).
+#     every:  snapshot only — add one frozen self every N epochs (default 20).
+#     params: that agent's own hyper-parameters:
+#               random/material : seed, avoid_king_suicide
+#               snapshot        : depth (0 = raw NeuralAgent, >=1 = MinimaxAgent lookahead),
+#                                 avoid_king_suicide, deterministic
+#               neural/minimax  : checkpoint (REQUIRED, path to frozen weights of THIS
+#                                 architecture), depth (minimax), deterministic (neural),
+#                                 avoid_king_suicide
+#   group_weights: relative share of the two GROUPS, e.g. {baseline: 1.5, snapshot: 1.0}.
+#     Omit for the legacy uniform draw over baselines + snapshots.
+# At most one `snapshot` entry per preset.
+
+
+# Reproduces the scratch v3 league (pure king-capture era): Material 3x Random, the
+# baseline group drawn 2:1 vs a depth-1 past-self stream. No king-safety guard.
+teachers_v3:
+  opponents:
+    - {kind: material, weight: 3.0}
+    - {kind: random,   weight: 1.0}
+    - {kind: snapshot, count: 5, every: 20, params: {depth: 1}}
+  group_weights: {baseline: 2.0, snapshot: 1.0}
+
+
+# "Sound play" league: every opponent defends its own king (avoid_king_suicide), so a
+# blind king rush no longer wins, and past-selves look 2 plies ahead. Use this to break
+# the knight-rush strategy without any reward shaping.
+sound_v4:
+  opponents:
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+    - {kind: snapshot, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}
+  group_weights: {baseline: 1.5, snapshot: 1.0}
+
+
+# Stage-1 starter: guard OFF so the model first learns to CAPTURE a king (against
+# opponents that still leave it hanging) before we make defense matter in later stages.
+endgame_starter:
+  opponents:
+    - {kind: material, weight: 3.0}
+    - {kind: random,   weight: 1.0}
+    - {kind: snapshot, count: 5, every: 20, params: {depth: 1}}
+  group_weights: {baseline: 2.0, snapshot: 1.0}
+
+
+# Example: train against a strong FIXED teacher frozen from a past run — a genuinely
+# sound defender from epoch 1, not a weak early past-self. Point `checkpoint` at a
+# checkpoint of the SAME architecture (model + hidden_dim). Uncomment and set the path.
+# with_frozen_teacher:
+#   opponents:
+#     - {kind: material, weight: 2.0, params: {avoid_king_suicide: true}}
+#     - kind: minimax
+#       weight: 3.0
+#       params: {checkpoint: "runs/20260907-110051_rgcn/checkpoints/best.pth", depth: 2,
+#                avoid_king_suicide: true}
+#     - {kind: snapshot, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}
+#   group_weights: {baseline: 1.5, snapshot: 1.0}

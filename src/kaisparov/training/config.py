@@ -58,6 +58,23 @@ class RolloutSettings:
     # policy reply, the default; 1 = cheap 1-ply lookahead that still catches every
     # king capture; 2 = stronger but ~b x costlier). Costly on CPU with many pieces.
     snapshot_search_depth: int = 0
+    # Make every pool opponent (baselines + snapshots) refuse moves that hang their
+    # own king (one-ply king safety guard, see kaisparov.agents.safety). Off by
+    # default. Turning it on removes the "rush the enemy king" free win from
+    # self-play — the opponent no longer leaves its king en prise — so the learner
+    # must win soundly instead of racing. May slow early training (a blind rush
+    # stops working before the model has learned anything else); set per config to
+    # test. Does NOT affect the eval baselines, which stay canonical.
+    opponent_avoid_king_suicide: bool = False
+    # Fine-grained opponent pool. Either a preset name from config/pools.yaml, or an
+    # inline mapping with the same shape (a flat ``opponents`` list, each entry with
+    # its own kind / group / weight / count / per-agent ``params``, plus optional
+    # ``group_weights``). When set it fully defines the pool and OVERRIDES the flat
+    # legacy fields above (baselines / *_weight / pool_size / snapshot_every /
+    # snapshot_search_depth / opponent_avoid_king_suicide). Leave None to use them.
+    # See PoolSpec / config/pools.yaml. Resolved (expanded) at load time so the run's
+    # persisted config records the actual opponents, not just a preset name.
+    pool: Any = None
 
 
 @dataclass
@@ -120,6 +137,113 @@ def _build_reward(value: Any) -> RewardSettings:
     return RewardSettings(**{k: v for k, v in data.items() if k in known})
 
 
+# ------------------------------------------------------------------- opponent pool
+# Opponent kinds usable in a pool preset. ``random``/``material`` need no model;
+# ``neural``/``minimax`` load a frozen model from a checkpoint (``params.checkpoint``);
+# ``snapshot`` is the stream of frozen past-selves of the learner, added over time.
+KNOWN_OPPONENT_KINDS = frozenset({"random", "material", "neural", "minimax", "snapshot"})
+
+
+@dataclass
+class OpponentSpec:
+    """One entry of a pool preset (see :class:`PoolSpec`).
+
+    ``group`` is either ``"baseline"`` (a fixed opponent present from epoch 1) or
+    ``"snapshot"`` (the accumulating stream of frozen past-selves). ``params`` holds
+    that agent's own hyper-parameters, e.g. ``seed``, ``avoid_king_suicide`` for the
+    baselines; ``depth`` (0 = raw policy, >=1 = minimax lookahead), ``deterministic``,
+    ``avoid_king_suicide`` for snapshots; ``checkpoint``/``depth`` for a frozen
+    neural/minimax baseline loaded from a past run.
+    """
+
+    kind: str
+    group: str = "baseline"
+    weight: float = 1.0
+    count: int = 1  # snapshot group: max past-selves retained in the pool
+    every: int = 20  # snapshot group: add one frozen self every N epochs
+    params: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PoolSpec:
+    """A fully-resolved opponent pool: a flat list of opponents + group weights."""
+
+    opponents: list[OpponentSpec] = field(default_factory=list)
+    group_weights: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def baselines(self) -> list[OpponentSpec]:
+        return [o for o in self.opponents if o.group == "baseline"]
+
+    @property
+    def snapshot(self) -> OpponentSpec | None:
+        snaps = [o for o in self.opponents if o.group == "snapshot"]
+        if len(snaps) > 1:
+            raise ValueError("A pool preset supports at most one 'snapshot' opponent entry.")
+        return snaps[0] if snaps else None
+
+
+def _load_pool_presets() -> dict[str, Any]:
+    for candidate in (
+        Path("config/pools.yaml"),
+        Path(__file__).resolve().parents[3] / "config" / "pools.yaml",
+    ):
+        if candidate.exists():
+            with candidate.open("r", encoding="utf-8") as stream:
+                return yaml.safe_load(stream) or {}
+    return {}
+
+
+def _expand_pool(value: Any) -> Any:
+    """Resolve a preset name (str) to its inline mapping; pass a mapping through.
+
+    Keeps the ``preset`` name in the expanded mapping (for the record), mirroring how
+    reward presets are stored, so the persisted run config is self-contained.
+    """
+    if isinstance(value, str):
+        presets = _load_pool_presets()
+        if value not in presets:
+            raise ValueError(
+                f"Unknown pool preset '{value}'. Available: {sorted(presets)} "
+                "(define them in config/pools.yaml)."
+            )
+        return {"preset": value, **(presets[value] or {})}
+    if isinstance(value, dict):
+        return dict(value)
+    return value
+
+
+def build_pool_spec(value: Any) -> PoolSpec:
+    """Build a :class:`PoolSpec` from a preset name (str) or an inline mapping."""
+    data = _expand_pool(value)
+    if not isinstance(data, dict):
+        return PoolSpec()
+    opponents: list[OpponentSpec] = []
+    for entry in data.get("opponents", []):
+        item = dict(entry)
+        kind = item.get("kind")
+        if kind not in KNOWN_OPPONENT_KINDS:
+            raise ValueError(
+                f"Unknown opponent kind {kind!r}. Expected one of {sorted(KNOWN_OPPONENT_KINDS)}."
+            )
+        group = item.get("group", "snapshot" if kind == "snapshot" else "baseline")
+        if group not in ("baseline", "snapshot"):
+            raise ValueError(f"Opponent group must be 'baseline' or 'snapshot', got {group!r}.")
+        opponents.append(
+            OpponentSpec(
+                kind=kind,
+                group=group,
+                weight=float(item.get("weight", 1.0)),
+                count=int(item.get("count", 1)),
+                every=int(item.get("every", 20)),
+                params=dict(item.get("params", {})),
+            )
+        )
+    spec = PoolSpec(opponents=opponents, group_weights=dict(data.get("group_weights", {})))
+    _ = spec.snapshot  # validate eagerly: raises if more than one snapshot entry
+    return spec
+
+
 @dataclass
 class TrainConfig:
     model: str = "rgcn"
@@ -168,7 +292,13 @@ class TrainConfig:
             elif key in nested and isinstance(value, dict):
                 sub_cls = nested[key]
                 sub_known = {f.name for f in fields(sub_cls)}
-                kwargs[key] = sub_cls(**{k: v for k, v in value.items() if k in sub_known})
+                sub_kwargs = {k: v for k, v in value.items() if k in sub_known}
+                # Expand a pool preset name to its inline mapping so the persisted
+                # config records the actual opponents (validated eagerly).
+                if key == "rollout" and sub_kwargs.get("pool") is not None:
+                    sub_kwargs["pool"] = _expand_pool(sub_kwargs["pool"])
+                    build_pool_spec(sub_kwargs["pool"])  # fail fast on a bad preset
+                kwargs[key] = sub_cls(**sub_kwargs)
             else:
                 kwargs[key] = value
         return cls(**kwargs)

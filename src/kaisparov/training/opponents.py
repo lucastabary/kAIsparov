@@ -32,12 +32,18 @@ class OpponentPool:
         snapshot_weight: float | None = None,
         baseline_weights: list | None = None,
         search_depth: int = 0,
+        avoid_king_suicide: bool = False,
+        snapshot_deterministic: bool = False,
     ):
         self.spec = spec
         self.device = device
         self.hidden_dim = hidden_dim
         self.max_size = max_size
         self.search_depth = search_depth
+        # Past-selves added to the pool refuse moves that hang their own king.
+        self.avoid_king_suicide = avoid_king_suicide
+        # Only used by depth-0 snapshots (raw NeuralAgent): sample vs argmax.
+        self.snapshot_deterministic = snapshot_deterministic
         # Group-level sampling weights (see `sample`); None -> legacy uniform draw.
         self.baseline_weight = baseline_weight
         self.snapshot_weight = snapshot_weight
@@ -74,12 +80,22 @@ class OpponentPool:
         if self.search_depth >= 1:
             from kaisparov.agents.minimax_agent import MinimaxAgent
 
-            agent = MinimaxAgent(frozen, processor, depth=self.search_depth)
+            agent = MinimaxAgent(
+                frozen,
+                processor,
+                depth=self.search_depth,
+                avoid_king_suicide=self.avoid_king_suicide,
+            )
         else:
             from kaisparov.agents.neural_agent import NeuralAgent
 
             # deterministic=False -> a bit of variety in the opponents' play.
-            agent = NeuralAgent(frozen, processor, deterministic=False)
+            agent = NeuralAgent(
+                frozen,
+                processor,
+                deterministic=self.snapshot_deterministic,
+                avoid_king_suicide=self.avoid_king_suicide,
+            )
         self._agents.append(agent)
         if len(self._agents) > self.max_size:
             self._agents.pop(0)
