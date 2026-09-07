@@ -207,6 +207,25 @@ class RGCNProcessor(BaseProcessor):
             entropy=dist.entropy(),
         )
 
+    def move_mask(self, game: ChessGame, moves) -> torch.Tensor:
+        """Boolean edge mask covering exactly ``moves`` (a list of ``(src, dst)`` coords).
+
+        Same edge-packing as :func:`get_legal_mask`, so the result can be passed as
+        ``legal_mask`` to :meth:`process_output` to restrict the policy to an explicit
+        move set (e.g. the king-safe moves — see ``NeuralAgent(avoid_king_suicide=...)``).
+        """
+        edge_index = self.static_graph_edges[0]
+        num_nodes = len(game.grid) ** 2
+        if not moves:
+            return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
+        keys = torch.tensor(
+            [coord_to_index(src) * num_nodes + coord_to_index(dst) for src, dst in moves],
+            dtype=edge_index.dtype,
+            device=edge_index.device,
+        )
+        packed_edges = edge_index[0] * num_nodes + edge_index[1]
+        return torch.isin(packed_edges, keys)
+
 
 def _coord_to_index_adapter(coord: tuple[int, int], board_size: int) -> int:
     _ = board_size

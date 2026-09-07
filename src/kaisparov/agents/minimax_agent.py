@@ -15,6 +15,7 @@ from __future__ import annotations
 import torch
 
 from kaisparov.agents.base import Move
+from kaisparov.agents.safety import safe_moves
 from kaisparov.core.board import ChessGame
 from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import PieceType
@@ -26,10 +27,16 @@ WIN = 1e6  # value of capturing the king (dominates any critic value)
 class MinimaxAgent:
     name = "minimax"
 
-    def __init__(self, model: torch.nn.Module, processor, depth: int = 2):
+    def __init__(
+        self, model: torch.nn.Module, processor, depth: int = 2, avoid_king_suicide: bool = False
+    ):
         self.model = model
         self.processor = processor
         self.depth = depth
+        # When True, drop root moves that hang our own king before searching. At
+        # depth 1 the search doesn't see the opponent's king-capture reply, so this
+        # guard is what stops a depth-1 minimax from walking into it.
+        self.avoid_king_suicide = avoid_king_suicide
         # Map a move (src, dst) to its position in the actor's edge scores, for ordering.
         edge_index = processor.static_graph_edges[0]
         self._edge_pos = {
@@ -84,6 +91,8 @@ class MinimaxAgent:
         moves = all_moves(game.grid, game.turn, game.en_passant_target)
         if not moves:
             return None
+        if self.avoid_king_suicide:
+            moves = safe_moves(game, moves)
 
         self.model.eval()
         with torch.no_grad():
