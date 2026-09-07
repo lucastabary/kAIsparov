@@ -140,16 +140,21 @@ One-time, on your Windows machine:
 
 Every time you want the latest results (pod can be off):
 ```powershell
-scripts\runpod\pull_runs.ps1
-# or directly (profile/endpoint come from ~/.aws/config):
-aws s3 sync s3://9v22kl54a0/kAIsparov/runs .\runs
+scripts\runpod\pull_runs.ps1              # sync runs/ home, THEN delete them from the volume
+scripts\runpod\pull_runs.ps1 -KeepRemote  # sync but leave them on the volume
+scripts\runpod\pull_runs.ps1 -List        # just list what's on the volume
 ```
+By default `pull_runs.ps1` **moves**: it syncs `runs/` home and then deletes them from the
+volume (the bucket *is* the volume, so this frees the storage you pay for). The delete only
+runs if the sync succeeded. Since it also removes them from the volume, a later cross-session
+`resume` from one of those runs would need it re-uploaded — pass `-KeepRemote` when you plan
+to extend a run.
 
 Notes on the RunPod S3 API:
 - The volume is **region-locked to EU-RO-1** — the pod must be deployed in that datacenter
   to mount it, and you need a 4090 available there.
 - It supports the standard `aws s3 cp` / `sync` / `ls` / `rm`; stick to those.
-- Bucket id (`9v22kl54a0`), region (`eu-ro-1`), and endpoint are set in `pull_runs.ps1` —
+- Bucket id (`pjg2ftia6g`), region (`eu-ro-1`), and endpoint are set in `pull_runs.ps1` —
   edit them there if the volume ever changes.
 - SSH `scp -r -P <port> root@<host>:/workspace/kAIsparov/runs .\runs` still works as a
   fallback while a pod is running.
