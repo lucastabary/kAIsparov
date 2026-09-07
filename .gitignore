@@ -28,6 +28,7 @@ htmlcov/
 
 # Secrets / local config
 .env
+.env.local
 credentials.txt
 *.credentials
 

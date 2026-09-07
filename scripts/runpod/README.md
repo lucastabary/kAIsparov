@@ -49,15 +49,18 @@ stopped), so you never pay for idle GPU time.
 pip install -r scripts/runpod/requirements.txt   # installs the runpod SDK
 ```
 
-Then make your **RunPod API key** (RunPod → Settings → API Keys) visible as
-`RUNPOD_API_KEY`. On Windows, set it once as a persistent user variable:
+Then give it your **RunPod API key** (RunPod → Settings → API Keys). Easiest: drop it in
+a gitignored **`.env.local`** at the repo root — `manage_pod.py` loads it automatically:
 
-```powershell
-[Environment]::SetEnvironmentVariable("RUNPOD_API_KEY", "<your-key>", "User")  # reopen the terminal after
+```ini
+# .env.local  (never committed)
+RUNPOD_API_KEY=your-key-here
+AWS_PROFILE=runpods3
 ```
 
-> The script also auto-loads a `.env` **file**, but **not in this repo**: here `.env`
-> is the Python virtualenv *directory*, so use the environment variable above instead.
+> It's `.env.local`, **not** `.env`, because in this repo `.env` is the Python virtualenv
+> *directory*. Alternatively set a persistent user variable (needs a fresh terminal after):
+> `[Environment]::SetEnvironmentVariable("RUNPOD_API_KEY", "<key>", "User")`.
 
 The command reads its config from the environment (all optional except the API key):
 

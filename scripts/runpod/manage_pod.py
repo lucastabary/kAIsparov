@@ -83,13 +83,18 @@ SSH_TIMEOUT = 180
 # Configuration
 # --------------------------------------------------------------------------- #
 def load_dotenv() -> None:
-    """Load ``KEY=VALUE`` lines from a ``.env`` file without overriding real env.
+    """Load ``KEY=VALUE`` lines from a dotenv file without overriding real env.
 
-    Looks at the repo root (two levels up from this file) and the current
-    working directory. Keeps things dependency-free — no python-dotenv needed.
+    Prefers ``.env.local`` (repo root or cwd); also honours a plain ``.env`` *file*
+    where one exists. In this repo ``.env`` at the root is the virtualenv directory,
+    so ``.env.local`` is the file to drop ``RUNPOD_API_KEY=...`` into. Dependency-free
+    — no python-dotenv needed.
     """
+    root = Path(__file__).resolve().parents[2]
     candidates = [
-        Path(__file__).resolve().parents[2] / ".env",
+        root / ".env.local",
+        root / ".env",
+        Path.cwd() / ".env.local",
         Path.cwd() / ".env",
     ]
     seen: set[Path] = set()
