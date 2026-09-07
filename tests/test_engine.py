@@ -244,3 +244,47 @@ def test_attacked_squares_matches_is_in_check_on_king_square():
     place(game, (0, 3), Player.WHITE, PieceType.PAWN)  # block the file
     assert not is_in_check(game.grid, Player.WHITE)
     assert (0, 0) not in attacked_squares(game.grid, Player.BLACK)
+
+
+def _is_in_check_reference(grid, player: Player) -> bool:
+    """Brute-force oracle: the pre-optimization definition of ``is_in_check`` — the
+    king is attacked iff some enemy piece's ``pseudo_legal_moves`` reaches it."""
+    from kaisparov.core.movegen import pseudo_legal_moves
+    from kaisparov.core.rules import find_king
+
+    king_pos = find_king(grid, player)
+    if king_pos is None:
+        return False
+    enemy = Player.BLACK if player == Player.WHITE else Player.WHITE
+    for x, y in all_squares():
+        piece = grid[x][y]
+        if (
+            piece is not None
+            and piece.player == enemy
+            and king_pos in pseudo_legal_moves(grid, (x, y))
+        ):
+            return True
+    return False
+
+
+def test_is_in_check_matches_bruteforce_on_random_positions():
+    """The fast ``is_in_check`` must agree with the brute-force oracle everywhere."""
+    import random
+
+    from kaisparov.core.rules import is_in_check
+
+    rng = random.Random(1234)
+    types = list(PieceType)
+    players = [Player.WHITE, Player.BLACK]
+    squares = list(all_squares())
+
+    for _ in range(400):
+        game = empty_game()
+        # Always give each side a king, then scatter a random cast of other pieces.
+        spots = rng.sample(squares, rng.randint(2, 16))
+        place(game, spots[0], Player.WHITE, PieceType.KING)
+        place(game, spots[1], Player.BLACK, PieceType.KING)
+        for coord in spots[2:]:
+            place(game, coord, rng.choice(players), rng.choice(types))
+        for player in players:
+            assert is_in_check(game.grid, player) == _is_in_check_reference(game.grid, player)

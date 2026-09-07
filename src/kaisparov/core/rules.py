@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from kaisparov.core import attacks
 from kaisparov.core.coords import ALL_SQUARES, Coord, in_bounds
-from kaisparov.core.movegen import Grid, pseudo_legal_moves
+from kaisparov.core.movegen import Grid
 from kaisparov.core.pieces import PieceType, Player
 
 
@@ -17,20 +17,60 @@ def find_king(grid: Grid, player: Player) -> Coord | None:
 
 
 def is_in_check(grid: Grid, player: Player) -> bool:
-    """True if ``player``'s king is attacked by any enemy piece."""
+    """True if ``player``'s king is attacked by any enemy piece.
+
+    Scans *outward from the king* along each attack pattern and returns on the first
+    enemy attacker, reusing the precomputed :mod:`kaisparov.core.attacks` tables: a
+    slider ray stops at its first blocker and no enemy move lists are ever built. This
+    is the same blocking-aware notion as before (equivalent to asking whether any enemy
+    ``pseudo_legal_moves`` reaches the king) at a fraction of the cost.
+    """
     king_pos = find_king(grid, player)
     if king_pos is None:
         return False
 
     enemy = Player.BLACK if player == Player.WHITE else Player.WHITE
-    for x, y in ALL_SQUARES:
-        piece = grid[x][y]
-        if (
-            piece is not None
-            and piece.player == enemy
-            and king_pos in pseudo_legal_moves(grid, (x, y))
-        ):
+    kx, ky = king_pos
+
+    # Knight: an enemy knight on any knight-hop square attacks the king.
+    for tx, ty in attacks.KNIGHT_TARGETS[king_pos]:
+        piece = grid[tx][ty]
+        if piece is not None and piece.player == enemy and piece.type == PieceType.KNIGHT:
             return True
+
+    # Adjacent enemy king (a king can capture an adjacent king in this variant).
+    for tx, ty in attacks.KING_TARGETS[king_pos]:
+        piece = grid[tx][ty]
+        if piece is not None and piece.player == enemy and piece.type == PieceType.KING:
+            return True
+
+    # Enemy pawns attack diagonally toward the king: a black pawn sits one row above
+    # the king (it captures downward), a white pawn one row below.
+    pawn_dy = 1 if enemy == Player.BLACK else -1
+    for dx in (-1, 1):
+        target = (kx + dx, ky + pawn_dy)
+        if in_bounds(target):
+            piece = grid[target[0]][target[1]]
+            if piece is not None and piece.player == enemy and piece.type == PieceType.PAWN:
+                return True
+
+    # Sliders: the first piece down each ray. Orthogonal -> enemy rook/queen;
+    # diagonal -> enemy bishop/queen. A blocker of any kind ends the ray.
+    for ray in attacks.ORTHO_RAYS[king_pos]:
+        for cx, cy in ray:
+            piece = grid[cx][cy]
+            if piece is not None:
+                if piece.player == enemy and piece.type in (PieceType.ROOK, PieceType.QUEEN):
+                    return True
+                break
+    for ray in attacks.DIAG_RAYS[king_pos]:
+        for cx, cy in ray:
+            piece = grid[cx][cy]
+            if piece is not None:
+                if piece.player == enemy and piece.type in (PieceType.BISHOP, PieceType.QUEEN):
+                    return True
+                break
+
     return False
 
 
