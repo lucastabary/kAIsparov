@@ -32,7 +32,7 @@ $Aws = Resolve-Aws
 $Bucket   = "9v22kl54a0"
 $Region   = "eu-ro-1"
 $Endpoint = "https://s3api-eu-ro-1.runpod.io"
-$Profile  = "runpod"
+$Profile  = if ($env:AWS_PROFILE) { $env:AWS_PROFILE } else { "runpods3" }
 $RemoteRunsPrefix = "kAIsparov/runs"        # path of runs/ inside the volume
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")

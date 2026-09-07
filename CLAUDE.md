@@ -38,7 +38,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 ## Commands
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt   # CUDA 11.8 or /cpu index
+pip install -r requirements.txt -r requirements-dev.txt   # CUDA 12.1 or /cpu index
 pip install -e .
 
 kaisparov train --config config/default.yaml   # or: python -m kaisparov.cli train

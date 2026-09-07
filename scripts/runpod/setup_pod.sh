@@ -27,9 +27,10 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 
-# GPU wheels: PyTorch built against CUDA 11.8 (matches requirements.txt torch==2.0.1).
-echo ">> installing GPU dependencies (cu118)"
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+# GPU wheels: PyTorch built against CUDA 12.1 (matches requirements.txt torch==2.4.1).
+# Use a RunPod PyTorch 2.4 template (Python 3.11); the host driver handles cu121 fine.
+echo ">> installing GPU dependencies (cu121)"
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
 pip install -r requirements-dev.txt
 pip install -e .
 

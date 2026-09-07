@@ -23,8 +23,9 @@ on CPU; the GNN forward/backward is a rounding error next to it. So:
 
 1. **Create a Network Volume** (RunPod → Storage). ~20 GB is plenty, in a region that has
    RTX 4090s. This is what persists between sessions.
-2. **Deploy a pod** on that volume: pick an **RTX 4090**, a **PyTorch 2.x / CUDA 11.8**
-   template (or any CUDA base image), and attach the volume at `/workspace`.
+2. **Deploy a pod** on that volume: pick an **RTX 4090**, a **PyTorch 2.4 (Python 3.11)**
+   template, and attach the volume at `/workspace`. The image's CUDA version doesn't matter
+   (the torch wheel ships its own cu121 libs; the host driver is recent enough).
 3. In the pod's web terminal, run the setup once:
    ```bash
    bash <(curl -sSL https://raw.githubusercontent.com/lucastabary/kAIsparov/main/scripts/runpod/setup_pod.sh)
@@ -66,17 +67,23 @@ One-time, on your Windows machine:
 
 1. Create **S3 API keys** in RunPod → Settings → *S3 API Keys* (distinct from your RunPod
    API key). You get an access key + secret.
-2. Configure an AWS CLI profile:
+2. Configure an AWS CLI profile named `runpods3`:
    ```powershell
-   aws configure --profile runpod   # region: eu-ro-1, output: json
+   aws configure --profile runpods3   # region: eu-ro-1, output: json
    ```
+   Then add the volume's endpoint to that profile so no per-command flags are needed —
+   in `~/.aws/config` under `[profile runpods3]`:
+   ```ini
+   endpoint_url = https://s3api-eu-ro-1.runpod.io
+   ```
+   `.vscode/settings.json` sets `AWS_PROFILE=runpods3` for this project's terminals, so
+   inside the project `aws s3 ...` picks the profile, region and endpoint automatically.
 
 Every time you want the latest results (pod can be off):
 ```powershell
 scripts\runpod\pull_runs.ps1
-# or directly:
-aws s3 sync s3://9v22kl54a0/kAIsparov/runs .\runs `
-  --region eu-ro-1 --endpoint-url https://s3api-eu-ro-1.runpod.io --profile runpod
+# or directly (profile/endpoint come from ~/.aws/config):
+aws s3 sync s3://9v22kl54a0/kAIsparov/runs .\runs
 ```
 
 Notes on the RunPod S3 API:

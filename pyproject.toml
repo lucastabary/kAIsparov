@@ -13,11 +13,11 @@ authors = [{ name = "Lucas Tabary" }]
 keywords = ["chess", "graph-neural-network", "reinforcement-learning", "ppo", "pytorch-geometric"]
 
 dependencies = [
-    "torch>=2.0,<2.1",
+    "torch>=2.4,<2.5",
     "torch-geometric>=2.5",
     "numpy>=1.24",
-    "pygame>=2.1",
-    "pyyaml>=6.0",
+    "pygame>=2.6",
+    "pyyaml>=6.0.1",
     "tensorboard>=2.12",
 ]
 
