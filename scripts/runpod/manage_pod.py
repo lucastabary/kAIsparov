@@ -478,7 +478,15 @@ def _runner_script(repo_dir: str, session: str, command: str) -> str:
         # still-running job; it is removed once the exit code is recorded.
         "(\n"
         f"cd {shlex.quote(repo_dir)} || exit 1\n"
-        "[ -f .venv/bin/activate ] && source .venv/bin/activate\n"
+        # Activate the repo's venv; fail loudly (not a cryptic 'command not found')
+        # if it isn't built yet.
+        "if [ -f .venv/bin/activate ]; then\n"
+        "  source .venv/bin/activate\n"
+        "else\n"
+        '  echo ">> ERROR: no virtualenv at $(pwd)/.venv." >&2\n'
+        '  echo ">>        Build it once with: bash scripts/runpod/setup_pod.sh" >&2\n'
+        "  exit 1\n"
+        "fi\n"
         f"{command}\n"
         ') 2>&1 | tee "$LOG"\n'
         'echo "${PIPESTATUS[0]}" > "$EXIT_FILE"\n'
