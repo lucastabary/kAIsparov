@@ -47,9 +47,10 @@ Notes
 * ``start``, and ``run`` before it launches, ``git pull --ff-only`` the pod's repo
   (``RUNPOD_REPO_DIR``) so a session always runs fresh code; pass ``--no-pull`` to skip,
   or use the standalone ``pull`` command. A failed pull warns but does not abort.
-* ``run`` executes the command from ``RUNPOD_REPO_DIR`` with the repo's ``.venv``
-  activated (if present), so relative paths (``config/...``) and console entry points
-  (``kaisparov``) work directly. It launches the job **detached** (``setsid``) on the pod,
+* ``run`` builds the repo's ``.venv`` on first use (runs ``setup_pod.sh`` if it is
+  missing), then executes the command from ``RUNPOD_REPO_DIR`` with that venv activated,
+  so relative paths (``config/...``) and console entry points (``kaisparov``) work
+  directly. It launches the job **detached** (``setsid``) on the pod,
   so the work survives a dropped SSH connection; this script tails its output and, once the
   command exits, stops the pod (unless ``--keep``). If *this* process is killed the remote
   command keeps running, but the automatic power-off won't fire — re-attach with the
@@ -321,6 +322,23 @@ def git_pull(cfg: Config, ip: str, port: int) -> int:
     return code
 
 
+def ensure_setup(cfg: Config, ip: str, port: int) -> None:
+    """Build the repo's venv on the pod once, if it isn't there yet (runs setup_pod.sh)."""
+    venv = f"{cfg.repo_dir}/.venv/bin/activate"
+    if ssh_run(cfg, ip, port, f'test -f "{venv}"').returncode == 0:
+        return
+    setup = f"{cfg.repo_dir}/scripts/runpod/setup_pod.sh"
+    if ssh_run(cfg, ip, port, f'test -f "{setup}"').returncode != 0:
+        sys.exit(
+            f"No venv and no setup script at {setup} — clone the repo on the pod first "
+            "(see scripts/runpod/README.md)."
+        )
+    print(">> no venv on the pod; running setup_pod.sh (one-time, may take a few minutes) ...")
+    if ssh_run(cfg, ip, port, f"bash {shlex.quote(setup)}").returncode != 0:
+        sys.exit("setup_pod.sh failed on the pod — fix it there, then retry.")
+    print(">> setup complete.")
+
+
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
@@ -430,6 +448,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     if not args.no_pull:
         git_pull(cfg, ip, port)
 
+    ensure_setup(cfg, ip, port)
     launch_remote_command(cfg, ip, port, session, command)
     print(
         f">> launched job '{session}' (detached). Streaming output "

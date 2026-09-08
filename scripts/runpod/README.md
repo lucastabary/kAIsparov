@@ -96,10 +96,11 @@ python scripts/runpod/manage_pod.py run -- kaisparov train --config \
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
 
-`run` executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with the repo's `.venv`
-activated, so relative paths (`config/...`) and the `kaisparov` entry point work directly.
-`kaisparov train` writes checkpoints and TensorBoard metrics under `runs/<id>/` on the
-volume — exactly as it does locally — which `pull_runs.ps1` then brings home.
+`run` builds the repo's `.venv` on first use (it runs `setup_pod.sh` automatically if the
+venv is missing), then executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with that
+venv activated, so relative paths (`config/...`) and the `kaisparov` entry point work
+directly. `kaisparov train` writes checkpoints and TensorBoard metrics under `runs/<id>/`
+on the volume — exactly as it does locally — which `pull_runs.ps1` then brings home.
 
 `start` and `run` **`git pull --ff-only` the pod's repo by default** so a session always
 runs fresh code (a failed pull warns but doesn't abort); pass `--no-pull` to skip it, or use
