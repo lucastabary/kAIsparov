@@ -47,8 +47,10 @@ Notes
 * ``start``, and ``run`` before it launches, ``git pull --ff-only`` the pod's repo
   (``RUNPOD_REPO_DIR``) so a session always runs fresh code; pass ``--no-pull`` to skip,
   or use the standalone ``pull`` command. A failed pull warns but does not abort.
-* ``run`` launches the command inside a ``tmux`` session on the pod, so the work
-  survives a dropped SSH connection; this script tails its output and, once the
+* ``run`` executes the command from ``RUNPOD_REPO_DIR`` with the repo's ``.venv``
+  activated (if present), so relative paths (``config/...``) and console entry points
+  (``kaisparov``) work directly. It launches inside a ``tmux`` session on the pod, so the
+  work survives a dropped SSH connection; this script tails its output and, once the
   command exits, stops the pod (unless ``--keep``). If *this* process is killed
   the remote command keeps running, but the automatic power-off won't fire —
   reconnect with ``tmux attach`` and stop the pod yourself.
@@ -449,7 +451,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # `run` internals
 # --------------------------------------------------------------------------- #
-def _runner_script(session: str, command: str) -> str:
+def _runner_script(repo_dir: str, session: str, command: str) -> str:
     """Bash script (run on the pod, in tmux) that logs output and records the exit code."""
     return (
         "#!/usr/bin/env bash\n"
@@ -461,10 +463,13 @@ def _runner_script(session: str, command: str) -> str:
         'rm -f "$EXIT_FILE"\n'
         ': > "$LOG"\n'
         # A subshell (not a brace group) so an explicit `exit` in the user's
-        # command only ends the subshell. tee mirrors output to the log (which we
+        # command only ends the subshell. cd into the repo first so relative paths
+        # (config/..., scripts/...) resolve. tee mirrors output to the log (which we
         # tail) and to the tmux pane (so a direct `tmux attach` also shows it);
         # PIPESTATUS[0] is the command's own status, not tee's.
         "(\n"
+        f"cd {shlex.quote(repo_dir)} || exit 1\n"
+        "[ -f .venv/bin/activate ] && source .venv/bin/activate\n"
         f"{command}\n"
         ') 2>&1 | tee "$LOG"\n'
         'echo "${PIPESTATUS[0]}" > "$EXIT_FILE"\n'
@@ -473,7 +478,7 @@ def _runner_script(session: str, command: str) -> str:
 
 def launch_remote_command(cfg: Config, ip: str, port: int, session: str, command: str) -> None:
     """Write the runner script to the pod and launch it detached in tmux."""
-    script = _runner_script(session, command)
+    script = _runner_script(cfg.repo_dir, session, command)
     encoded = base64.b64encode(script.encode()).decode()
     script_path = f"{REMOTE_RUN_DIR}/{session}.sh"
     bootstrap = (

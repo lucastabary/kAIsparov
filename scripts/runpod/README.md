@@ -91,8 +91,13 @@ python scripts/runpod/manage_pod.py tmux attach train  # attach to one (add --cr
 # Start (if needed) → git pull → run → power off at the end. The job runs inside tmux
 # on the pod (so it survives an SSH drop) and its output is streamed here live:
 python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh
+python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh config/experiments/x.yaml
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
+
+`run` executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with the repo's `.venv`
+activated, so relative paths and `kaisparov` work directly. `run_training.sh` chains the
+**v4 curriculum** by default, or the config files you pass it as arguments.
 
 `start` and `run` **`git pull --ff-only` the pod's repo by default** so a session always
 runs fresh code (a failed pull warns but doesn't abort); pass `--no-pull` to skip it, or use
@@ -108,8 +113,9 @@ yourself.
    ```bash
    cd /workspace/kAIsparov && bash scripts/runpod/run_training.sh
    ```
-   It `git pull`s, then runs the 3-stage v3 command inside `tmux` (detach with `Ctrl-b d`;
-   reattach with `tmux attach -t train`). Training keeps going if your SSH/browser drops.
+   It `git pull`s, then runs the default 3-stage v4 curriculum inside `tmux` (detach with
+   `Ctrl-b d`; reattach with `tmux attach -t train`). Pass config paths as arguments to
+   run a different set. Training keeps going if your SSH/browser drops.
 3. **Watch** (optional): in a second shell on the pod,
    ```bash
    source /workspace/kAIsparov/.venv/bin/activate
