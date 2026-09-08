@@ -34,7 +34,7 @@ curriculum:
 
 rollout:
   opponent: pool
-  num_workers: 0            # 0 = split games across all CPU cores (parallel rollout)
+  num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
   pool: v4_phase1-1         # random + material, both avoid_king_suicide; no snapshots
   episodes_per_epoch: 16    # less noisy PPO gradient than 8
   max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
