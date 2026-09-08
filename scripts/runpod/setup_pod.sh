@@ -41,4 +41,5 @@ print("torch", torch.__version__, "| cuda available:", torch.cuda.is_available()
 if torch.cuda.is_available():
     print("gpu:", torch.cuda.get_device_name(0))
 PY
-echo ">> setup done. Next sessions: bash scripts/runpod/run_training.sh"
+echo ">> setup done. Train with: kaisparov train --config config/experiments/scratch_v4_stage1.yaml ..."
+echo ">> or from your machine: python scripts/runpod/manage_pod.py run -- kaisparov train --config ..."

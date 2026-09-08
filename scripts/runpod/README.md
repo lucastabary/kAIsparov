@@ -88,16 +88,19 @@ python scripts/runpod/manage_pod.py ssh -- nvidia-smi  # or a one-off command
 python scripts/runpod/manage_pod.py tmux list        # the pod's tmux sessions
 python scripts/runpod/manage_pod.py tmux attach train  # attach to one (add --create to make it)
 
-# Start (if needed) → git pull → run → power off at the end. The job runs inside tmux
+# Start (if needed) → git pull → train → power off at the end. The job runs inside tmux
 # on the pod (so it survives an SSH drop) and its output is streamed here live:
-python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh
-python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh config/experiments/x.yaml
+python scripts/runpod/manage_pod.py run -- kaisparov train --config \
+  config/experiments/scratch_v4_stage1.yaml \
+  config/experiments/scratch_v4_stage2.yaml \
+  config/experiments/scratch_v4_stage3.yaml
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
 
 `run` executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with the repo's `.venv`
-activated, so relative paths and `kaisparov` work directly. `run_training.sh` chains the
-**v4 curriculum** by default, or the config files you pass it as arguments.
+activated, so relative paths (`config/...`) and the `kaisparov` entry point work directly.
+`kaisparov train` writes checkpoints and TensorBoard metrics under `runs/<id>/` on the
+volume — exactly as it does locally — which `pull_runs.ps1` then brings home.
 
 `start` and `run` **`git pull --ff-only` the pod's repo by default** so a session always
 runs fresh code (a failed pull warns but doesn't abort); pass `--no-pull` to skip it, or use
@@ -109,13 +112,16 @@ yourself.
 ## Each training session
 
 1. **Start** a pod on the network volume (RunPod web UI, or `runpodctl`).
-2. **Launch** the curriculum:
+2. **Launch** the curriculum (inside `tmux` so it survives an SSH drop):
    ```bash
-   cd /workspace/kAIsparov && bash scripts/runpod/run_training.sh
+   cd /workspace/kAIsparov && git pull --ff-only && source .venv/bin/activate
+   tmux new -s train
+   kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
+     config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml
    ```
-   It `git pull`s, then runs the default 3-stage v4 curriculum inside `tmux` (detach with
-   `Ctrl-b d`; reattach with `tmux attach -t train`). Pass config paths as arguments to
-   run a different set. Training keeps going if your SSH/browser drops.
+   Detach with `Ctrl-b d`; reattach with `tmux attach -t train`. Checkpoints and metrics
+   land in `runs/<id>/` on the volume. (Driving it from your machine with
+   `manage_pod.py run` is easier — see above — and stops the pod for you at the end.)
 3. **Watch** (optional): in a second shell on the pod,
    ```bash
    source /workspace/kAIsparov/.venv/bin/activate

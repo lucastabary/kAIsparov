@@ -38,9 +38,10 @@ Examples
     python scripts/runpod/manage_pod.py tmux attach train
     python scripts/runpod/manage_pod.py stop
 
-    # Start (if needed), git pull, run the curriculum, then power the pod off at the end:
+    # Start (if needed), git pull, run the v4 curriculum, then power the pod off at the end:
     python scripts/runpod/manage_pod.py run -- \
-        bash scripts/runpod/run_training.sh
+        kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
+        config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml
 
 Notes
 -----
