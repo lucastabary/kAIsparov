@@ -29,6 +29,7 @@ class MatchSetup:
     mode: str  # "solo" (two humans) | "vs_ai" (human vs model) | "ai_vs_ai"
     human_color: Player = Player.WHITE  # only meaningful for "vs_ai"
     dev_mode: bool = False  # surface the model's analysis while playing
+    review_mode: bool = False  # grade each played move (chess.com-style badges)
     # Chosen model keys (see :class:`ModelOption`). ``ai_model`` is the opponent in
     # "vs_ai"; ``white_model``/``black_model`` are the two seats in "ai_vs_ai".
     ai_model: str | None = None
@@ -50,6 +51,22 @@ class MoveArrow:
     dest: Coord
     intensity: float = 1.0
     label: str = ""
+
+
+@dataclass(frozen=True)
+class MoveBadge:
+    """A rendering primitive for the move review: the grade of the move just played.
+
+    Sits on the destination square, chess.com style. ``tone`` selects a colour from
+    the interface palette (see ``_colors["quality"]``) and is the *name* of a
+    :class:`~kaisparov.insights.MoveQuality`; the interface deliberately does not
+    import that enum, so the engine package keeps knowing nothing about analysis.
+    """
+
+    square: Coord
+    symbol: str  # two characters at most, e.g. "!!" or "??"
+    tone: str = "good"
+    caption: str = ""  # spelled-out grade for the side panel
 
 
 class GameInterface:
@@ -86,6 +103,20 @@ class GameInterface:
             "button_border": (89, 173, 255),
             "button_active": (46, 84, 140),
             "analysis": (89, 173, 255),  # developer-overlay arrows/tints
+        }
+
+        # Move-review badges, keyed by MoveQuality name (see MoveBadge.tone).
+        self._quality_colors: dict[str, Color] = {
+            "brilliant": (38, 194, 168),
+            "great": (90, 155, 214),
+            "best": (129, 182, 76),
+            "excellent": (150, 191, 91),
+            "good": (150, 166, 140),
+            "forced": (140, 148, 166),
+            "inaccuracy": (231, 183, 51),
+            "mistake": (233, 145, 71),
+            "miss": (219, 105, 96),
+            "blunder": (219, 66, 47),
         }
 
     def set_game(self, game: ChessGame) -> None:
@@ -270,6 +301,29 @@ class GameInterface:
 
         self._screen.blit(overlay, (0, 0))
 
+    def _draw_move_badge(self, badge: MoveBadge | None, use_pov: bool) -> None:
+        """Draw the grade of the last move on its destination square.
+
+        A coloured disc pinned to the square's top-right corner, the way chess.com
+        marks up a reviewed game — close enough to the move to read at a glance,
+        small enough not to hide the piece underneath.
+        """
+        assert self._screen is not None
+        if badge is None:
+            return
+
+        rect = self._coord_to_rect(self._to_display_coord(badge.square, use_pov=use_pov))
+        color = self._quality_colors.get(badge.tone, self._colors["accent"])
+        radius = 18
+        centre = (rect.right - radius + 4, rect.top + radius - 4)
+
+        pygame.draw.circle(self._screen, color, centre, radius)
+        pygame.draw.circle(self._screen, (250, 252, 255), centre, radius, width=3)
+
+        font = self._make_font(20 if len(badge.symbol) < 2 else 17, bold=True)
+        text = font.render(badge.symbol, True, (18, 24, 34))
+        self._screen.blit(text, text.get_rect(center=centre))
+
     def _draw_arrow(
         self,
         surface: pygame.Surface,
@@ -390,6 +444,7 @@ class GameInterface:
         possible_destinations: set[tuple[int, int]] | None = None,
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
+        badge: MoveBadge | None = None,
     ) -> None:
         self._draw_gradient_background()
         self._draw_board(use_pov=use_pov)
@@ -399,6 +454,7 @@ class GameInterface:
             possible_destinations=possible_destinations or set(),
             use_pov=use_pov,
         )
+        self._draw_move_badge(badge, use_pov=use_pov)
         self._draw_side_panel(use_pov=use_pov, status_lines=status_lines)
 
     def render(self, use_pov: bool = True, fps: int = 60) -> None:
@@ -442,7 +498,8 @@ class GameInterface:
             "ai_vs_ai": pygame.Rect(left, 392, width, button_h),
             "white": pygame.Rect(left, 512, half, 48),
             "black": pygame.Rect(left + half + 16, 512, half, 48),
-            "dev": pygame.Rect(left, 592, width, 44),
+            "dev": pygame.Rect(left, 580, width, 40),
+            "review": pygame.Rect(left, 624, width, 40),
         }
 
     def _draw_button(
@@ -487,9 +544,9 @@ class GameInterface:
         """Show the pre-game menu and return the chosen setup (``None`` if closed).
 
         Pick a mode (solo, vs AI, AI vs AI); the colour toggle (used only vs the AI)
-        and the developer-mode switch persist until a mode is clicked. Solo starts
-        immediately; the AI modes open a model-selection screen first so the user
-        chooses which trained model plays each AI seat.
+        and the two switches (developer mode, move review) persist until a mode is
+        clicked. Solo starts immediately; the AI modes open a model-selection screen
+        first so the user chooses which trained model plays each AI seat.
         """
         self._ensure_initialized()
         assert self._screen is not None
@@ -498,6 +555,7 @@ class GameInterface:
         models = models or []
         color = Player.WHITE
         dev = False
+        review = False
         cx = self.window_width // 2
 
         title_font = self._make_font(66, bold=True)
@@ -515,13 +573,13 @@ class GameInterface:
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     pos = event.pos
                     if layout["solo"].collidepoint(pos):
-                        return MatchSetup("solo", color, dev)
+                        return MatchSetup("solo", color, dev, review)
                     if layout["vs_ai"].collidepoint(pos):
-                        setup = self._select_models("vs_ai", color, dev, models)
+                        setup = self._select_models("vs_ai", color, dev, review, models)
                         if setup != "back":
                             return setup
                     if layout["ai_vs_ai"].collidepoint(pos):
-                        setup = self._select_models("ai_vs_ai", color, dev, models)
+                        setup = self._select_models("ai_vs_ai", color, dev, review, models)
                         if setup != "back":
                             return setup
                     if layout["white"].collidepoint(pos):
@@ -530,6 +588,8 @@ class GameInterface:
                         color = Player.BLACK
                     if layout["dev"].collidepoint(pos):
                         dev = not dev
+                    if layout["review"].collidepoint(pos):
+                        review = not review
 
             self._draw_gradient_background()
 
@@ -573,13 +633,19 @@ class GameInterface:
                 dev,
                 hover=layout["dev"].collidepoint(mouse),
             )
+            self._draw_checkbox(
+                layout["review"],
+                "Analyse des coups (notes style chess.com)",
+                review,
+                hover=layout["review"].collidepoint(mouse),
+            )
 
             hint = hint_font.render(
                 "Cliquez un mode pour commencer.",
                 True,
                 self._colors["panel_subtext"],
             )
-            self._screen.blit(hint, hint.get_rect(center=(cx, 672)))
+            self._screen.blit(hint, hint.get_rect(center=(cx, 700)))
 
             pygame.display.flip()
             self._clock.tick(60)
@@ -612,7 +678,7 @@ class GameInterface:
         self._screen.blit(text, (rect.x + 14, rect.centery - text.get_height() // 2))
 
     def _select_models(
-        self, mode: str, color: Player, dev: bool, models: list[ModelOption]
+        self, mode: str, color: Player, dev: bool, review: bool, models: list[ModelOption]
     ) -> MatchSetup | str | None:
         """Second menu screen: pick which model plays each AI seat.
 
@@ -623,7 +689,7 @@ class GameInterface:
         assert self._screen is not None
         assert self._clock is not None
         if not models:
-            return MatchSetup(mode, color, dev)
+            return MatchSetup(mode, color, dev, review)
 
         sel = {"white": 0, "black": 0, "ai": 0}
         scroll = {"white": 0, "black": 0, "ai": 0}
@@ -676,11 +742,14 @@ class GameInterface:
                         return "back"
                     if start_btn.collidepoint(pos):
                         if mode == "vs_ai":
-                            return MatchSetup(mode, color, dev, ai_model=models[sel["ai"]].key)
+                            return MatchSetup(
+                                mode, color, dev, review, ai_model=models[sel["ai"]].key
+                            )
                         return MatchSetup(
                             mode,
                             color,
                             dev,
+                            review,
                             white_model=models[sel["white"]].key,
                             black_model=models[sel["black"]].key,
                         )
@@ -738,6 +807,7 @@ class GameInterface:
         use_pov: bool = True,
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
+        badge: MoveBadge | None = None,
         label: str = "Coup suivant  >",
     ) -> bool:
         """Block until the user asks for the next move (click the panel button, or
@@ -760,7 +830,10 @@ class GameInterface:
                 ):
                     return True
             self._draw_frame(
-                use_pov=use_pov, analysis_arrows=analysis_arrows, status_lines=status_lines
+                use_pov=use_pov,
+                analysis_arrows=analysis_arrows,
+                status_lines=status_lines,
+                badge=badge,
             )
             self._draw_button(btn, label, hover=btn.collidepoint(mouse), font_size=20)
             pygame.display.flip()
@@ -769,14 +842,20 @@ class GameInterface:
     def show_game_over(self, message: str, use_pov: bool = True) -> bool:
         """Dim the board and show the result over a "back to menu" button.
 
+        ``message`` may span several lines — the result, then whatever the caller
+        wants to add after it (a move-review summary, say) — and the banner grows
+        to fit them.
+
         Returns ``True`` to go back to the menu (button click or Enter/Space/Esc),
         ``False`` if the window was closed.
         """
         assert self._screen is not None
         assert self._clock is not None
         cx, cy = self.window_width // 2, self.window_height // 2
-        banner = pygame.Rect(cx - 270, cy - 130, 540, 260)
-        btn = pygame.Rect(cx - 150, cy + 34, 300, 58)
+        lines = [line for line in message.splitlines() if line.strip()][:6]
+        banner_height = 190 + 32 * len(lines)
+        banner = pygame.Rect(cx - 300, cy - banner_height // 2, 600, banner_height)
+        btn = pygame.Rect(cx - 150, banner.bottom - 82, 300, 58)
         title_font = self._make_font(44, bold=True)
         msg_font = self._make_font(24, bold=False)
         back_keys = (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE)
@@ -803,10 +882,10 @@ class GameInterface:
                 self._screen, self._colors["accent"], banner, width=2, border_radius=18
             )
             title = title_font.render("Partie terminee", True, self._colors["panel_text"])
-            self._screen.blit(title, title.get_rect(center=(cx, banner.y + 60)))
-            for i, line in enumerate(message.split("\n")[:2]):
+            self._screen.blit(title, title.get_rect(center=(cx, banner.y + 52)))
+            for i, line in enumerate(lines):
                 msg = msg_font.render(line, True, self._colors["panel_subtext"])
-                self._screen.blit(msg, msg.get_rect(center=(cx, banner.y + 120 + i * 32)))
+                self._screen.blit(msg, msg.get_rect(center=(cx, banner.y + 106 + i * 32)))
             self._draw_button(btn, "Retour au menu", hover=btn.collidepoint(mouse), font_size=22)
             pygame.display.flip()
             self._clock.tick(60)
@@ -817,6 +896,7 @@ class GameInterface:
         fps: int = 60,
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
+        badge: MoveBadge | None = None,
     ) -> tuple[tuple[int, int], tuple[int, int]] | None:
         """Internal method: waits for a single move without closing pygame.
 
@@ -872,6 +952,7 @@ class GameInterface:
                 possible_destinations=possible_destinations,
                 analysis_arrows=analysis_arrows,
                 status_lines=status_lines,
+                badge=badge,
             )
             pygame.display.flip()
             self._clock.tick(fps)
