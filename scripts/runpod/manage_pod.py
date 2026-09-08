@@ -482,6 +482,9 @@ def _runner_script(repo_dir: str, session: str, command: str) -> str:
     return (
         "#!/usr/bin/env bash\n"
         "set -o pipefail\n"
+        # Python block-buffers stdout when it's a pipe (here, into tee), so [epoch ...]
+        # lines would arrive in ~8KB bursts. Force line-flushing for live streaming.
+        "export PYTHONUNBUFFERED=1\n"
         f'RUN_DIR="{REMOTE_RUN_DIR}"\n'
         'mkdir -p "$RUN_DIR"\n'
         f'LOG="$RUN_DIR/{session}.log"\n'
