@@ -228,15 +228,18 @@ class ChessGame:
         return self.make(source, dest).captured
 
     # -------------------------------------------------------------- viewpoints
-    def to_pov_coord(self, coord: Coord) -> Coord:
-        return coords.to_pov_coord(coord, self.turn)
+    # ``player=None`` means "whoever is to move", the point of view that follows the
+    # game. Pass a player to pin the view to one side regardless of the turn — what a
+    # human wants when they are watching their own colour play an opponent.
+    def to_pov_coord(self, coord: Coord, player: Player | None = None) -> Coord:
+        return coords.to_pov_coord(coord, self.turn if player is None else player)
 
-    def from_pov_coord(self, pov_coord: Coord) -> Coord:
-        return coords.from_pov_coord(pov_coord, self.turn)
+    def from_pov_coord(self, pov_coord: Coord, player: Player | None = None) -> Coord:
+        return coords.from_pov_coord(pov_coord, self.turn if player is None else player)
 
-    def get_pov_grid(self) -> Grid:
-        """Return the grid from the current player's point of view."""
-        if self.turn == Player.WHITE:
+    def get_pov_grid(self, player: Player | None = None) -> Grid:
+        """Return the grid from ``player``'s point of view (default: the side to move)."""
+        if (self.turn if player is None else player) == Player.WHITE:
             return self.grid
         return [
             [self.grid[col][BOARD_SIZE - 1 - row] for row in range(BOARD_SIZE)]

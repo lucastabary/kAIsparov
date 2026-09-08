@@ -397,6 +397,21 @@ def _build_judge(args, analyzer: Analyzer | None, enabled: bool) -> MoveJudge | 
     return MoveJudge(evaluator, lookahead=args.judge_depth)
 
 
+def _board_orientation(setup: MatchSetup) -> Player | None:
+    """Which side sits at the bottom of the board for this match.
+
+    Only two humans on one keyboard want the board to turn over between moves. Against
+    an AI it stays on the human's side: letting it follow the side to move flipped the
+    whole board for the fraction of a second the AI was thinking. AI vs AI keeps White
+    at the bottom so the spectator's view never moves either.
+    """
+    if setup.mode == "vs_ai":
+        return setup.human_color
+    if setup.mode == "ai_vs_ai":
+        return Player.WHITE
+    return None  # solo: follow the side to move
+
+
 def _badge_from_verdict(verdict: MoveVerdict) -> MoveBadge:
     """Map a verdict onto the mark the interface draws on the destination square."""
     return MoveBadge(
@@ -486,16 +501,16 @@ def run_match(
     dev_mode: bool,
     *,
     judge: MoveJudge | None = None,
-    view_pov: bool = True,
+    view_as: Player | None = None,
     step_mode: bool = False,
     ai_delay_ms: int = 500,
 ) -> str:
     """Drive a game where each side is a human (mouse) or a policy.
 
-    ``view_pov`` fixes the board orientation: ``True`` follows the side to move (POV),
-    ``False`` keeps White at the bottom throughout (used for AI vs AI so the view does
-    not flip every move). ``step_mode`` makes AI seats wait for the user to request
-    each move (the "Coup suivant" button) instead of auto-advancing on a timer.
+    ``view_as`` fixes the board orientation to one side. ``None`` follows the side to
+    move, which flips the board every ply -- only ever right when two humans share a
+    keyboard. ``step_mode`` makes AI seats wait for the user to request each move (the
+    "Coup suivant" button) instead of auto-advancing on a timer.
     ``judge`` (optional) grades each move as it is played and drives the badge on the
     board, the panel text, and the end-of-game accuracy recap.
 
@@ -510,7 +525,7 @@ def run_match(
     def finish(message: str) -> str:
         summary = _review_summary(review) if judge is not None else []
         full = "\n".join([message, *summary])
-        return "quit" if not ui.show_game_over(full, use_pov=view_pov) else "menu"
+        return "quit" if not ui.show_game_over(full, view_as=view_as) else "menu"
 
     while True:
         side = game.turn
@@ -524,7 +539,7 @@ def run_match(
 
         if agent is None:  # human seat
             move = ui._get_single_move(
-                use_pov=view_pov,
+                view_as=view_as,
                 analysis_arrows=arrows,
                 status_lines=status,
                 badge=badge,
@@ -536,7 +551,7 @@ def run_match(
             if step_mode:
                 turn_status = status + [f"Trait aux {_fr_color(side)}"]
                 if not ui.wait_for_step(
-                    use_pov=view_pov,
+                    view_as=view_as,
                     analysis_arrows=arrows,
                     status_lines=turn_status,
                     badge=badge,
@@ -545,7 +560,7 @@ def run_match(
                     return "quit"
             else:
                 ui._draw_frame(
-                    use_pov=view_pov,
+                    view_as=view_as,
                     analysis_arrows=arrows,
                     status_lines=status,
                     badge=badge,
@@ -573,7 +588,7 @@ def run_match(
 
         captured = game.play(*move)
         ui._draw_frame(
-            use_pov=view_pov,
+            view_as=view_as,
             badge=badge,
             status_lines=review_status,
             legend_button=judge is not None,
@@ -694,7 +709,7 @@ def main(argv: list[str] | None = None) -> None:
                 analyzers,
                 setup.dev_mode,
                 judge=judge,
-                view_pov=setup.mode != "ai_vs_ai",
+                view_as=_board_orientation(setup),
                 step_mode=setup.mode == "ai_vs_ai",
                 ai_delay_ms=args.ai_delay,
             )

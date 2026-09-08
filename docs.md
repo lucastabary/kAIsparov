@@ -91,6 +91,8 @@ Pure Python, no torch, no pygame — fast and unit-tested.
   - `play(source, dest)` — validate then `make`; returns the captured piece or `None`.
   - `copy()` — a deep, independent clone.
   - `possible_moves`, `is_move_valid`, `to_pov_coord`/`get_pov_grid`, `is_in_check`.
+    The viewpoint helpers take an optional `player`: omit it to follow the side to
+    move, pass one to pin the board to that side whoever's turn it is.
 - **`game_interface.py`** — the pygame board (rendering + mouse input). UI only.
 
 **Correctness is locked by `tests/test_engine.py`**, including a *perft* count from

@@ -12,6 +12,10 @@ from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 Color = tuple[int, int, int]
 
 
+def _fr_color(player: Player) -> str:
+    return "Blancs" if player == Player.WHITE else "Noirs"
+
+
 @dataclass(frozen=True)
 class ModelOption:
     """One selectable AI in the menu. ``key`` is opaque to the interface — the caller
@@ -207,11 +211,11 @@ class GameInterface:
 
                 self._piece_sprites[(player, piece_type)] = surface
 
-    def _last_move_display_cells(self, use_pov: bool) -> set[tuple[int, int]]:
+    def _last_move_display_cells(self, view_as: Player | None) -> set[tuple[int, int]]:
         """Display coords of the last move's from/to squares (empty if no move yet)."""
         if self.game is None or self.game.last_move is None:
             return set()
-        return {self._to_display_coord(square, use_pov=use_pov) for square in self.game.last_move}
+        return {self._to_display_coord(square, view_as=view_as) for square in self.game.last_move}
 
     def _draw_gradient_background(self) -> None:
         assert self._screen is not None
@@ -222,21 +226,21 @@ class GameInterface:
             b = int(self._colors["bg_start"][2] * (1 - t) + self._colors["bg_end"][2] * t)
             pygame.draw.line(self._screen, (r, g, b), (0, y), (self.window_width, y))
 
-    def _draw_board(self, use_pov: bool) -> None:
+    def _draw_board(self, view_as: Player | None) -> None:
         assert self._screen is not None
         assert self.game is not None
 
         board_left = self.margin
         board_top = self.margin
 
-        grid = self.game.get_pov_grid() if use_pov else self.game.grid
+        grid = self.game.get_pov_grid(self._viewer(view_as))
 
         board_rect = pygame.Rect(
             board_left - 4, board_top - 4, self.board_size_px + 8, self.board_size_px + 8
         )
         pygame.draw.rect(self._screen, self._colors["board_border"], board_rect, border_radius=12)
 
-        last_move_cells = self._last_move_display_cells(use_pov)
+        last_move_cells = self._last_move_display_cells(view_as)
 
         for x in range(BOARD_SIZE):
             for y in range(BOARD_SIZE):
@@ -265,22 +269,22 @@ class GameInterface:
         self,
         selected_coord: tuple[int, int] | None,
         possible_destinations: set[tuple[int, int]],
-        use_pov: bool,
+        view_as: Player | None,
     ) -> None:
         assert self._screen is not None
 
         if selected_coord is not None:
-            x, y = self._to_display_coord(selected_coord, use_pov=use_pov)
+            x, y = self._to_display_coord(selected_coord, view_as=view_as)
             rect = self._coord_to_rect((x, y))
             pygame.draw.rect(self._screen, (245, 214, 71), rect, width=5, border_radius=9)
 
         for dest in possible_destinations:
-            x, y = self._to_display_coord(dest, use_pov=use_pov)
+            x, y = self._to_display_coord(dest, view_as=view_as)
             rect = self._coord_to_rect((x, y))
             pygame.draw.circle(self._screen, (82, 196, 26), rect.center, 11)
             pygame.draw.circle(self._screen, (242, 255, 233), rect.center, 11, width=2)
 
-    def _draw_analysis_overlay(self, arrows: list[MoveArrow], use_pov: bool) -> None:
+    def _draw_analysis_overlay(self, arrows: list[MoveArrow], view_as: Player | None) -> None:
         """Developer mode: draw the model's candidate moves as tinted arrows.
 
         Everything is painted on a translucent surface so weaker ideas fade back
@@ -295,8 +299,8 @@ class GameInterface:
 
         for arrow in sorted(arrows, key=lambda a: a.intensity):
             intensity = max(0.0, min(1.0, arrow.intensity))
-            src_disp = self._to_display_coord(arrow.source, use_pov=use_pov)
-            dst_disp = self._to_display_coord(arrow.dest, use_pov=use_pov)
+            src_disp = self._to_display_coord(arrow.source, view_as=view_as)
+            dst_disp = self._to_display_coord(arrow.dest, view_as=view_as)
             src_rect = self._coord_to_rect(src_disp)
             dst_rect = self._coord_to_rect(dst_disp)
 
@@ -321,7 +325,7 @@ class GameInterface:
 
         self._screen.blit(overlay, (0, 0))
 
-    def _draw_move_badge(self, badge: MoveBadge | None, use_pov: bool) -> None:
+    def _draw_move_badge(self, badge: MoveBadge | None, view_as: Player | None) -> None:
         """Draw the grade of the last move on its destination square.
 
         A coloured disc pinned to the square's top-right corner, the way chess.com
@@ -332,7 +336,7 @@ class GameInterface:
         if badge is None:
             return
 
-        rect = self._coord_to_rect(self._to_display_coord(badge.square, use_pov=use_pov))
+        rect = self._coord_to_rect(self._to_display_coord(badge.square, view_as=view_as))
         radius = 18
         centre = (rect.right - radius + 4, rect.top + radius - 4)
         self._draw_badge_disc(centre, badge.symbol, badge.tone, radius=radius)
@@ -403,17 +407,27 @@ class GameInterface:
         y = BOARD_SIZE - 1 - y_from_top
         return (int(x), int(y))
 
-    def _to_real_coord(self, display_coord: tuple[int, int], use_pov: bool) -> tuple[int, int]:
-        assert self.game is not None
-        if use_pov:
-            return self.game.from_pov_coord(display_coord)
-        return display_coord
+    def _viewer(self, view_as: Player | None) -> Player:
+        """Whose side of the board is at the bottom.
 
-    def _to_display_coord(self, real_coord: tuple[int, int], use_pov: bool) -> tuple[int, int]:
+        ``None`` means "follow the side to move", which flips the board every ply —
+        right for two humans sharing a keyboard, wrong for everything else, since a
+        board that turns over while the opponent thinks is just disorienting.
+        """
         assert self.game is not None
-        if use_pov:
-            return self.game.to_pov_coord(real_coord)
-        return real_coord
+        return self.game.turn if view_as is None else view_as
+
+    def _to_real_coord(
+        self, display_coord: tuple[int, int], view_as: Player | None
+    ) -> tuple[int, int]:
+        assert self.game is not None
+        return self.game.from_pov_coord(display_coord, self._viewer(view_as))
+
+    def _to_display_coord(
+        self, real_coord: tuple[int, int], view_as: Player | None
+    ) -> tuple[int, int]:
+        assert self.game is not None
+        return self.game.to_pov_coord(real_coord, self._viewer(view_as))
 
     # ----------------------------------------------------------------- legend
     def _legend_button_rect(self) -> pygame.Rect:
@@ -424,7 +438,7 @@ class GameInterface:
     def _legend_hit(self, pos: tuple[int, int], enabled: bool) -> bool:
         return bool(enabled and self.legend) and self._legend_button_rect().collidepoint(pos)
 
-    def show_legend(self, over_board: bool = True, use_pov: bool = True) -> bool:
+    def show_legend(self, over_board: bool = True, view_as: Player | None = None) -> bool:
         """Show what each grade badge means, until dismissed.
 
         Reachable both before a game (from the menu) and during one (the panel
@@ -468,7 +482,7 @@ class GameInterface:
                     return True
 
             if over_board and self.game is not None:
-                self._draw_frame(use_pov=use_pov)
+                self._draw_frame(view_as=view_as)
             else:
                 self._draw_gradient_background()
             dim = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
@@ -503,7 +517,7 @@ class GameInterface:
 
     def _draw_side_panel(
         self,
-        use_pov: bool,
+        view_as: Player | None,
         status_lines: list[str] | None = None,
         legend_button: bool = False,
     ) -> None:
@@ -553,7 +567,7 @@ class GameInterface:
                 font_size=19,
             )
 
-        view_mode = "POV courant" if use_pov else "Vue absolue"
+        view_mode = "suit le trait" if view_as is None else f"{_fr_color(view_as)} en bas"
         view_text = small_font.render(
             f"Affichage: {view_mode}", True, self._colors["panel_subtext"]
         )
@@ -565,7 +579,7 @@ class GameInterface:
 
     def _draw_frame(
         self,
-        use_pov: bool,
+        view_as: Player | None,
         selected_coord: tuple[int, int] | None = None,
         possible_destinations: set[tuple[int, int]] | None = None,
         analysis_arrows: list[MoveArrow] | None = None,
@@ -574,23 +588,23 @@ class GameInterface:
         legend_button: bool = False,
     ) -> None:
         self._draw_gradient_background()
-        self._draw_board(use_pov=use_pov)
-        self._draw_analysis_overlay(analysis_arrows or [], use_pov=use_pov)
+        self._draw_board(view_as=view_as)
+        self._draw_analysis_overlay(analysis_arrows or [], view_as=view_as)
         self._draw_selection_overlay(
             selected_coord=selected_coord,
             possible_destinations=possible_destinations or set(),
-            use_pov=use_pov,
+            view_as=view_as,
         )
-        self._draw_move_badge(badge, use_pov=use_pov)
+        self._draw_move_badge(badge, view_as=view_as)
         self._draw_side_panel(
-            use_pov=use_pov, status_lines=status_lines, legend_button=legend_button
+            view_as=view_as, status_lines=status_lines, legend_button=legend_button
         )
 
-    def render(self, use_pov: bool = True, fps: int = 60) -> None:
+    def render(self, view_as: Player | None = None, fps: int = 60) -> None:
         """Opens a dedicated window and renders the game continuously.
 
         Args:
-                use_pov: If True, render from current player's point of view.
+                view_as: Whose side sits at the bottom; None follows the side to move.
                 fps: Max refresh rate.
         """
         if self.game is None:
@@ -606,7 +620,7 @@ class GameInterface:
                 if event.type == pygame.QUIT:
                     running = False
 
-            self._draw_frame(use_pov=use_pov)
+            self._draw_frame(view_as=view_as)
             pygame.display.flip()
             self._clock.tick(fps)
 
@@ -945,7 +959,7 @@ class GameInterface:
 
     def wait_for_step(
         self,
-        use_pov: bool = True,
+        view_as: Player | None = None,
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
         badge: MoveBadge | None = None,
@@ -964,7 +978,7 @@ class GameInterface:
                 if event.type == pygame.QUIT:
                     return False
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
-                    if not self.show_legend(use_pov=use_pov):
+                    if not self.show_legend(view_as=view_as):
                         return False
                     continue
                 if event.type == pygame.KEYDOWN and event.key in step_keys:
@@ -974,7 +988,7 @@ class GameInterface:
                     and event.button == 1
                     and self._legend_hit(event.pos, legend_button)
                 ):
-                    if not self.show_legend(use_pov=use_pov):
+                    if not self.show_legend(view_as=view_as):
                         return False
                     continue
                 if (
@@ -984,7 +998,7 @@ class GameInterface:
                 ):
                     return True
             self._draw_frame(
-                use_pov=use_pov,
+                view_as=view_as,
                 analysis_arrows=analysis_arrows,
                 status_lines=status_lines,
                 badge=badge,
@@ -994,7 +1008,7 @@ class GameInterface:
             pygame.display.flip()
             self._clock.tick(60)
 
-    def show_game_over(self, message: str, use_pov: bool = True) -> bool:
+    def show_game_over(self, message: str, view_as: Player | None = None) -> bool:
         """Dim the board and show the result over a "back to menu" button.
 
         ``message`` may span several lines — the result, then whatever the caller
@@ -1028,7 +1042,7 @@ class GameInterface:
                 ):
                     return True
 
-            self._draw_frame(use_pov=use_pov)
+            self._draw_frame(view_as=view_as)
             dim = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
             dim.fill((10, 14, 24, 190))
             self._screen.blit(dim, (0, 0))
@@ -1047,7 +1061,7 @@ class GameInterface:
 
     def _get_single_move(
         self,
-        use_pov: bool = True,
+        view_as: Player | None = None,
         fps: int = 60,
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
@@ -1074,13 +1088,13 @@ class GameInterface:
                     return None
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
-                    if not self.show_legend(use_pov=use_pov):
+                    if not self.show_legend(view_as=view_as):
                         return None
                     continue
 
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     if self._legend_hit(event.pos, legend_button):
-                        if not self.show_legend(use_pov=use_pov):
+                        if not self.show_legend(view_as=view_as):
                             return None
                         continue
 
@@ -1088,7 +1102,7 @@ class GameInterface:
                     if display_coord is None:
                         continue
 
-                    real_coord = self._to_real_coord(display_coord, use_pov=use_pov)
+                    real_coord = self._to_real_coord(display_coord, view_as=view_as)
                     piece = self.game.grid[real_coord[0]][real_coord[1]]
 
                     if selected_source is None:
@@ -1113,7 +1127,7 @@ class GameInterface:
                         return (selected_source, real_coord)
 
             self._draw_frame(
-                use_pov=use_pov,
+                view_as=view_as,
                 selected_coord=selected_source,
                 possible_destinations=possible_destinations,
                 analysis_arrows=analysis_arrows,
@@ -1125,7 +1139,7 @@ class GameInterface:
             self._clock.tick(fps)
 
     def request_move(
-        self, use_pov: bool = True, fps: int = 60
+        self, view_as: Player | None = None, fps: int = 60
     ) -> tuple[tuple[int, int], tuple[int, int]] | None:
         """Lets the user pick a source and destination square with mouse clicks.
 
@@ -1139,7 +1153,7 @@ class GameInterface:
         assert self._screen is not None
         assert self._clock is not None
 
-        move = self._get_single_move(use_pov=use_pov, fps=fps)
+        move = self._get_single_move(view_as=view_as, fps=fps)
 
         if move is None:
             pygame.quit()
@@ -1147,14 +1161,14 @@ class GameInterface:
 
         return move
 
-    def play_game(self, use_pov: bool = True, fps: int = 60) -> None:
+    def play_game(self, view_as: Player | None = None, fps: int = 60) -> None:
         """Launch a complete interactive game loop in a persistent window.
 
         The window stays open throughout the entire game. The game loop continues
         until the window is closed or a king is captured. No window reloads.
 
         Args:
-                use_pov: If True, render from current player's point of view.
+                view_as: Whose side sits at the bottom; None follows the side to move.
                 fps: Max refresh rate.
         """
         if self.game is None:
@@ -1165,7 +1179,7 @@ class GameInterface:
         assert self._clock is not None
 
         while True:
-            move = self._get_single_move(use_pov=use_pov, fps=fps)
+            move = self._get_single_move(view_as=view_as, fps=fps)
             if move is None:
                 # Window closed
                 break
