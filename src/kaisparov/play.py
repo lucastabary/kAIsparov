@@ -20,6 +20,12 @@ returns to the menu instead of closing.
 ``--dev`` turns on developer mode: while a side backed by a trained model is to
 move, the board shows that model's top candidate moves as arrows and its value
 estimate in the side panel (see :mod:`kaisparov.insights`).
+
+``--review`` turns on the move review: every move played gets a chess.com-style
+grade badge on its destination square (``!!`` brilliant ... ``??`` blunder), and the
+end-of-game banner reports each side's accuracy. Both switches are independent and
+also live on the start menu, so either can be toggled without restarting. See
+:mod:`kaisparov.analysis` for how a move is graded.
 """
 
 from __future__ import annotations
@@ -29,12 +35,28 @@ import argparse
 import pygame
 
 from kaisparov.agents.base import Policy
+from kaisparov.analysis import GameReview, HeuristicEvaluator, MaterialEvaluator, MoveJudge
 from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
-from kaisparov.core.game_interface import GameInterface, MatchSetup, ModelOption, MoveArrow
+from kaisparov.core.game_interface import (
+    GameInterface,
+    MatchSetup,
+    ModelOption,
+    MoveArrow,
+    MoveBadge,
+)
 from kaisparov.core.pieces import PieceType, Player
-from kaisparov.insights import Analyzer, PositionAnalysis
+from kaisparov.insights import Analyzer, MoveQuality, MoveVerdict, PositionAnalysis
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
+
+# Grades worth naming in the end-of-game recap; the rest is ordinary play.
+_NOTABLE = (
+    MoveQuality.BRILLIANT,
+    MoveQuality.GREAT,
+    MoveQuality.MISTAKE,
+    MoveQuality.MISS,
+    MoveQuality.BLUNDER,
+)
 
 
 def _other(player: Player) -> Player:
@@ -288,15 +310,17 @@ def _prepare_match(setup: MatchSetup, args, device):
     # "solo": both seats stay human.
 
     # In developer mode, analyze human/baseline seats too (comment on the running
-    # game) by reusing whichever model we already loaded, if any.
+    # game) by reusing whichever model we already loaded, if any. The critic-backed
+    # review needs the same thing, so it shares the lookup.
+    wants_model = setup.dev_mode or (setup.review_mode and args.judge_eval == "critic")
+    if wants_model and shared_analyzer is None:
+        shared_analyzer = _try_build_analyzer(args, device)
     if setup.dev_mode:
-        if shared_analyzer is None:
-            shared_analyzer = _try_build_analyzer(args, device)
         for color in (Player.WHITE, Player.BLACK):
             if analyzers[color] is None:
                 analyzers[color] = shared_analyzer
 
-    return controllers, analyzers
+    return controllers, analyzers, _build_judge(args, shared_analyzer, setup.review_mode)
 
 
 def _try_build_analyzer(args, device):
@@ -311,6 +335,79 @@ def _try_build_analyzer(args, device):
 
     print(f"Developer analyzer loaded from {path}")
     return NeuralAnalyzer(model, processor)
+
+
+def _build_judge(args, analyzer: Analyzer | None, enabled: bool) -> MoveJudge | None:
+    """The move grader for this match, or ``None`` when the review is off.
+
+    ``--judge-eval critic`` reuses the model already loaded for the AI seat (or the
+    developer overlay) rather than loading a second one; with no model around it
+    falls back to the handcrafted evaluator instead of disabling the review, since
+    the whole point is that the feature works on a fresh clone.
+    """
+    if not enabled:
+        return None
+
+    if args.judge_eval == "critic":
+        model = getattr(analyzer, "model", None)
+        processor = getattr(analyzer, "processor", None)
+        if model is not None and processor is not None:
+            from kaisparov.analysis.critic import CriticEvaluator
+
+            evaluator = CriticEvaluator(model, processor)
+            print("Move review: grading with the model's critic.")
+            return MoveJudge(evaluator, lookahead=args.judge_depth)
+        print("Move review: no model available, grading with the handcrafted evaluator.")
+
+    evaluator = MaterialEvaluator() if args.judge_eval == "material" else HeuristicEvaluator()
+    return MoveJudge(evaluator, lookahead=args.judge_depth)
+
+
+def _badge_from_verdict(verdict: MoveVerdict) -> MoveBadge:
+    """Map a verdict onto the mark the interface draws on the destination square."""
+    return MoveBadge(
+        square=verdict.move[1],
+        symbol=verdict.quality.symbol,
+        tone=verdict.quality.name.lower(),
+        caption=verdict.quality.caption,
+    )
+
+
+def _review_lines(side: Player, verdict: MoveVerdict) -> list[str]:
+    """Side-panel text for the move just played."""
+    src, dst = verdict.move
+    lines = [
+        f"{_fr_color(side)}: {_algebraic(src)}->{_algebraic(dst)}",
+        f"{verdict.quality.caption}  (-{verdict.loss:.1f} pts)",
+    ]
+    if verdict.best_move is not None and verdict.best_move != verdict.move:
+        best_src, best_dst = verdict.best_move
+        lines.append(f"Mieux: {_algebraic(best_src)}->{_algebraic(best_dst)}")
+    return lines
+
+
+def _review_summary(review: GameReview) -> list[str]:
+    """End-of-game recap: accuracy per side, then the moves worth talking about."""
+    lines: list[str] = []
+    accuracies = {player: review.accuracy(player) for player in (Player.WHITE, Player.BLACK)}
+    if any(value is not None for value in accuracies.values()):
+        parts = [
+            f"{_fr_color(player)} {value:.0f}%"
+            for player, value in accuracies.items()
+            if value is not None
+        ]
+        lines.append("Precision: " + "  ".join(parts))
+
+    for player in (Player.WHITE, Player.BLACK):
+        counts = review.counts(player)
+        notable = [
+            f"{count} {quality.caption.lower()}"
+            for quality, count in counts.items()
+            if count and quality in _NOTABLE
+        ]
+        if notable:
+            lines.append(f"{_fr_color(player)}: " + ", ".join(notable))
+    return lines
 
 
 def _overlay_from_analysis(analysis: PositionAnalysis | None):
@@ -354,6 +451,7 @@ def run_match(
     analyzers: dict[Player, Analyzer | None],
     dev_mode: bool,
     *,
+    judge: MoveJudge | None = None,
     view_pov: bool = True,
     step_mode: bool = False,
     ai_delay_ms: int = 500,
@@ -364,11 +462,21 @@ def run_match(
     ``False`` keeps White at the bottom throughout (used for AI vs AI so the view does
     not flip every move). ``step_mode`` makes AI seats wait for the user to request
     each move (the "Coup suivant" button) instead of auto-advancing on a timer.
+    ``judge`` (optional) grades each move as it is played and drives the badge on the
+    board, the panel text, and the end-of-game accuracy recap.
 
     Returns ``"quit"`` if the window was closed, or ``"menu"`` when the game ends (so
     the caller can return to the start menu without tearing down the window).
     """
     ui._ensure_initialized()
+    review = GameReview()
+    badge: MoveBadge | None = None
+    review_status: list[str] = []
+
+    def finish(message: str) -> str:
+        summary = _review_summary(review) if judge is not None else []
+        full = "\n".join([message, *summary])
+        return "quit" if not ui.show_game_over(full, use_pov=view_pov) else "menu"
 
     while True:
         side = game.turn
@@ -378,10 +486,11 @@ def run_match(
         arrows, status = [], []
         if dev_mode and analyzer is not None:
             arrows, status = _overlay_from_analysis(analyzer.analyze(game))
+        status = status + review_status
 
         if agent is None:  # human seat
             move = ui._get_single_move(
-                use_pov=view_pov, analysis_arrows=arrows, status_lines=status
+                use_pov=view_pov, analysis_arrows=arrows, status_lines=status, badge=badge
             )
             if move is None:
                 return "quit"
@@ -389,11 +498,19 @@ def run_match(
             if step_mode:
                 turn_status = status + [f"Trait aux {_fr_color(side)}"]
                 if not ui.wait_for_step(
-                    use_pov=view_pov, analysis_arrows=arrows, status_lines=turn_status
+                    use_pov=view_pov,
+                    analysis_arrows=arrows,
+                    status_lines=turn_status,
+                    badge=badge,
                 ):
                     return "quit"
             else:
-                ui._draw_frame(use_pov=view_pov, analysis_arrows=arrows, status_lines=status)
+                ui._draw_frame(
+                    use_pov=view_pov,
+                    analysis_arrows=arrows,
+                    status_lines=status,
+                    badge=badge,
+                )
                 pygame.display.flip()
                 if not _pump_events(ui, ai_delay_ms):
                     return "quit"
@@ -401,19 +518,28 @@ def run_match(
             if move is None:
                 winner = _other(side)
                 print(f"{side.name} (AI) has no legal move — {winner.name} wins.")
-                msg = f"Les {_fr_color(side)} n'ont aucun coup.\nLes {_fr_color(winner)} gagnent !"
-                return "quit" if not ui.show_game_over(msg, use_pov=view_pov) else "menu"
+                return finish(
+                    f"Les {_fr_color(side)} n'ont aucun coup.\nLes {_fr_color(winner)} gagnent !"
+                )
+
+        # Grading must happen before the move is played: the verdict compares it
+        # against every alternative in the position it was played from.
+        if judge is not None:
+            verdict = judge.judge(game, move)
+            if verdict is not None:
+                review.add(side, verdict)
+                badge = _badge_from_verdict(verdict)
+                review_status = _review_lines(side, verdict)
 
         captured = game.play(*move)
-        ui._draw_frame(use_pov=view_pov)
+        ui._draw_frame(use_pov=view_pov, badge=badge, status_lines=review_status)
         pygame.display.flip()
 
         if captured is not None and captured.type == PieceType.KING:
             # On a king capture the turn does not advance, so game.turn is the winner.
             winner = game.turn
             print(f"Game over — {winner.name} wins by capturing the king!")
-            msg = f"Roi capture !\nLes {_fr_color(winner)} gagnent."
-            return "quit" if not ui.show_game_over(msg, use_pov=view_pov) else "menu"
+            return finish(f"Roi capture !  Les {_fr_color(winner)} gagnent.")
 
 
 def _fr_color(player: Player) -> str:
@@ -427,11 +553,11 @@ def _setup_from_args(args) -> MatchSetup | None:
     """A mode chosen on the command line bypasses the menu; otherwise ``None``."""
     human_color = Player.WHITE if args.color == "white" else Player.BLACK
     if args.vs_ai:
-        return MatchSetup("vs_ai", human_color, args.dev)
+        return MatchSetup("vs_ai", human_color, args.dev, args.review)
     if args.ai_vs_ai:
-        return MatchSetup("ai_vs_ai", human_color, args.dev)
+        return MatchSetup("ai_vs_ai", human_color, args.dev, args.review)
     if args.solo:
-        return MatchSetup("solo", human_color, args.dev)
+        return MatchSetup("solo", human_color, args.dev, args.review)
     return None
 
 
@@ -441,6 +567,21 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--ai-vs-ai", action="store_true", help="Watch two AIs play each other.")
     parser.add_argument("--solo", action="store_true", help="Two humans on one keyboard.")
     parser.add_argument("--dev", action="store_true", help="Developer mode: show model analysis.")
+    parser.add_argument(
+        "--review", action="store_true", help="Grade every move played (chess.com-style badges)."
+    )
+    parser.add_argument(
+        "--judge-eval",
+        choices=["heuristic", "material", "critic"],
+        default="heuristic",
+        help="What the review grades against (default: handcrafted, no model needed).",
+    )
+    parser.add_argument(
+        "--judge-depth",
+        type=int,
+        default=None,
+        help="Plies searched per candidate move when grading (default: per evaluator).",
+    )
     parser.add_argument(
         "--checkpoint", default=None, help="AI weights (default: newest run's latest checkpoint)."
     )
@@ -482,7 +623,12 @@ def main(argv: list[str] | None = None) -> None:
                 if setup is None:
                     break  # window closed on the menu
 
-            if device is None and (setup.mode != "solo" or setup.dev_mode):
+            needs_torch = (
+                setup.mode != "solo"
+                or setup.dev_mode
+                or (setup.review_mode and args.judge_eval == "critic")
+            )
+            if device is None and needs_torch:
                 import torch
 
                 device = torch.device(
@@ -491,7 +637,7 @@ def main(argv: list[str] | None = None) -> None:
 
             game = ChessGame(initial_board=_initial_board(args.curriculum, args.seed))
             ui.set_game(game)
-            controllers, analyzers = _prepare_match(setup, args, device)
+            controllers, analyzers, judge = _prepare_match(setup, args, device)
 
             # AI vs AI: keep White at the bottom (no per-move flip) and advance one
             # move at a time on the user's request rather than on a timer.
@@ -501,6 +647,7 @@ def main(argv: list[str] | None = None) -> None:
                 controllers,
                 analyzers,
                 setup.dev_mode,
+                judge=judge,
                 view_pov=setup.mode != "ai_vs_ai",
                 step_mode=setup.mode == "ai_vs_ai",
                 ai_delay_ms=args.ai_delay,
