@@ -388,9 +388,8 @@ def _build_judge(args, analyzer: Analyzer | None, enabled: bool) -> MoveJudge | 
         if model is not None and processor is not None:
             from kaisparov.analysis.critic import CriticEvaluator
 
-            evaluator = CriticEvaluator(model, processor)
             print("Move review: grading with the model's critic.")
-            return MoveJudge(evaluator, lookahead=args.judge_depth)
+            return MoveJudge(CriticEvaluator(model, processor), lookahead=args.judge_depth)
         print("Move review: no model available, grading with the handcrafted evaluator.")
 
     evaluator = MaterialEvaluator() if args.judge_eval == "material" else HeuristicEvaluator()
