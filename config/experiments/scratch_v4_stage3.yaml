@@ -32,6 +32,7 @@ curriculum: null
 
 rollout:
   opponent: pool
+  num_workers: 0                   # 0 = split games across all CPU cores (parallel rollout)
   pool: v4_phase3                  # material + random + snapshots (weighted up), all guarded
   max_steps_per_episode: 150
   # episodes_per_epoch (16) inherited from earlier stages.
