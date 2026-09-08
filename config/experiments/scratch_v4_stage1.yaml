@@ -1,0 +1,50 @@
+# scratch v4 — stage 1/3 · sound play from the start (4-piece endgames)
+#   kaisparov train --config config/experiments/scratch_v4_stage1.yaml
+#   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
+#
+# v4 vs v3: the opponents now DEFEND their own king from epoch 1 (avoid_king_suicide),
+# so the model can't learn the degenerate "knight rush at the enemy king" free win —
+# even the baselines refuse to hang their king. Still NO reward shaping: pure king
+# capture (+/-1); the opponent pool (config/pools.yaml -> v4_phase1) does the teaching.
+#
+# Stage 1 goal: in tiny 4-piece (per side) piece-only endgames, learn to force a *sound*
+# king capture against defenders, over a horizon short enough for the sparse +/-1 to
+# propagate and the critic to fit it.
+
+model: rgcn
+hidden_dim: 32          # fixed for the WHOLE curriculum (resume requires matching width)
+# Longer than v3's 100: v4 opponents DEFEND their king, so stage 1 has to learn to force
+# a real coordinated capture (not exploit a hung king) — harder, and cheap per epoch on
+# a 4-piece board, so it's worth the extra iterations here.
+epochs: 200
+seed: 0
+device: auto            # -> CPU on this machine
+checkpoint_every: 20
+
+# Pure outcome. All shaping terms (king_safety, check, step_penalty) are OFF.
+reward: king_capture_only
+
+curriculum:
+  name: "4 pieces/side, no pawns"
+  max_pieces_per_side: 4
+  allow_major: true
+  allow_minor: true
+  allow_pawns: false
+  ensure_kings_safe: true   # no free ply-0 king capture
+
+rollout:
+  opponent: pool
+  pool: v4_phase1           # random + material, both avoid_king_suicide; no snapshots
+  episodes_per_epoch: 16    # less noisy PPO gradient than 8
+  max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
+
+ppo:
+  learning_rate: 0.0005     # v3's setting; 1e-3 was too hot
+  update_epochs: 2          # less overfitting of each small batch
+  entropy_coef: 0.02        # keep exploration alive on the small action space
+
+eval:
+  enabled: true
+  every: 10                 # catch the peak
+  games: 40
+  max_plies: 120

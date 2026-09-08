@@ -40,6 +40,16 @@ def test_build_pool_spec_from_named_preset():
     assert spec.snapshot.params["avoid_king_suicide"] is True
 
 
+def test_every_shipped_preset_builds():
+    # Guard against a typo in config/pools.yaml: every preset must parse/validate.
+    from kaisparov.training.config import _load_pool_presets
+
+    presets = _load_pool_presets()
+    assert presets, "config/pools.yaml has no presets"
+    for name in presets:
+        build_pool_spec(name)  # raises on an unknown kind / duplicate snapshot / bad shape
+
+
 def test_unknown_preset_and_kind_raise():
     with pytest.raises(ValueError, match="Unknown pool preset"):
         build_pool_spec("does_not_exist")

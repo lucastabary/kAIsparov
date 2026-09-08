@@ -64,6 +64,43 @@ endgame_starter:
   group_weights: {baseline: 2.0, snapshot: 1.0}
 
 
+# ---------------------------------------------------------------- scratch v4 curriculum
+# Three presets, one per stage of config/experiments/scratch_v4_stage{1,2,3}.yaml.
+#
+# Design: EVERY opponent defends its own king (avoid_king_suicide) in all three phases,
+# so no "rush the enemy king" free win is ever learnable. The guard only removes free
+# one-ply king hangs, NOT reward: a genuinely trapped king (no safe move) is still
+# captured, so forced captures keep scoring — the model just has to create a real threat
+# instead of a one-move rush. Never unguard `random`: the model already saturates vs
+# random, so unguarded random only teaches rushing a trivial opponent (no useful signal).
+# Escape hatch if early reward stalls: unguard `material` (a modest-weight capture teacher
+# that still punishes loose attackers), NEVER random.
+
+# Phase 1: tiny endgames, sound from the start. Two fixed teachers, both defending; no
+# snapshot stream yet.
+v4_phase1:
+  opponents:
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+
+# Phase 2: more material + pawns; the snapshot stream appears. All opponents defend.
+v4_phase2:
+  opponents:
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+    - {kind: snapshot, count: 6, every: 15, params: {depth: 1, avoid_king_suicide: true}}
+  group_weights: {baseline: 1.5, snapshot: 1.0}
+
+# Phase 3: the real game. Defending self-play dominates (snapshots weighted above the
+# baselines); every opponent defends.
+v4_phase3:
+  opponents:
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+    - {kind: snapshot, count: 8, every: 15, params: {depth: 1, avoid_king_suicide: true}}
+  group_weights: {baseline: 1.0, snapshot: 1.5}
+
+
 # Example: train against a strong FIXED teacher frozen from a past run — a genuinely
 # sound defender from epoch 1, not a weak early past-self. Point `checkpoint` at a
 # checkpoint of the SAME architecture (model + hidden_dim). Uncomment and set the path.

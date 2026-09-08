@@ -1,0 +1,48 @@
+# scratch v4 — stage 3/3 · the real game (standard starting position)
+#   1) run stage 2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/scratch_v4_stage3.yaml
+#
+# Inherits architecture (rgcn/hidden_dim=32) and reward (king_capture_only) from the
+# stage-2 parent. `curriculum: null` disables the piece-count curriculum, so games start
+# from the normal chess position — the actual task the model is meant to play.
+#
+# Stage 3 goal: full game, sound play. Pool switched to v4_phase3: defending self-play
+# (snapshots) dominates (weighted above the baselines) and every opponent defends its
+# own king. The model refines toward winning real games by forcing sound captures.
+
+resume_from_run: PASTE_STAGE2_RUN_ID_HERE
+
+title: "scratch v4 - stage 3 (real game)"
+description: |
+  Final stage: full standard starting position, longest games. Pure outcome reward
+  kept. Pool tilts toward defending self-play; every opponent defends its king.
+  Lowest LR (1e-4) and lowest entropy for stable refinement.
+
+# Longer than v3's 150: this is the only stage trained on the target distribution (real
+# games from the standard opening), so give it enough time to adapt from random 10-piece
+# positions to the structured 16-piece start. Not higher: lr/entropy are lowest here
+# (refinement), so returns diminish beyond this.
+epochs: 200
+
+reward: king_capture_only
+
+# Disable the curriculum -> start from the normal chess position ("vraie partie").
+curriculum: null
+
+rollout:
+  opponent: pool
+  pool: v4_phase3                  # material + random + snapshots (weighted up), all guarded
+  max_steps_per_episode: 150
+  # episodes_per_epoch (16) inherited from earlier stages.
+
+ppo:
+  learning_rate: 0.0001            # refinement only
+  entropy_coef: 0.006              # sharpen the policy
+  update_epochs: 2
+
+eval:
+  enabled: true
+  every: 10
+  games: 40
+  max_plies: 200
