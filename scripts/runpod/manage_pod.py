@@ -2,10 +2,10 @@
 """Manage the kAIsparov RunPod pod from your local machine.
 
 A thin, dependency-light wrapper around the official ``runpod`` Python SDK plus
-your system ``ssh``/``tmux``. It lets you start/stop the pod, open a shell, list
-and attach to the ``tmux`` sessions running on it, and — the headline feature —
-run one command on the pod and have the pod power off the moment it finishes
-(starting the pod first if it was stopped), so you never pay for idle GPU time.
+your system ``ssh``. It lets you start/stop the pod, open a shell, and — the
+headline feature — run one command on the pod and have the pod power off the
+moment it finishes (starting the pod first if it was stopped), so you never pay
+for idle GPU time.
 
 Setup
 -----
@@ -34,8 +34,7 @@ Examples
     python scripts/runpod/manage_pod.py start           # resume + git pull
     python scripts/runpod/manage_pod.py pull            # git pull on the running pod
     python scripts/runpod/manage_pod.py ssh             # interactive shell
-    python scripts/runpod/manage_pod.py tmux list
-    python scripts/runpod/manage_pod.py tmux attach train
+    python scripts/runpod/manage_pod.py logs            # re-attach to a running job's output
     python scripts/runpod/manage_pod.py stop
 
     # Start (if needed), git pull, run the v4 curriculum, then power the pod off at the end:
@@ -50,11 +49,11 @@ Notes
   or use the standalone ``pull`` command. A failed pull warns but does not abort.
 * ``run`` executes the command from ``RUNPOD_REPO_DIR`` with the repo's ``.venv``
   activated (if present), so relative paths (``config/...``) and console entry points
-  (``kaisparov``) work directly. It launches inside a ``tmux`` session on the pod, so the
-  work survives a dropped SSH connection; this script tails its output and, once the
-  command exits, stops the pod (unless ``--keep``). If *this* process is killed
-  the remote command keeps running, but the automatic power-off won't fire —
-  reconnect with ``tmux attach`` and stop the pod yourself.
+  (``kaisparov``) work directly. It launches the job **detached** (``setsid``) on the pod,
+  so the work survives a dropped SSH connection; this script tails its output and, once the
+  command exits, stops the pod (unless ``--keep``). If *this* process is killed the remote
+  command keeps running, but the automatic power-off won't fire — re-attach with the
+  ``logs`` command and stop the pod yourself.
 * SSH uses the pod's directly-exposed TCP port for private port 22, which RunPod
   maps to a public ``ip:port``. Make sure your key is registered in RunPod
   (Settings -> SSH Public Keys) and that the pod exposes TCP port 22.
@@ -322,21 +321,6 @@ def git_pull(cfg: Config, ip: str, port: int) -> int:
     return code
 
 
-def ensure_tmux(cfg: Config, ip: str, port: int) -> None:
-    """Make sure tmux is installed on the pod (some base images ship without it)."""
-    if ssh_run(cfg, ip, port, "command -v tmux >/dev/null 2>&1").returncode == 0:
-        return
-    print(">> tmux not found on the pod; installing it (apt-get) ...")
-    install = "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux"
-    result = ssh_run(cfg, ip, port, install, capture=True)
-    if result.returncode != 0:
-        sys.exit(
-            "Failed to install tmux on the pod:\n"
-            f"{(result.stdout or '').strip()}\n"
-            "Install it manually: manage_pod.py ssh -- apt-get install -y tmux"
-        )
-
-
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
@@ -371,11 +355,13 @@ def cmd_status(cfg: Config, _args: argparse.Namespace) -> int:
     if endpoint:
         ip, port = endpoint
         print(f"ssh:      ssh -p {port} {cfg.ssh_user}@{ip}")
-        result = ssh_run(cfg, ip, port, "tmux ls 2>/dev/null || true", capture=True)
-        listing = (result.stdout or "").strip()
-        print(
-            "tmux:     " + (listing.replace("\n", "\n          ") if listing else "(no sessions)")
+        # Sessions with a live pid file are jobs launched by `run` still going.
+        probe = (
+            'for p in "$HOME"/.kaisparov_runs/*.pid; do [ -e "$p" ] || continue; '
+            'if kill -0 "$(cat "$p")" 2>/dev/null; then basename "$p" .pid; fi; done'
         )
+        listing = (ssh_run(cfg, ip, port, probe, capture=True).stdout or "").strip()
+        print("running:  " + (listing.replace("\n", ", ") if listing else "(no jobs)"))
     else:
         print("ssh:      (pod not running / no TCP port 22 exposed)")
     return 0
@@ -412,22 +398,27 @@ def cmd_ssh(cfg: Config, args: argparse.Namespace) -> int:
     return subprocess.run(ssh_base(cfg, ip, port, tty=True)).returncode
 
 
-def cmd_tmux(cfg: Config, args: argparse.Namespace) -> int:
+def cmd_logs(cfg: Config, args: argparse.Namespace) -> int:
+    """Re-attach to a `run` job's live output and stream it until the job ends."""
     pod_id = resolve_pod_id(cfg)
     _pod, ip, port = require_endpoint(cfg, pod_id)
-    if args.tmux_action == "list":
-        result = ssh_run(cfg, ip, port, "tmux ls", capture=True)
-        out = (result.stdout or "").strip()
-        print(out if out else "(no tmux sessions)")
-        return 0
-    # attach
-    name = shlex.quote(args.session)
-    remote = f"tmux new-session -A -s {name}" if args.create else f"tmux attach -t {name}"
-    return subprocess.run(ssh_base(cfg, ip, port, tty=True) + [remote]).returncode
+    session = args.session
+    log = f"{REMOTE_RUN_DIR}/{session}.log"
+    if ssh_run(cfg, ip, port, f'test -f "{log}"').returncode != 0:
+        sys.exit(f"No log for session '{session}' on the pod (nothing launched with that name?).")
+    print(f">> streaming '{session}' (Ctrl-C to stop watching; the job keeps running):\n")
+    try:
+        stream_until_done(cfg, ip, port, session)
+    except KeyboardInterrupt:
+        print("\n>> stopped watching. The job keeps running if it hadn't finished.")
+        return 130
+    code = read_exit_code(cfg, ip, port, session)
+    print(f"\n>> job '{session}' finished with exit code {code}.")
+    return code
 
 
 def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
-    """Start the pod if needed, run a command in tmux, then stop the pod at the end."""
+    """Start the pod if needed, run a command detached, then stop the pod at the end."""
     if not args.command:
         sys.exit("Nothing to run. Usage: run [--session NAME] [--keep] -- <command...>")
     command = " ".join(args.command)
@@ -439,10 +430,9 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     if not args.no_pull:
         git_pull(cfg, ip, port)
 
-    ensure_tmux(cfg, ip, port)
     launch_remote_command(cfg, ip, port, session, command)
     print(
-        f">> launched in tmux session '{session}'. Streaming output "
+        f">> launched job '{session}' (detached). Streaming output "
         "(Ctrl-C detaches; the command keeps running):\n"
     )
     try:
@@ -450,7 +440,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print(
             f"\n>> detached. The command is still running on the pod.\n"
-            f">> reattach: python {Path(__file__).name} tmux attach {session}\n"
+            f">> re-attach: python {Path(__file__).name} logs --session {session}\n"
             f">> the pod was NOT stopped."
         )
         return 130
@@ -469,7 +459,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
 # `run` internals
 # --------------------------------------------------------------------------- #
 def _runner_script(repo_dir: str, session: str, command: str) -> str:
-    """Bash script (run on the pod, in tmux) that logs output and records the exit code."""
+    """Bash script (run detached on the pod) that logs output and records the exit code."""
     return (
         "#!/usr/bin/env bash\n"
         "set -o pipefail\n"
@@ -477,39 +467,51 @@ def _runner_script(repo_dir: str, session: str, command: str) -> str:
         'mkdir -p "$RUN_DIR"\n'
         f'LOG="$RUN_DIR/{session}.log"\n'
         f'EXIT_FILE="$RUN_DIR/{session}.exit"\n'
+        f'PID_FILE="$RUN_DIR/{session}.pid"\n'
+        'echo $$ > "$PID_FILE"\n'
         'rm -f "$EXIT_FILE"\n'
         ': > "$LOG"\n'
-        # A subshell (not a brace group) so an explicit `exit` in the user's
-        # command only ends the subshell. cd into the repo first so relative paths
-        # (config/..., scripts/...) resolve. tee mirrors output to the log (which we
-        # tail) and to the tmux pane (so a direct `tmux attach` also shows it);
-        # PIPESTATUS[0] is the command's own status, not tee's.
+        # A subshell (not a brace group) so an explicit `exit` in the user's command
+        # only ends the subshell. cd into the repo first so relative paths (config/...)
+        # resolve. tee mirrors output to the log (which we tail); PIPESTATUS[0] is the
+        # command's own status, not tee's. The pid file lets `status`/`run` detect a
+        # still-running job; it is removed once the exit code is recorded.
         "(\n"
         f"cd {shlex.quote(repo_dir)} || exit 1\n"
         "[ -f .venv/bin/activate ] && source .venv/bin/activate\n"
         f"{command}\n"
         ') 2>&1 | tee "$LOG"\n'
         'echo "${PIPESTATUS[0]}" > "$EXIT_FILE"\n'
+        'rm -f "$PID_FILE"\n'
     )
 
 
 def launch_remote_command(cfg: Config, ip: str, port: int, session: str, command: str) -> None:
-    """Write the runner script to the pod and launch it detached in tmux."""
+    """Write the runner script to the pod and launch it fully detached (setsid).
+
+    No tmux needed: setsid puts the job in its own session so it survives the SSH
+    disconnect, and it writes its log + exit marker to REMOTE_RUN_DIR, which we tail.
+    A live pid file for this session means a job is already running under that name.
+    """
     script = _runner_script(cfg.repo_dir, session, command)
     encoded = base64.b64encode(script.encode()).decode()
     script_path = f"{REMOTE_RUN_DIR}/{session}.sh"
+    pid_file = f"{REMOTE_RUN_DIR}/{session}.pid"
+    guard = (
+        f'if [ -e "{pid_file}" ] && kill -0 "$(cat "{pid_file}")" 2>/dev/null; then '
+        f'echo "session {session} already running (use --session NAME)" >&2; exit 3; fi'
+    )
     bootstrap = (
         f'mkdir -p "{REMOTE_RUN_DIR}" && '
         f"printf '%s' '{encoded}' | base64 -d > \"{script_path}\" && "
-        f"if tmux has-session -t {shlex.quote(session)} 2>/dev/null; then "
-        f'echo "tmux session {session} already exists" >&2; exit 3; fi && '
-        f'tmux new-session -d -s {shlex.quote(session)} "bash {script_path}"'
+        f"{guard} && "
+        f"{{ setsid bash {script_path} </dev/null >/dev/null 2>&1 & }}"
     )
     result = ssh_run(cfg, ip, port, bootstrap, capture=True)
     if result.returncode != 0:
         sys.exit(
             f"Failed to launch the command on the pod:\n{(result.stdout or '').strip()}\n"
-            f"(If the session already exists, pick another with --session.)"
+            f"(If a job with that name is already running, pick another with --session.)"
         )
 
 
@@ -549,7 +551,7 @@ def read_exit_code(cfg: Config, ip: str, port: int, session: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="manage_pod.py",
-        description="Manage the kAIsparov RunPod pod (start/stop/pull/ssh/tmux/run).",
+        description="Manage the kAIsparov RunPod pod (start/stop/pull/ssh/logs/run).",
     )
     parser.add_argument("--pod-id", help="Pod id (default: RUNPOD_POD_ID, or the only pod).")
     parser.add_argument(
@@ -562,7 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list", help="List all pods on the account.")
-    sub.add_parser("status", help="Show the pod's status, SSH command, and tmux sessions.")
+    sub.add_parser("status", help="Show the pod's status, SSH command, and running jobs.")
     p_start = sub.add_parser(
         "start", help="Start (resume) the pod, wait for SSH, and git pull the repo."
     )
@@ -577,20 +579,14 @@ def build_parser() -> argparse.ArgumentParser:
         "command", nargs=argparse.REMAINDER, help="Optional command to run instead of a shell."
     )
 
-    p_tmux = sub.add_parser("tmux", help="List or attach to tmux sessions on the pod.")
-    tmux_sub = p_tmux.add_subparsers(dest="tmux_action", required=True)
-    tmux_sub.add_parser("list", help="List tmux sessions.")
-    p_attach = tmux_sub.add_parser("attach", help="Attach to a tmux session.")
-    p_attach.add_argument("session", help="tmux session name.")
-    p_attach.add_argument(
-        "--create", action="store_true", help="Create the session if it doesn't exist."
-    )
+    p_logs = sub.add_parser("logs", help="Re-attach to a running job's output and stream it.")
+    p_logs.add_argument("--session", default="run", help="Job name to attach to (default: run).")
 
     p_run = sub.add_parser(
         "run",
-        help="Start pod if needed, run a command in tmux, then stop the pod at the end.",
+        help="Start pod if needed, run a command detached, then stop the pod at the end.",
     )
-    p_run.add_argument("--session", default="run", help="tmux session name (default: run).")
+    p_run.add_argument("--session", default="run", help="Job name (default: run).")
     p_run.add_argument(
         "--keep", action="store_true", help="Leave the pod running after the command finishes."
     )
@@ -610,7 +606,7 @@ COMMANDS = {
     "stop": cmd_stop,
     "pull": cmd_pull,
     "ssh": cmd_ssh,
-    "tmux": cmd_tmux,
+    "logs": cmd_logs,
     "run": cmd_run,
 }
 

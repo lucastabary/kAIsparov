@@ -40,10 +40,10 @@ on CPU; the GNN forward/backward is a rounding error next to it. So:
 ## Driving the pod from your machine (`manage_pod.py`)
 
 `manage_pod.py` wraps the official [`runpod` Python SDK](https://pypi.org/project/runpod/)
-plus your system `ssh`/`tmux`, so you can start, stop, shell into, and run jobs on the pod
+plus your system `ssh`, so you can start, stop, shell into, and run jobs on the pod
 without touching the RunPod web UI. Its headline trick: **run one command and have the pod
 power itself off the moment the command finishes** (starting the pod first if it was
-stopped), so you never pay for idle GPU time.
+stopped), so you never pay for idle GPU time. No tmux required — jobs run detached.
 
 ```bash
 pip install -r scripts/runpod/requirements.txt   # installs the runpod SDK
@@ -79,16 +79,15 @@ and your **public key is registered** in RunPod → Settings → SSH Public Keys
 
 ```bash
 python scripts/runpod/manage_pod.py list             # all pods on the account
-python scripts/runpod/manage_pod.py status           # status + SSH command + tmux sessions
+python scripts/runpod/manage_pod.py status           # status + SSH command + running jobs
 python scripts/runpod/manage_pod.py start            # resume the pod, wait for SSH, git pull
 python scripts/runpod/manage_pod.py pull             # git pull the repo on the running pod
 python scripts/runpod/manage_pod.py stop             # stop it (GPU billing ends; volume persists)
 python scripts/runpod/manage_pod.py ssh              # interactive shell on the pod
 python scripts/runpod/manage_pod.py ssh -- nvidia-smi  # or a one-off command
-python scripts/runpod/manage_pod.py tmux list        # the pod's tmux sessions
-python scripts/runpod/manage_pod.py tmux attach train  # attach to one (add --create to make it)
+python scripts/runpod/manage_pod.py logs             # re-attach to a running job's output
 
-# Start (if needed) → git pull → train → power off at the end. The job runs inside tmux
+# Start (if needed) → git pull → train → power off at the end. The job runs detached
 # on the pod (so it survives an SSH drop) and its output is streamed here live:
 python scripts/runpod/manage_pod.py run -- kaisparov train --config \
   config/experiments/scratch_v4_stage1.yaml \
@@ -105,23 +104,33 @@ volume — exactly as it does locally — which `pull_runs.ps1` then brings home
 `start` and `run` **`git pull --ff-only` the pod's repo by default** so a session always
 runs fresh code (a failed pull warns but doesn't abort); pass `--no-pull` to skip it, or use
 the standalone `pull` command. For `run`, `Ctrl-C` only detaches your local viewer — the
-command keeps running on the pod; reattach with `tmux attach`. The automatic power-off fires
-from *this* process once the command exits, so if you kill it you'll need to `stop` the pod
-yourself.
+job keeps running on the pod; re-attach with `manage_pod.py logs`. The automatic power-off
+fires from *this* process once the command exits, so if you kill it you'll need to `stop`
+the pod yourself.
 
 ## Each training session
 
-1. **Start** a pod on the network volume (RunPod web UI, or `runpodctl`).
-2. **Launch** the curriculum (inside `tmux` so it survives an SSH drop):
-   ```bash
-   cd /workspace/kAIsparov && git pull --ff-only && source .venv/bin/activate
-   tmux new -s train
-   kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
-     config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml
-   ```
-   Detach with `Ctrl-b d`; reattach with `tmux attach -t train`. Checkpoints and metrics
-   land in `runs/<id>/` on the volume. (Driving it from your machine with
-   `manage_pod.py run` is easier — see above — and stops the pod for you at the end.)
+Easiest is to drive it from your machine (starts, streams, and stops the pod for you):
+
+```bash
+python scripts/runpod/manage_pod.py run -- kaisparov train --config \
+  config/experiments/scratch_v4_stage1.yaml \
+  config/experiments/scratch_v4_stage2.yaml \
+  config/experiments/scratch_v4_stage3.yaml
+```
+
+If you'd rather work on the pod directly (RunPod web terminal or SSH), launch it detached
+so it survives a disconnect, and tail the log:
+
+```bash
+cd /workspace/kAIsparov && git pull --ff-only && source .venv/bin/activate
+setsid bash -c 'kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
+  config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml \
+  > runs/train.log 2>&1' &
+tail -f runs/train.log
+```
+
+Checkpoints and TensorBoard metrics land in `runs/<id>/` on the volume either way.
 3. **Watch** (optional): in a second shell on the pod,
    ```bash
    source /workspace/kAIsparov/.venv/bin/activate

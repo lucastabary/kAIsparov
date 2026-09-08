@@ -16,13 +16,6 @@ REPO_DIR="$WORKSPACE/kAIsparov"
 mkdir -p "$WORKSPACE"
 cd "$WORKSPACE"
 
-# tmux lets training keep running after an SSH drop (and manage_pod.py run uses it).
-# Some base images ship without it.
-if ! command -v tmux >/dev/null 2>&1; then
-  echo ">> installing tmux"
-  apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux
-fi
-
 if [ ! -d "$REPO_DIR/.git" ]; then
   echo ">> cloning $REPO_URL"
   git clone "$REPO_URL" "$REPO_DIR"
