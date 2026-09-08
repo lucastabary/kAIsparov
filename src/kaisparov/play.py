@@ -26,6 +26,10 @@ grade badge on its destination square (``!!`` brilliant ... ``??`` blunder), and
 end-of-game banner reports each side's accuracy. Both switches are independent and
 also live on the start menu, so either can be toggled without restarting. See
 :mod:`kaisparov.analysis` for how a move is graded.
+
+What each badge means is one click away — from the menu, or from the side panel
+during the game (or the ``L`` key). The wording lives in ``_QUALITY_HELP`` here; the
+interface only lays the rows out.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
 from kaisparov.core.game_interface import (
     GameInterface,
+    LegendEntry,
     MatchSetup,
     ModelOption,
     MoveArrow,
@@ -57,6 +62,35 @@ _NOTABLE = (
     MoveQuality.MISS,
     MoveQuality.BLUNDER,
 )
+
+# What each grade means, in one line, for the legend panel. The badge itself is two
+# characters wide, so this table is the key to reading it — every quality appears,
+# in the enum's own best-to-worst order.
+_QUALITY_HELP: dict[MoveQuality, str] = {
+    MoveQuality.BRILLIANT: "Sacrifice sain: vous donnez du materiel, et ca marche.",
+    MoveQuality.GREAT: "Le seul coup qui tenait la position.",
+    MoveQuality.BEST: "Le premier choix du moteur.",
+    MoveQuality.EXCELLENT: "A un cheveu du meilleur (moins de 2 pts).",
+    MoveQuality.GOOD: "Correct, sans plus (moins de 5 pts).",
+    MoveQuality.FORCED: "Aucun autre coup n'etait possible.",
+    MoveQuality.INACCURACY: "Vous lachez 5 a 10 pts.",
+    MoveQuality.MISTAKE: "Vous lachez 10 a 20 pts.",
+    MoveQuality.MISS: "Un gain immediat etait la, vous l'avez laisse passer.",
+    MoveQuality.BLUNDER: "Plus de 20 pts jetes par la fenetre.",
+}
+
+
+def _legend_entries() -> list[LegendEntry]:
+    """The badge legend, best grade first."""
+    return [
+        LegendEntry(
+            symbol=quality.symbol,
+            title=quality.caption,
+            detail=_QUALITY_HELP[quality],
+            tone=quality.name.lower(),
+        )
+        for quality in MoveQuality
+    ]
 
 
 def _other(player: Player) -> Player:
@@ -490,7 +524,11 @@ def run_match(
 
         if agent is None:  # human seat
             move = ui._get_single_move(
-                use_pov=view_pov, analysis_arrows=arrows, status_lines=status, badge=badge
+                use_pov=view_pov,
+                analysis_arrows=arrows,
+                status_lines=status,
+                badge=badge,
+                legend_button=judge is not None,
             )
             if move is None:
                 return "quit"
@@ -502,6 +540,7 @@ def run_match(
                     analysis_arrows=arrows,
                     status_lines=turn_status,
                     badge=badge,
+                    legend_button=judge is not None,
                 ):
                     return "quit"
             else:
@@ -510,6 +549,7 @@ def run_match(
                     analysis_arrows=arrows,
                     status_lines=status,
                     badge=badge,
+                    legend_button=judge is not None,
                 )
                 pygame.display.flip()
                 if not _pump_events(ui, ai_delay_ms):
@@ -532,7 +572,12 @@ def run_match(
                 review_status = _review_lines(side, verdict)
 
         captured = game.play(*move)
-        ui._draw_frame(use_pov=view_pov, badge=badge, status_lines=review_status)
+        ui._draw_frame(
+            use_pov=view_pov,
+            badge=badge,
+            status_lines=review_status,
+            legend_button=judge is not None,
+        )
         pygame.display.flip()
 
         if captured is not None and captured.type == PieceType.KING:
@@ -607,6 +652,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     ui = GameInterface(ChessGame(initial_board=_initial_board(args.curriculum, args.seed)))
+    ui.legend = _legend_entries()  # menu + in-game key to the grade badges
     models = _available_models(args.runs_dir)
     device = None  # created lazily, the first time a seat or the overlay needs torch
 

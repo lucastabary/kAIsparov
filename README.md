@@ -208,6 +208,11 @@ the best alternative in the same position — the same idea chess.com's game rev
 runs on. `--judge-eval critic` grades against the trained model's value head
 instead of the handcrafted evaluator; see [`analysis/`](src/kaisparov/analysis/judge.py).
 
+A two-character badge needs a key, so one is a click away: **"Que veulent dire les
+notes ?"** on the start menu, and a **Notes: legende** button in the side panel
+during the game (or just press `L`). It lists every grade with its badge, its name
+and what earns it.
+
 ---
 
 ## 🗂️ Project structure

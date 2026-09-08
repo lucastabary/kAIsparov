@@ -69,6 +69,22 @@ class MoveBadge:
     caption: str = ""  # spelled-out grade for the side panel
 
 
+@dataclass(frozen=True)
+class LegendEntry:
+    """One row of the "what do these badges mean?" panel.
+
+    A badge is two characters wide, so the key to reading it has to live somewhere.
+    The caller owns the wording (and the order — best first); the interface only
+    knows how to lay the rows out. Assign a list of these to
+    :attr:`GameInterface.legend` and the button appears on its own.
+    """
+
+    symbol: str
+    title: str  # the grade, spelled out
+    detail: str  # one line on what earns it
+    tone: str = "good"
+
+
 class GameInterface:
     """Graphical interface for rendering a ChessGame in a separate window."""
 
@@ -81,6 +97,10 @@ class GameInterface:
         self.panel_width = 250
         self.window_width = self.board_size_px + self.margin * 2 + self.panel_width
         self.window_height = self.board_size_px + self.margin * 2
+
+        # Rows for the badge legend, best grade first. Empty means "no review in
+        # this session", and the button that opens it stays hidden.
+        self.legend: list[LegendEntry] = []
 
         self._initialized = False
         self._screen: pygame.Surface | None = None
@@ -313,15 +333,21 @@ class GameInterface:
             return
 
         rect = self._coord_to_rect(self._to_display_coord(badge.square, use_pov=use_pov))
-        color = self._quality_colors.get(badge.tone, self._colors["accent"])
         radius = 18
         centre = (rect.right - radius + 4, rect.top + radius - 4)
+        self._draw_badge_disc(centre, badge.symbol, badge.tone, radius=radius)
 
+    def _draw_badge_disc(
+        self, centre: tuple[int, int], symbol: str, tone: str, radius: int = 18
+    ) -> None:
+        """The badge itself — shared by the board and the legend so they cannot drift."""
+        assert self._screen is not None
+        color = self._quality_colors.get(tone, self._colors["accent"])
         pygame.draw.circle(self._screen, color, centre, radius)
         pygame.draw.circle(self._screen, (250, 252, 255), centre, radius, width=3)
 
-        font = self._make_font(20 if len(badge.symbol) < 2 else 17, bold=True)
-        text = font.render(badge.symbol, True, (18, 24, 34))
+        font = self._make_font(radius + 2 if len(symbol) < 2 else radius - 1, bold=True)
+        text = font.render(symbol, True, (18, 24, 34))
         self._screen.blit(text, text.get_rect(center=centre))
 
     def _draw_arrow(
@@ -389,7 +415,98 @@ class GameInterface:
             return self.game.to_pov_coord(real_coord)
         return real_coord
 
-    def _draw_side_panel(self, use_pov: bool, status_lines: list[str] | None = None) -> None:
+    # ----------------------------------------------------------------- legend
+    def _legend_button_rect(self) -> pygame.Rect:
+        """In-game shortcut to the badge legend, below the step button."""
+        panel_left = self.margin + self.board_size_px + 16
+        return pygame.Rect(panel_left + 20, self.margin + 548, self.panel_width - 56, 42)
+
+    def _legend_hit(self, pos: tuple[int, int], enabled: bool) -> bool:
+        return bool(enabled and self.legend) and self._legend_button_rect().collidepoint(pos)
+
+    def show_legend(self, over_board: bool = True, use_pov: bool = True) -> bool:
+        """Show what each grade badge means, until dismissed.
+
+        Reachable both before a game (from the menu) and during one (the panel
+        button, or the ``L`` key), because the two characters on a badge only make
+        sense once — after that the reader wants the board back.
+
+        Returns ``False`` if the window was closed, ``True`` when dismissed.
+        """
+        self._ensure_initialized()
+        assert self._screen is not None
+        assert self._clock is not None
+        if not self.legend:
+            return True
+
+        cx, cy = self.window_width // 2, self.window_height // 2
+        row_h = 44
+        height = 104 + row_h * len(self.legend) + 136
+        panel = pygame.Rect(cx - 390, cy - height // 2, 780, height)
+        close_btn = pygame.Rect(cx - 110, panel.bottom - 74, 220, 50)
+
+        title_font = self._make_font(36, bold=True)
+        name_font = self._make_font(21, bold=True)
+        detail_font = self._make_font(18, bold=False)
+        foot_font = self._make_font(17, bold=False)
+        close_keys = (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE, pygame.K_l)
+
+        def dismisses(event) -> bool:
+            """A left click on the close button — or anywhere off the panel."""
+            if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+                return False
+            return close_btn.collidepoint(event.pos) or not panel.collidepoint(event.pos)
+
+        while True:
+            mouse = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return False
+                if event.type == pygame.KEYDOWN and event.key in close_keys:
+                    return True
+                if dismisses(event):
+                    return True
+
+            if over_board and self.game is not None:
+                self._draw_frame(use_pov=use_pov)
+            else:
+                self._draw_gradient_background()
+            dim = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+            dim.fill((10, 14, 24, 200))
+            self._screen.blit(dim, (0, 0))
+
+            pygame.draw.rect(self._screen, self._colors["panel"], panel, border_radius=18)
+            pygame.draw.rect(self._screen, self._colors["accent"], panel, width=2, border_radius=18)
+            title = title_font.render("Notes des coups", True, self._colors["panel_text"])
+            self._screen.blit(title, title.get_rect(center=(cx, panel.y + 46)))
+
+            for i, entry in enumerate(self.legend):
+                y = panel.y + 96 + i * row_h + row_h // 2
+                self._draw_badge_disc((panel.x + 52, y), entry.symbol, entry.tone, radius=17)
+                name = name_font.render(entry.title, True, self._colors["panel_text"])
+                self._screen.blit(name, (panel.x + 86, y - name.get_height() // 2))
+                detail = detail_font.render(entry.detail, True, self._colors["panel_subtext"])
+                self._screen.blit(detail, (panel.x + 324, y - detail.get_height() // 2))
+
+            foot = foot_font.render(
+                "Les 'pts' sont des points de probabilite de gain perdus face au meilleur coup.",
+                True,
+                self._colors["panel_subtext"],
+            )
+            self._screen.blit(foot, foot.get_rect(center=(cx, panel.bottom - 120)))
+            self._draw_button(
+                close_btn, "Fermer", hover=close_btn.collidepoint(mouse), font_size=21
+            )
+
+            pygame.display.flip()
+            self._clock.tick(60)
+
+    def _draw_side_panel(
+        self,
+        use_pov: bool,
+        status_lines: list[str] | None = None,
+        legend_button: bool = False,
+    ) -> None:
         assert self._screen is not None
         assert self.game is not None
 
@@ -427,6 +544,15 @@ class GameInterface:
                 self._screen.blit(text, (panel_left + 20, y))
                 y += 28
 
+        if legend_button and self.legend:
+            rect = self._legend_button_rect()
+            self._draw_button(
+                rect,
+                "Notes: legende  (L)",
+                hover=rect.collidepoint(pygame.mouse.get_pos()),
+                font_size=19,
+            )
+
         view_mode = "POV courant" if use_pov else "Vue absolue"
         view_text = small_font.render(
             f"Affichage: {view_mode}", True, self._colors["panel_subtext"]
@@ -445,6 +571,7 @@ class GameInterface:
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
         badge: MoveBadge | None = None,
+        legend_button: bool = False,
     ) -> None:
         self._draw_gradient_background()
         self._draw_board(use_pov=use_pov)
@@ -455,7 +582,9 @@ class GameInterface:
             use_pov=use_pov,
         )
         self._draw_move_badge(badge, use_pov=use_pov)
-        self._draw_side_panel(use_pov=use_pov, status_lines=status_lines)
+        self._draw_side_panel(
+            use_pov=use_pov, status_lines=status_lines, legend_button=legend_button
+        )
 
     def render(self, use_pov: bool = True, fps: int = 60) -> None:
         """Opens a dedicated window and renders the game continuously.
@@ -498,8 +627,9 @@ class GameInterface:
             "ai_vs_ai": pygame.Rect(left, 392, width, button_h),
             "white": pygame.Rect(left, 512, half, 48),
             "black": pygame.Rect(left + half + 16, 512, half, 48),
-            "dev": pygame.Rect(left, 580, width, 40),
-            "review": pygame.Rect(left, 624, width, 40),
+            "dev": pygame.Rect(left, 578, width, 40),
+            "review": pygame.Rect(left, 620, width, 40),
+            "legend": pygame.Rect(left, 668, width, 42),
         }
 
     def _draw_button(
@@ -590,6 +720,10 @@ class GameInterface:
                         dev = not dev
                     if layout["review"].collidepoint(pos):
                         review = not review
+                    if self.legend and layout["legend"].collidepoint(pos):
+                        opened = self.show_legend(over_board=False)
+                        if not opened:
+                            return None
 
             self._draw_gradient_background()
 
@@ -639,13 +773,20 @@ class GameInterface:
                 review,
                 hover=layout["review"].collidepoint(mouse),
             )
+            if self.legend:
+                self._draw_button(
+                    layout["legend"],
+                    "Que veulent dire les notes ?",
+                    hover=layout["legend"].collidepoint(mouse),
+                    font_size=20,
+                )
 
             hint = hint_font.render(
                 "Cliquez un mode pour commencer.",
                 True,
                 self._colors["panel_subtext"],
             )
-            self._screen.blit(hint, hint.get_rect(center=(cx, 700)))
+            self._screen.blit(hint, hint.get_rect(center=(cx, 736)))
 
             pygame.display.flip()
             self._clock.tick(60)
@@ -808,6 +949,7 @@ class GameInterface:
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
         badge: MoveBadge | None = None,
+        legend_button: bool = False,
         label: str = "Coup suivant  >",
     ) -> bool:
         """Block until the user asks for the next move (click the panel button, or
@@ -821,8 +963,20 @@ class GameInterface:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return False
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                    if not self.show_legend(use_pov=use_pov):
+                        return False
+                    continue
                 if event.type == pygame.KEYDOWN and event.key in step_keys:
                     return True
+                if (
+                    event.type == pygame.MOUSEBUTTONDOWN
+                    and event.button == 1
+                    and self._legend_hit(event.pos, legend_button)
+                ):
+                    if not self.show_legend(use_pov=use_pov):
+                        return False
+                    continue
                 if (
                     event.type == pygame.MOUSEBUTTONDOWN
                     and event.button == 1
@@ -834,6 +988,7 @@ class GameInterface:
                 analysis_arrows=analysis_arrows,
                 status_lines=status_lines,
                 badge=badge,
+                legend_button=legend_button,
             )
             self._draw_button(btn, label, hover=btn.collidepoint(mouse), font_size=20)
             pygame.display.flip()
@@ -897,6 +1052,7 @@ class GameInterface:
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
         badge: MoveBadge | None = None,
+        legend_button: bool = False,
     ) -> tuple[tuple[int, int], tuple[int, int]] | None:
         """Internal method: waits for a single move without closing pygame.
 
@@ -917,7 +1073,17 @@ class GameInterface:
                 if event.type == pygame.QUIT:
                     return None
 
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
+                    if not self.show_legend(use_pov=use_pov):
+                        return None
+                    continue
+
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self._legend_hit(event.pos, legend_button):
+                        if not self.show_legend(use_pov=use_pov):
+                            return None
+                        continue
+
                     display_coord = self._pixel_to_display_coord(event.pos)
                     if display_coord is None:
                         continue
@@ -953,6 +1119,7 @@ class GameInterface:
                 analysis_arrows=analysis_arrows,
                 status_lines=status_lines,
                 badge=badge,
+                legend_button=legend_button,
             )
             pygame.display.flip()
             self._clock.tick(fps)
