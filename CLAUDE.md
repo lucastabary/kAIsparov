@@ -48,6 +48,7 @@ kaisparov runs  list | show <id> | lineage <id> | best | graph  # graph = HTML l
 kaisparov play  --vs-ai
 
 ruff check . && ruff format --check .           # lint + format
+mypy src/kaisparov                              # types (CI runs it; game_interface excluded)
 pytest                                          # tests (torch-free where possible)
 ```
 
@@ -60,8 +61,10 @@ pytest                                          # tests (torch-free where possib
 - **Branches**: do the work on a short-lived branch off `main` (`fix/…`, `feat/…`), then
   merge back — fast-forward to keep history linear (no merge commit unless a real branch
   topology needs one). `main` is the integration branch and stays green.
-- **Before committing / merging**: `ruff check . && ruff format --check .` and `pytest`
-  must pass. After code changes, also run `graphify update .` (see below).
+- **Before committing / merging**: `ruff check . && ruff format --check .`, `mypy
+  src/kaisparov` and `pytest` must pass — all four are CI steps (`.github/workflows/ci.yml`),
+  and mypy is the easy one to forget. After code changes, also run `graphify update .`
+  (see below).
 - **Never commit** training artifacts — `runs/`, `data/`, `*.pth` are git-ignored on
   purpose (see Gotchas). Commit/push only when asked.
 
@@ -71,8 +74,13 @@ pytest                                          # tests (torch-free where possib
   Keep default configs light; **don't kick off long training** unless asked.
 - `runs/`, `data/`, and `*.pth` are git-ignored — training artifacts never get
   committed.
-- Tests avoid importing the pygame UI so they run headless; if you must import
-  `kaisparov.play` in a headless check, set `SDL_VIDEODRIVER=dummy`.
+- Tests avoid importing the pygame UI. It is not only about a display: CI installs the
+  package with `pip install -e . --no-deps`, so **pygame is not there at all** and any
+  test importing `kaisparov.play` or `core/game_interface.py` fails at collection. Test
+  UI-adjacent logic through the torch- and pygame-free layer underneath it where you can
+  (`core/board.py`, `insights.py`); when a test genuinely needs the UI modules, put it in
+  a module guarded by `pytest.importorskip("pygame")` — see `tests/test_play_ui_wiring.py`.
+  For a headless *manual* check, set `SDL_VIDEODRIVER=dummy`.
 - Adding a backend = a new `models/<arch>/` folder (named by architecture, e.g.
   `rgcn`, `gat`) with a `BACKEND_SPEC` and a `README.md` describing the model (see
   `models/rgcn/README.md`), then a line in `models/factory.py`. Nothing else changes.

@@ -6,13 +6,7 @@ pure Python.
 
 from __future__ import annotations
 
-import os
-
 import pytest
-
-# The legend rows live in the play module, which pulls in pygame. Importing it is
-# harmless headless as long as SDL has a driver it can open without a display.
-os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 from kaisparov.analysis import (
     GameReview,
@@ -186,24 +180,3 @@ def test_game_review_scores_the_cleaner_side_higher():
 
 def test_game_review_has_no_accuracy_for_a_side_that_never_moved():
     assert GameReview().accuracy(W) is None
-
-
-# ----------------------------------------------------------------- the legend
-
-
-def test_the_legend_explains_every_grade_the_judge_can_hand_out():
-    """A badge nobody can decode is a bug — the key must cover the whole enum."""
-    from kaisparov.play import _legend_entries
-
-    entries = _legend_entries()
-    assert [entry.tone for entry in entries] == [q.name.lower() for q in MoveQuality]
-    assert [entry.symbol for entry in entries] == [q.symbol for q in MoveQuality]
-    assert all(entry.title and entry.detail for entry in entries)
-
-
-def test_legend_tones_all_have_a_colour():
-    from kaisparov.core.game_interface import GameInterface
-    from kaisparov.play import _legend_entries
-
-    palette = GameInterface()._quality_colors
-    assert all(entry.tone in palette for entry in _legend_entries())
