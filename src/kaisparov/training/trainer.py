@@ -14,7 +14,7 @@ from kaisparov.core.board import ChessGame
 from kaisparov.eval.arena import evaluate
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.tracking.run import RunManager
-from kaisparov.training.config import OpponentSpec, TrainConfig, build_pool_spec
+from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 from kaisparov.training.reward import make_reward_fn
 
@@ -22,71 +22,6 @@ from kaisparov.training.reward import make_reward_fn
 # it carries no gradient for "best checkpoint" selection. vs_material is the metric
 # that actually discriminates skill here.
 BEST_METRIC = "elo_vs_material"
-
-
-def _build_baseline(name: str, seed: int, avoid_king_suicide: bool = False):
-    """Instantiate a fixed baseline opponent by name (legacy flat-config path)."""
-    if name == "random":
-        return RandomAgent(seed=seed, avoid_king_suicide=avoid_king_suicide)
-    if name == "material":
-        return MaterialAgent(seed=seed, avoid_king_suicide=avoid_king_suicide)
-    raise ValueError(f"Unknown baseline opponent '{name}' (expected 'random' or 'material').")
-
-
-def _load_frozen_model(spec, device, hidden_dim, checkpoint: str):
-    """Load a frozen (eval, no-grad) model of this run's architecture from a checkpoint."""
-    model = spec.model_class.create_agent(device=device, hidden_dim=hidden_dim)
-    model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
-    model.eval()
-    for param in model.parameters():
-        param.requires_grad_(False)
-    return model
-
-
-def _build_pool_baseline(spec, device, hidden_dim, opp: OpponentSpec, seed: int):
-    """Build one fixed baseline agent from a pool-preset entry and its ``params``.
-
-    ``random``/``material`` are model-free; ``neural``/``minimax`` load a frozen model
-    from ``params.checkpoint`` (a past run's weights) — a strong, fixed teacher.
-    """
-    params = opp.params
-    kind = opp.kind
-    if kind == "random":
-        return RandomAgent(
-            seed=params.get("seed", seed),
-            avoid_king_suicide=params.get("avoid_king_suicide", False),
-        )
-    if kind == "material":
-        return MaterialAgent(
-            seed=params.get("seed", seed),
-            avoid_king_suicide=params.get("avoid_king_suicide", False),
-        )
-    if kind in ("neural", "minimax"):
-        checkpoint = params.get("checkpoint")
-        if not checkpoint:
-            raise ValueError(
-                f"A '{kind}' baseline needs params.checkpoint (path to frozen weights)."
-            )
-        model = _load_frozen_model(spec, device, hidden_dim, checkpoint)
-        processor = spec.processor_class()
-        if kind == "minimax":
-            from kaisparov.agents.minimax_agent import MinimaxAgent
-
-            return MinimaxAgent(
-                model,
-                processor,
-                depth=int(params.get("depth", 2)),
-                avoid_king_suicide=params.get("avoid_king_suicide", False),
-            )
-        from kaisparov.agents.neural_agent import NeuralAgent
-
-        return NeuralAgent(
-            model,
-            processor,
-            deterministic=params.get("deterministic", False),
-            avoid_king_suicide=params.get("avoid_king_suicide", False),
-        )
-    raise ValueError(f"Kind {kind!r} is not valid for a fixed baseline (group: baseline).")
 
 
 def _resolve_device(spec: str) -> torch.device:
@@ -149,29 +84,11 @@ class Trainer:
         # Whether the pool grows past-selves at all (a baseline-only preset does not).
         self.take_snapshots = True
         if config.rollout.opponent == "pool":
-            from kaisparov.training.opponents import OpponentPool
+            from kaisparov.training.opponents import build_opponent_pool
 
-            if config.rollout.pool is not None:
-                self.pool = self._build_pool_from_spec(config)
-            else:
-                avoid_suicide = config.rollout.opponent_avoid_king_suicide
-                baselines = [
-                    _build_baseline(n, config.seed, avoid_king_suicide=avoid_suicide)
-                    for n in config.rollout.baselines
-                ]
-                self.pool = OpponentPool(
-                    self.spec,
-                    self.device,
-                    config.hidden_dim,
-                    max_size=config.rollout.pool_size,
-                    seed=config.seed,
-                    baselines=baselines,
-                    baseline_weight=config.rollout.baseline_weight,
-                    snapshot_weight=config.rollout.snapshot_weight,
-                    baseline_weights=config.rollout.baseline_weights,
-                    search_depth=config.rollout.snapshot_search_depth,
-                    avoid_king_suicide=avoid_suicide,
-                )
+            self.pool, self.take_snapshots, self.snapshot_every = build_opponent_pool(
+                self.spec, self.device, config.hidden_dim, config.rollout, config.seed
+            )
 
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
         self.start_epoch = 0
@@ -199,45 +116,6 @@ class Trainer:
             notes=config.notes,
             parent_run_id=config.parent_run_id,
             resumed_from=config.resume_from,
-        )
-
-    # --------------------------------------------------------------- opponent pool
-    def _build_pool_from_spec(self, config: TrainConfig):
-        """Build the opponent pool from a resolved pool preset (``rollout.pool``).
-
-        The flat ``opponents`` list is split into fixed baselines (built now, each with
-        its own ``params``) and the single ``snapshot`` stream (its ``params`` drive the
-        past-selves: ``count`` -> pool size, ``every`` -> cadence, ``depth`` ->
-        minimax/neural, plus ``avoid_king_suicide`` / ``deterministic``).
-        """
-        from kaisparov.training.opponents import OpponentPool
-
-        pspec = build_pool_spec(config.rollout.pool)
-        baselines, baseline_weights = [], []
-        for opp in pspec.baselines:
-            baselines.append(
-                _build_pool_baseline(self.spec, self.device, config.hidden_dim, opp, config.seed)
-            )
-            baseline_weights.append(opp.weight)
-
-        snap = pspec.snapshot
-        self.take_snapshots = snap is not None
-        self.snapshot_every = snap.every if snap else config.rollout.snapshot_every
-        gw = pspec.group_weights
-        sp = snap.params if snap else {}
-        return OpponentPool(
-            self.spec,
-            self.device,
-            config.hidden_dim,
-            max_size=snap.count if snap else 0,
-            seed=config.seed,
-            baselines=baselines,
-            baseline_weight=gw.get("baseline"),
-            snapshot_weight=gw.get("snapshot"),
-            baseline_weights=baseline_weights or None,
-            search_depth=int(sp.get("depth", 0)),
-            avoid_king_suicide=bool(sp.get("avoid_king_suicide", False)),
-            snapshot_deterministic=bool(sp.get("deterministic", False)),
         )
 
     # -------------------------------------------------------------- resume state
@@ -278,9 +156,38 @@ class Trainer:
         """Collect an epoch of experience: self-play, or vs a pooled opponent."""
         cfg = self.config
         if self.pool is not None and len(self.pool) > 0:
+            self.buffer.self_play = False  # single-agent: opponent is the environment
+            from kaisparov.training.parallel_rollout import resolve_num_workers
+
+            # Spread pool games across processes when asked (each worker rebuilds the
+            # pool from a spec + the snapshot state_dicts). Otherwise collect in-process.
+            if (
+                resolve_num_workers(cfg.rollout.num_workers) > 1
+                and cfg.rollout.episodes_per_epoch > 1
+            ):
+                from kaisparov.training.parallel_rollout import collect_vs_opponent_parallel
+
+                # Workers rebuild the pool from the same RolloutSettings (single source
+                # of truth) + the current snapshot weights (added at runtime).
+                return collect_vs_opponent_parallel(
+                    self.agent,
+                    self.buffer,
+                    num_workers=cfg.rollout.num_workers,
+                    num_episodes=cfg.rollout.episodes_per_epoch,
+                    max_steps_per_episode=cfg.rollout.max_steps_per_episode,
+                    model_name=cfg.model,
+                    hidden_dim=cfg.hidden_dim,
+                    reward_settings=cfg.reward,
+                    curriculum_settings=cfg.curriculum,
+                    gamma=cfg.ppo.gamma,
+                    gae_lambda=cfg.ppo.gae_lambda,
+                    base_seed=cfg.seed + epoch,
+                    rollout=cfg.rollout,
+                    snapshot_sds=self.pool.snapshot_state_dicts(),
+                )
+
             from kaisparov.training.rollout_vs import collect_vs_opponent
 
-            self.buffer.self_play = False  # single-agent: opponent is the environment
             return collect_vs_opponent(
                 self.agent,
                 self.buffer,

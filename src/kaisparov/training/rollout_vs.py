@@ -5,6 +5,12 @@ of the environment. So only the learner's transitions are stored, with a per-ste
 reward = (what the learner captured) - (what the opponent captured in reply) - step
 cost, and terminal win/loss on king capture. The PPO buffer must use ``self_play=False``
 (standard GAE) for this data.
+
+Episodes are played *batched*: at each ply every still-running game is graphified and
+the learner's model runs a single batched forward pass (instead of one tiny forward per
+game per move), which keeps the CPU/GPU busy. Opponent replies stay per game (they are
+plain Python / small minimax). Per-episode transitions are flushed contiguously with a
+terminal ``done`` so the GAE sees clean episode boundaries.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
+from torch_geometric.data import Batch
 
 from kaisparov.core.board import ChessGame
 from kaisparov.core.movegen import all_moves
@@ -81,83 +88,114 @@ def collect_vs_opponent(
     agent.eval()
     rng = random.Random(seed)
 
+    def pick_opponent():
+        return opponent if sample_opponent is None else sample_opponent()
+
+    # Per-game state, indexed by episode.
+    games: list[ChessGame] = []
+    opponents: list[Any] = []
+    learners: list[Player] = []
+    pending: list[list[dict]] = [[] for _ in range(num_episodes)]
+    steps = [0] * num_episodes
+    active = [True] * num_episodes
+
     wins = losses = draws = total_plies = 0
 
-    for _ in range(num_episodes):
-        episode_opponent = opponent if sample_opponent is None else sample_opponent()
+    def finish(i: int, result: str) -> None:
+        nonlocal wins, losses, draws, total_plies
+        transitions = pending[i]
+        if transitions:
+            transitions[-1]["done"] = True  # episode boundary for GAE
+            for t in transitions:
+                buffer.add(**t)
+        pending[i] = []
+        active[i] = False
+        total_plies += steps[i]
+        if result == "win":
+            wins += 1
+        elif result == "loss":
+            losses += 1
+        else:
+            draws += 1
+
+    # Initialise each game; if the opponent is on move first, let it play (not stored).
+    for i in range(num_episodes):
+        opp = pick_opponent()
         game = _new_game(curriculum)
         learner = rng.choice([Player.WHITE, Player.BLACK])
-
-        # If the opponent is on move first, let it play (not stored).
+        games.append(game)
+        opponents.append(opp)
+        learners.append(learner)
         if game.turn != learner:
-            moved, captured = _opponent_reply(game, episode_opponent)
+            moved, captured = _opponent_reply(game, opp)
             if not moved:
-                draws += 1
-                continue
-            if _is_king(captured):
-                losses += 1
-                continue
+                finish(i, "draw")
+            elif _is_king(captured):
+                finish(i, "loss")
 
-        pending: list[dict] = []
-        result = "draw"
-        plies = 0
+    # Batched play: at loop top, every active game has the learner to move.
+    with torch.no_grad():
+        while any(active):
+            idxs = [i for i in range(num_episodes) if active[i]]
+            states = processor.graphify_batch([games[i] for i in idxs])
+            batch = Batch.from_data_list(states).to(device)
+            action_scores, values = agent(batch)
+            edge_counts = [int(s.edge_index.shape[1]) for s in states]
+            per_game_scores = torch.split(action_scores, edge_counts, dim=0)
+            values = values.reshape(-1)
 
-        while True:
-            legal_mask = model_module.get_legal_mask(game, edge_index)
-            if not legal_mask.any():
-                break  # learner has no move -> draw
+            for k, i in enumerate(idxs):
+                game = games[i]
+                learner = learners[i]
+                opp = opponents[i]
 
-            state = processor.graphify(game)
-            with torch.no_grad():
-                scores, value = agent(state.to(device))
-            action = processor.process_output(
-                (scores, value), game, deterministic=False, legal_mask=legal_mask
-            )
-            captured_l = game.play(*action.move_coords)
-            plies += 1
-            reward = _gain(reward_settings, captured_l) - reward_settings.step_penalty
-            done = False
+                legal_mask = model_module.get_legal_mask(game, edge_index)
+                if not legal_mask.any():
+                    finish(i, "draw")  # learner has no move
+                    continue
 
-            if _is_king(captured_l):
-                result, done = "win", True
-            else:
-                # King safety: did the learner leave its own king capturable?
-                if reward_settings.king_safety and game.is_in_check(learner):
-                    reward -= reward_settings.king_safety
-                moved, captured_o = _opponent_reply(game, episode_opponent)
-                if not moved:
-                    done = True  # opponent stuck -> draw
+                action = processor.process_output(
+                    (per_game_scores[k], values[k]),
+                    game,
+                    deterministic=False,
+                    legal_mask=legal_mask,
+                )
+                captured_l = game.play(*action.move_coords)
+                steps[i] += 1
+                reward = _gain(reward_settings, captured_l) - reward_settings.step_penalty
+                done = False
+                result = "draw"
+
+                if _is_king(captured_l):
+                    result, done = "win", True
                 else:
-                    plies += 1
-                    reward -= _gain(reward_settings, captured_o)
-                    if _is_king(captured_o):
-                        result, done = "loss", True
-                if not done and plies >= max_steps_per_episode:
-                    done = True  # truncated (stays a draw)
+                    # King safety: did the learner leave its own king capturable?
+                    if reward_settings.king_safety and game.is_in_check(learner):
+                        reward -= reward_settings.king_safety
+                    moved, captured_o = _opponent_reply(game, opp)
+                    if not moved:
+                        done = True  # opponent stuck -> draw
+                    else:
+                        steps[i] += 1
+                        reward -= _gain(reward_settings, captured_o)
+                        if _is_king(captured_o):
+                            result, done = "loss", True
+                    if not done and steps[i] >= max_steps_per_episode:
+                        done = True  # truncated (stays a draw)
 
-            pending.append(
-                {
-                    "state": state,
-                    "action": action.action_index,
-                    "log_prob": action.log_prob,
-                    "value": action.value,
-                    "reward": reward,
-                    "done": done,
-                    "legal_mask": legal_mask,
-                }
-            )
-            if done:
-                break
-
-        if pending:
-            pending[-1]["done"] = True
-            for transition in pending:
-                buffer.add(**transition)
-
-        total_plies += plies
-        wins += result == "win"
-        losses += result == "loss"
-        draws += result == "draw"
+                pending[i].append(
+                    {
+                        "state": states[k],
+                        "action": action.action_index,
+                        "log_prob": action.log_prob,
+                        "value": action.value,
+                        "reward": reward,
+                        "done": done,
+                        "legal_mask": legal_mask,
+                    }
+                )
+                if done:
+                    finish(i, result)
 
     n = max(num_episodes, 1)
     return {

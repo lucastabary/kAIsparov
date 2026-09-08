@@ -11,8 +11,9 @@ Episodes are independent and each is flushed with a terminal ``done`` flag, so t
 negamax GAE in :mod:`kaisparov.training.ppo` — which resets at every ``done`` — is
 unaffected by how episodes are distributed or concatenated.
 
-Only self-play is parallelised here; league/pool collection keeps live opponent
-objects that are not cheap to ship to workers, so it stays in-process.
+Pool/league collection is parallelised the same way (:func:`collect_vs_opponent_parallel`):
+each worker rebuilds the opponent pool from the run's ``RolloutSettings`` plus the CPU
+state_dicts of the snapshots accumulated so far, so live opponent objects need not be shipped.
 
 Note: workers use spawn and their own RNG streams, so a parallel run is not
 bit-identical to the in-process one — expected for RL, and each worker is seeded
@@ -31,7 +32,7 @@ from typing import Any
 import torch
 
 from kaisparov.core.board import ChessGame
-from kaisparov.training.config import CurriculumSettings, RewardSettings
+from kaisparov.training.config import CurriculumSettings, RewardSettings, RolloutSettings
 
 # One persistent pool, reused across epochs so torch is imported once per worker
 # instead of once per collection. Re-created if the requested worker count changes.
@@ -214,4 +215,152 @@ def collect_data_parallel(
     return stats
 
 
-__all__ = ["collect_data_parallel", "resolve_num_workers", "shutdown_executor"]
+# --------------------------------------------------------------------------- #
+# Pool / league (single-agent vs a sampled opponent), parallelised
+# --------------------------------------------------------------------------- #
+def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
+    """Play ``payload['num_episodes']`` games vs a rebuilt pool; return raw transitions."""
+    import random
+
+    import numpy as np
+
+    from kaisparov.models.factory import load_backend, load_backend_spec
+    from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
+    from kaisparov.training.opponents import build_opponent_pool
+    from kaisparov.training.rollout_vs import collect_vs_opponent
+
+    seed = payload["seed"]
+    random.seed(seed)
+    np.random.seed(seed % (2**32))
+    torch.manual_seed(seed)
+
+    device = torch.device("cpu")
+    model_name = payload["model_name"]
+    spec = load_backend_spec(model_name)
+    module = load_backend(model_name)
+
+    agent = spec.model_class.create_agent(device=device, hidden_dim=payload["hidden_dim"])
+    agent.load_state_dict(payload["state_dict"])
+    agent.eval()
+
+    curriculum = None
+    if payload["curriculum"] is not None:
+        curriculum = PieceCountCurriculum(PhaseConfig(**payload["curriculum"]), seed=seed)
+
+    # Same factory the trainer uses (seed = worker's opponent-sampling RNG); then add
+    # the snapshot weights the trainer had accumulated by this epoch.
+    pool, _take, _every = build_opponent_pool(
+        spec, device, payload["hidden_dim"], payload["rollout"], seed
+    )
+    for sd in payload["snapshot_sds"]:
+        pool.add_snapshot_state_dict(sd)
+
+    buffer = spec.buffer_class(
+        gamma=payload["gamma"], gae_lambda=payload["gae_lambda"], self_play=False
+    )
+    stats = collect_vs_opponent(
+        agent,
+        buffer,
+        num_episodes=payload["num_episodes"],
+        max_steps_per_episode=payload["max_steps_per_episode"],
+        model_module=module,
+        curriculum=curriculum,
+        reward_settings=RewardSettings(**payload["reward"]),
+        sample_opponent=pool.sample,
+        seed=seed + 1,  # learner-colour RNG, distinct from the sampling stream
+    )
+    return {
+        "states": buffer.states,
+        "actions": buffer.actions,
+        "log_probs": buffer.log_probs,
+        "values": buffer.values,
+        "rewards": buffer.rewards,
+        "dones": buffer.dones,
+        "legal_masks": buffer.legal_masks,
+        "num_episodes": payload["num_episodes"],
+        "stats": stats,
+    }
+
+
+# Keys collect_vs_opponent reports as per-episode rates/means.
+_VS_WEIGHTED_KEYS = ("king_capture_rate", "winrate", "lossrate", "drawrate", "avg_plies")
+
+
+def collect_vs_opponent_parallel(
+    agent: torch.nn.Module,
+    buffer,
+    *,
+    num_workers: int,
+    num_episodes: int,
+    max_steps_per_episode: int,
+    model_name: str,
+    hidden_dim: int,
+    reward_settings: RewardSettings,
+    curriculum_settings: CurriculumSettings | None,
+    gamma: float,
+    gae_lambda: float,
+    base_seed: int,
+    rollout: RolloutSettings,
+    snapshot_sds: list[dict],
+) -> dict[str, float]:
+    """Collect ``num_episodes`` games vs the pool across processes into ``buffer``.
+
+    Each worker rebuilds the pool from ``rollout`` (the same ``RolloutSettings`` the
+    trainer used) plus ``snapshot_sds`` (CPU state_dicts of the past-selves accumulated
+    so far). The buffer is extended in place; the stats dict mirrors
+    :func:`rollout_vs.collect_vs_opponent`.
+    """
+    workers = resolve_num_workers(num_workers)
+    counts = _split_episodes(num_episodes, workers)
+    if not counts:
+        return {"transitions": float(len(buffer))}
+
+    state_dict = {k: v.detach().cpu() for k, v in agent.state_dict().items()}
+    reward = asdict(reward_settings)
+    curriculum = asdict(curriculum_settings) if curriculum_settings is not None else None
+
+    payloads = [
+        {
+            "num_episodes": count,
+            "max_steps_per_episode": max_steps_per_episode,
+            "model_name": model_name,
+            "hidden_dim": hidden_dim,
+            "state_dict": state_dict,
+            "reward": reward,
+            "curriculum": curriculum,
+            "gamma": gamma,
+            "gae_lambda": gae_lambda,
+            "seed": base_seed * 100003 + i,  # decorrelate worker RNG streams
+            "rollout": rollout,
+            "snapshot_sds": snapshot_sds,
+        }
+        for i, count in enumerate(counts)
+    ]
+
+    executor = _get_executor(len(counts))
+    results = list(executor.map(_worker_collect_vs, payloads))
+
+    for r in results:
+        buffer.states.extend(r["states"])
+        buffer.actions.extend(r["actions"])
+        buffer.log_probs.extend(r["log_probs"])
+        buffer.values.extend(r["values"])
+        buffer.rewards.extend(r["rewards"])
+        buffer.dones.extend(r["dones"])
+        buffer.legal_masks.extend(r["legal_masks"])
+
+    total = sum(r["num_episodes"] for r in results) or 1
+    stats = {
+        key: sum(r["stats"].get(key, 0.0) * r["num_episodes"] for r in results) / total
+        for key in _VS_WEIGHTED_KEYS
+    }
+    stats["transitions"] = float(len(buffer))
+    return stats
+
+
+__all__ = [
+    "collect_data_parallel",
+    "collect_vs_opponent_parallel",
+    "resolve_num_workers",
+    "shutdown_executor",
+]

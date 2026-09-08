@@ -7,7 +7,7 @@ import pytest
 from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
 from kaisparov.training.config import PoolSpec, TrainConfig, build_pool_spec
-from kaisparov.training.trainer import _build_pool_baseline
+from kaisparov.training.opponents import build_pool_baseline
 
 
 def test_build_pool_spec_from_inline_mapping():
@@ -83,10 +83,10 @@ def test_config_rejects_bad_preset_eagerly():
 def test_build_pool_baseline_model_free_kinds_use_params():
     from kaisparov.training.config import OpponentSpec
 
-    mat = _build_pool_baseline(
+    mat = build_pool_baseline(
         None, None, 8, OpponentSpec(kind="material", params={"avoid_king_suicide": True}), seed=7
     )
-    rnd = _build_pool_baseline(None, None, 8, OpponentSpec(kind="random"), seed=7)
+    rnd = build_pool_baseline(None, None, 8, OpponentSpec(kind="random"), seed=7)
     assert isinstance(mat, MaterialAgent) and mat.avoid_king_suicide is True
     assert isinstance(rnd, RandomAgent) and rnd.avoid_king_suicide is False
 
@@ -95,7 +95,7 @@ def test_build_pool_baseline_neural_requires_checkpoint():
     from kaisparov.training.config import OpponentSpec
 
     with pytest.raises(ValueError, match="needs params.checkpoint"):
-        _build_pool_baseline(None, None, 8, OpponentSpec(kind="minimax"), seed=0)
+        build_pool_baseline(None, None, 8, OpponentSpec(kind="minimax"), seed=0)
 
 
 def test_trainer_builds_pool_from_preset(tmp_path):
