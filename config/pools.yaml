@@ -78,7 +78,12 @@ endgame_starter:
 
 # Phase 1: tiny endgames, sound from the start. Two fixed teachers, both defending; no
 # snapshot stream yet.
-v4_phase1:
+v4_phase1-1:
+  opponents:
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: false}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: false}}
+
+v4_phase1-2:
   opponents:
     - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
     - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}

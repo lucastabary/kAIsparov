@@ -16,7 +16,7 @@ hidden_dim: 32          # fixed for the WHOLE curriculum (resume requires matchi
 # Longer than v3's 100: v4 opponents DEFEND their king, so stage 1 has to learn to force
 # a real coordinated capture (not exploit a hung king) — harder, and cheap per epoch on
 # a 4-piece board, so it's worth the extra iterations here.
-epochs: 200
+epochs: 100
 seed: 0
 device: auto            # -> CPU on this machine
 checkpoint_every: 20
@@ -34,7 +34,7 @@ curriculum:
 
 rollout:
   opponent: pool
-  pool: v4_phase1           # random + material, both avoid_king_suicide; no snapshots
+  pool: v4_phase1-1         # random + material, both avoid_king_suicide; no snapshots
   episodes_per_epoch: 16    # less noisy PPO gradient than 8
   max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
 
