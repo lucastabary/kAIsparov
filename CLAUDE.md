@@ -18,6 +18,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 | `envs/` | `ChessEnv` — Gym-like `reset`/`step`/reward/terminal. The only place reward & game-over logic live. |
 | `models/` | Neural backends. Each `models/<name>/` exposes a `BACKEND_SPEC` (`backend_spec.py`); `factory.py` loads by name. |
 | `agents/` | Policies with `select_move(game)`: `RandomAgent`, `MaterialAgent`, `NeuralAgent`. |
+| `analysis/` | Move review — `evaluators` (score a position), `judge` (grade a played move, chess.com-style labels + accuracy), `critic` (torch-backed evaluator). Vocabulary lives in `insights.py`. |
 | `training/` | `config` (typed), `trainer`, `ppo` (buffer + negamax GAE), `rollout`, `curriculum`. |
 | `eval/` | `arena` — play matches, win-rates, Elo. |
 | `tracking/` | `RunManager` writes `runs/<id>/`; `Registry` (torch-free) reads them. |

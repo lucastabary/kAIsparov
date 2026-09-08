@@ -43,6 +43,9 @@ pygame interface to play against a trained agent.
 - **Built-in evaluation & tracking** — every run is benchmarked against baselines
   (random / material) and recorded under `runs/` with full metadata, queryable via
   `kaisparov runs`.
+- **Move review in the UI** — an optional, chess.com-style grade on every move
+  played (`!!` brilliant ... `??` blunder) plus per-side accuracy at the end of the
+  game, graded either by a handcrafted evaluator or by the model's own critic.
 
 > ⚠️ **Rule simplification.** To keep the RL problem tractable, the engine uses a
 > "capture-the-king" win condition: players are not required to get out of check,
@@ -187,9 +190,23 @@ material vs random | 59W 1L 0D | score=98.3% | elo_diff=+708
 kaisparov play                    # human vs human
 kaisparov play --vs-ai            # vs the newest run's latest checkpoint
 kaisparov play --vs-ai --best     # ...or the best-Elo checkpoint (or --checkpoint <path>)
+kaisparov play --vs-ai --review   # ...with every move graded, chess.com style
+kaisparov play --ai-vs-ai --dev   # watch two models, with the analysis overlay
 ```
 
 Opens a pygame window; `--curriculum` starts from a training-style position.
+
+Two independent overlays, both toggleable from the start menu (no restart needed):
+
+| Switch | What it shows |
+|--------|---------------|
+| `--dev` | The model's top candidate moves as arrows + its value estimate — *why* it plays what it plays. |
+| `--review` | A grade badge on each move played (`!!` `!` `*` `+` `=` `?!` `?` `X` `??`) and an accuracy recap per side when the game ends. |
+
+The review grades a move by how much **winning probability** it gave away against
+the best alternative in the same position — the same idea chess.com's game review
+runs on. `--judge-eval critic` grades against the trained model's value head
+instead of the handcrafted evaluator; see [`analysis/`](src/kaisparov/analysis/judge.py).
 
 ---
 
@@ -202,6 +219,7 @@ kAIsparov/
 │  ├─ envs/        # ChessEnv — Gym-like reset/step/reward/terminal
 │  ├─ models/      # neural backends (base classes + rgcn) and factory
 │  ├─ agents/      # policies: RandomAgent, MaterialAgent, NeuralAgent
+│  ├─ analysis/    # move review: evaluators + chess.com-style move grading
 │  ├─ eval/        # arena: play matches, win-rates, Elo
 │  ├─ training/    # config, Trainer, PPO, rollout buffer (GAE), curriculum
 │  ├─ tracking/    # RunManager + Registry (run artifacts)
