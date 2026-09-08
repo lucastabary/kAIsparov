@@ -71,6 +71,7 @@ The command reads its config from the environment (all optional except the API k
 | `RUNPOD_GPU_COUNT` | GPUs to attach on start | `1` |
 | `RUNPOD_SSH_USER` | SSH user on the pod | `root` |
 | `RUNPOD_SSH_KEY` | private SSH key path | `~/.ssh/id_ed25519` |
+| `RUNPOD_REPO_DIR` | repo checkout on the pod | `/workspace/kAIsparov` |
 
 Each has a matching flag (`--pod-id`, `--gpu-count`, `--ssh-key`). SSH uses the pod's
 directly-exposed TCP port for private port 22, so make sure the pod **exposes TCP port 22**
@@ -79,22 +80,26 @@ and your **public key is registered** in RunPod → Settings → SSH Public Keys
 ```bash
 python scripts/runpod/manage_pod.py list             # all pods on the account
 python scripts/runpod/manage_pod.py status           # status + SSH command + tmux sessions
-python scripts/runpod/manage_pod.py start            # resume the pod, wait for SSH
+python scripts/runpod/manage_pod.py start            # resume the pod, wait for SSH, git pull
+python scripts/runpod/manage_pod.py pull             # git pull the repo on the running pod
 python scripts/runpod/manage_pod.py stop             # stop it (GPU billing ends; volume persists)
 python scripts/runpod/manage_pod.py ssh              # interactive shell on the pod
 python scripts/runpod/manage_pod.py ssh -- nvidia-smi  # or a one-off command
 python scripts/runpod/manage_pod.py tmux list        # the pod's tmux sessions
 python scripts/runpod/manage_pod.py tmux attach train  # attach to one (add --create to make it)
 
-# Start (if needed) → run → power off at the end. The job runs inside tmux on the
-# pod (so it survives an SSH drop) and its output is streamed here live:
+# Start (if needed) → git pull → run → power off at the end. The job runs inside tmux
+# on the pod (so it survives an SSH drop) and its output is streamed here live:
 python scripts/runpod/manage_pod.py run -- bash scripts/runpod/run_training.sh
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
 
-For `run`, `Ctrl-C` only detaches your local viewer — the command keeps running on the pod;
-reattach with `tmux attach`. The automatic power-off fires from *this* process once the
-command exits, so if you kill it you'll need to `stop` the pod yourself.
+`start` and `run` **`git pull --ff-only` the pod's repo by default** so a session always
+runs fresh code (a failed pull warns but doesn't abort); pass `--no-pull` to skip it, or use
+the standalone `pull` command. For `run`, `Ctrl-C` only detaches your local viewer — the
+command keeps running on the pod; reattach with `tmux attach`. The automatic power-off fires
+from *this* process once the command exits, so if you kill it you'll need to `stop` the pod
+yourself.
 
 ## Each training session
 

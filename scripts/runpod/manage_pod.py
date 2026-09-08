@@ -25,23 +25,28 @@ Configuration (all optional, env or flags)
     RUNPOD_GPU_COUNT  GPUs to attach on start/resume (default: 1)
     RUNPOD_SSH_USER   SSH user on the pod (default: root)
     RUNPOD_SSH_KEY    path to the private SSH key (default: ~/.ssh/id_ed25519)
+    RUNPOD_REPO_DIR   repo checkout on the pod (default: /workspace/kAIsparov)
 
 Examples
 --------
     python scripts/runpod/manage_pod.py list           # pods on the account
     python scripts/runpod/manage_pod.py status
-    python scripts/runpod/manage_pod.py start
+    python scripts/runpod/manage_pod.py start           # resume + git pull
+    python scripts/runpod/manage_pod.py pull            # git pull on the running pod
     python scripts/runpod/manage_pod.py ssh             # interactive shell
     python scripts/runpod/manage_pod.py tmux list
     python scripts/runpod/manage_pod.py tmux attach train
     python scripts/runpod/manage_pod.py stop
 
-    # Start (if needed), run the curriculum, then power the pod off at the end:
+    # Start (if needed), git pull, run the curriculum, then power the pod off at the end:
     python scripts/runpod/manage_pod.py run -- \
         bash scripts/runpod/run_training.sh
 
 Notes
 -----
+* ``start``, and ``run`` before it launches, ``git pull --ff-only`` the pod's repo
+  (``RUNPOD_REPO_DIR``) so a session always runs fresh code; pass ``--no-pull`` to skip,
+  or use the standalone ``pull`` command. A failed pull warns but does not abort.
 * ``run`` launches the command inside a ``tmux`` session on the pod, so the work
   survives a dropped SSH connection; this script tails its output and, once the
   command exits, stops the pod (unless ``--keep``). If *this* process is killed
@@ -134,6 +139,7 @@ class Config:
         self.ssh_key = getattr(args, "ssh_key", None) or os.environ.get(
             "RUNPOD_SSH_KEY", default_key
         )
+        self.repo_dir = os.environ.get("RUNPOD_REPO_DIR", "/workspace/kAIsparov")
 
 
 # --------------------------------------------------------------------------- #
@@ -300,6 +306,19 @@ def stop_pod(cfg: Config, pod_id: str) -> None:
     print(">> stop requested. GPU billing ends once it exits; the volume persists.")
 
 
+def git_pull(cfg: Config, ip: str, port: int) -> int:
+    """Fast-forward the pod's repo checkout. Returns the remote git exit code."""
+    print(f">> git pull --ff-only in {cfg.repo_dir} ...")
+    remote = f"cd {shlex.quote(cfg.repo_dir)} && git pull --ff-only"
+    code = ssh_run(cfg, ip, port, remote).returncode
+    if code != 0:
+        print(
+            f">> WARNING: git pull failed (exit {code}). The checkout may be stale "
+            f"(diverged or dirty tree in {cfg.repo_dir})."
+        )
+    return code
+
+
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
@@ -344,14 +363,24 @@ def cmd_status(cfg: Config, _args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_start(cfg: Config, _args: argparse.Namespace) -> int:
-    start_pod(cfg, resolve_pod_id(cfg))
+def cmd_start(cfg: Config, args: argparse.Namespace) -> int:
+    pod_id = resolve_pod_id(cfg)
+    _pod, ip, port = ensure_running(cfg, pod_id)
+    if not getattr(args, "no_pull", False):
+        git_pull(cfg, ip, port)
     return 0
 
 
 def cmd_stop(cfg: Config, _args: argparse.Namespace) -> int:
     stop_pod(cfg, resolve_pod_id(cfg))
     return 0
+
+
+def cmd_pull(cfg: Config, _args: argparse.Namespace) -> int:
+    """Fast-forward the pod's repo checkout (pod must be running)."""
+    pod_id = resolve_pod_id(cfg)
+    _pod, ip, port = require_endpoint(cfg, pod_id)
+    return git_pull(cfg, ip, port)
 
 
 def cmd_ssh(cfg: Config, args: argparse.Namespace) -> int:
@@ -388,6 +417,9 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
 
     pod_id = resolve_pod_id(cfg)
     _pod, ip, port = ensure_running(cfg, pod_id)
+
+    if not args.no_pull:
+        git_pull(cfg, ip, port)
 
     launch_remote_command(cfg, ip, port, session, command)
     print(
@@ -495,7 +527,7 @@ def read_exit_code(cfg: Config, ip: str, port: int, session: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="manage_pod.py",
-        description="Manage the kAIsparov RunPod pod (start/stop/ssh/tmux/run).",
+        description="Manage the kAIsparov RunPod pod (start/stop/pull/ssh/tmux/run).",
     )
     parser.add_argument("--pod-id", help="Pod id (default: RUNPOD_POD_ID, or the only pod).")
     parser.add_argument(
@@ -509,8 +541,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("list", help="List all pods on the account.")
     sub.add_parser("status", help="Show the pod's status, SSH command, and tmux sessions.")
-    sub.add_parser("start", help="Start (resume) the pod and wait for SSH.")
+    p_start = sub.add_parser(
+        "start", help="Start (resume) the pod, wait for SSH, and git pull the repo."
+    )
+    p_start.add_argument(
+        "--no-pull", action="store_true", help="Skip the git pull after the pod is up."
+    )
     sub.add_parser("stop", help="Stop the pod (GPU billing ends; the volume persists).")
+    sub.add_parser("pull", help="git pull --ff-only the pod's repo checkout (pod must be running).")
 
     p_ssh = sub.add_parser("ssh", help="Open an interactive SSH shell (or run a one-off command).")
     p_ssh.add_argument(
@@ -535,6 +573,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep", action="store_true", help="Leave the pod running after the command finishes."
     )
     p_run.add_argument(
+        "--no-pull", action="store_true", help="Skip the git pull before running the command."
+    )
+    p_run.add_argument(
         "command", nargs=argparse.REMAINDER, help="Command to run (put it after --)."
     )
     return parser
@@ -545,6 +586,7 @@ COMMANDS = {
     "status": cmd_status,
     "start": cmd_start,
     "stop": cmd_stop,
+    "pull": cmd_pull,
     "ssh": cmd_ssh,
     "tmux": cmd_tmux,
     "run": cmd_run,
