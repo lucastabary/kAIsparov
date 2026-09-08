@@ -23,7 +23,11 @@ CMD='kaisparov train --config \
   config/experiments/scratch_v3_stage3.yaml \
   2>&1 | tee "runs/last_run_$(date +%Y%m%d_%H%M%S).log"'
 
-if command -v tmux >/dev/null 2>&1; then
+if [ -n "${TMUX:-}" ]; then
+  # Already inside a tmux (e.g. launched by manage_pod.py run) — don't nest, run here.
+  echo ">> already inside tmux; running directly."
+  eval "$CMD"
+elif command -v tmux >/dev/null 2>&1; then
   echo ">> launching in tmux session '$SESSION' (detach: Ctrl-b d)"
   tmux new-session -A -s "$SESSION" "source .venv/bin/activate && $CMD"
 else
