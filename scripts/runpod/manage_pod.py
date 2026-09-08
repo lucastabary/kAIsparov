@@ -322,6 +322,21 @@ def git_pull(cfg: Config, ip: str, port: int) -> int:
     return code
 
 
+def ensure_tmux(cfg: Config, ip: str, port: int) -> None:
+    """Make sure tmux is installed on the pod (some base images ship without it)."""
+    if ssh_run(cfg, ip, port, "command -v tmux >/dev/null 2>&1").returncode == 0:
+        return
+    print(">> tmux not found on the pod; installing it (apt-get) ...")
+    install = "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tmux"
+    result = ssh_run(cfg, ip, port, install, capture=True)
+    if result.returncode != 0:
+        sys.exit(
+            "Failed to install tmux on the pod:\n"
+            f"{(result.stdout or '').strip()}\n"
+            "Install it manually: manage_pod.py ssh -- apt-get install -y tmux"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Commands
 # --------------------------------------------------------------------------- #
@@ -424,6 +439,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     if not args.no_pull:
         git_pull(cfg, ip, port)
 
+    ensure_tmux(cfg, ip, port)
     launch_remote_command(cfg, ip, port, session, command)
     print(
         f">> launched in tmux session '{session}'. Streaming output "
