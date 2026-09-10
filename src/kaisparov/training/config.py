@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from kaisparov.training.chain import ensure_not_chain, read_config_mapping
+
 
 @dataclass
 class PPOSettings:
@@ -370,8 +372,8 @@ def load_train_config(path: str | Path | None, runs_dir: str = "runs") -> TrainC
     """Load a training config, resolving ``resume_from_run`` if present."""
     if path is None:
         return TrainConfig()
-    with Path(path).open("r", encoding="utf-8") as stream:
-        raw = yaml.safe_load(stream) or {}
+    raw = read_config_mapping(path)
+    ensure_not_chain(path, raw)
     run_id = raw.get("resume_from_run")
     if run_id:
         return build_resume_config(run_id, raw, raw.get("runs_dir", runs_dir))

@@ -12,14 +12,19 @@ latest checkpoint), so a whole recipe runs end to end without hand-copying run i
         config/experiments/scratch_stage1.yaml \
         config/experiments/scratch_stage2.yaml \
         config/experiments/scratch_stage3.yaml
+
+Or name the recipe once: a config whose only content is a ``stages:`` list is an
+entry point that expands to exactly that chain (see
+:mod:`kaisparov.training.chain`)::
+
+    python -m kaisparov.train --config config/experiments/high_entropy_all.yaml
 """
 
 from __future__ import annotations
 
 import argparse
 
-import yaml
-
+from kaisparov.training.chain import ensure_not_chain, expand_config_chain, read_config_mapping
 from kaisparov.training.config import TrainConfig, build_resume_config, load_train_config
 from kaisparov.training.trainer import Trainer
 
@@ -35,7 +40,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Path to a YAML config file. Pass several to chain a curriculum: each "
             "stage after the first resumes from the run the previous stage produced "
             "(its latest checkpoint), so any `resume_from_run` in those YAMLs is "
-            "overridden by the actual parent run id."
+            "overridden by the actual parent run id. A config that only holds a "
+            "`stages:` list is an entry point and expands to that chain."
         ),
     )
     parser.add_argument(
@@ -77,8 +83,8 @@ def build_config(
     """
     raw: dict = {}
     if config_path:
-        with open(config_path, encoding="utf-8") as stream:
-            raw = yaml.safe_load(stream) or {}
+        raw = read_config_mapping(config_path)
+        ensure_not_chain(config_path, raw)  # chains are expanded before we get here
 
     resume_run = resume_run_id or args.resume or raw.get("resume_from_run")
     if resume_run:
@@ -116,7 +122,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     # `--config` may name several stages: run them in sequence, each resuming from
     # the run the previous one produced. `[None]` = no config -> a single default run.
-    stages: list[str | None] = list(args.config) if args.config else [None]
+    # A chain config counts as the stages it lists, wherever it appears in the list.
+    requested = list(args.config) if args.config else []
+    stages: list[str | None] = list(expand_config_chain(requested)) if requested else [None]
+    if stages != requested:
+        print("Config chain expands to:")
+        for number, stage in enumerate(stages, 1):
+            print(f"  {number}. {stage}")
 
     prev_run_id: str | None = None
     completed: list[str] = []

@@ -23,6 +23,7 @@ kaisparov train --config config/default.yaml
 - [`eval:` — evaluation during training](#eval--evaluation-during-training)
 - [`reward:` — reward shaping](#reward--reward-shaping)
 - [Resuming a run](#resuming-a-run)
+- [Chaining stages](#chaining-stages)
 - [CLI overrides](#cli-overrides)
 - [Examples](#examples)
 
@@ -171,6 +172,48 @@ ppo:
 
 ---
 
+## Chaining stages
+
+A curriculum is several configs run back to back. Pass them all to `--config` and
+each stage after the first **resumes from the run the previous one produced** — no
+run id to copy by hand (any `resume_from_run:` in those files is overridden):
+
+```bash
+kaisparov train --config   config/experiments/scratch_v3_stage1.yaml   config/experiments/scratch_v3_stage2.yaml   config/experiments/scratch_v3_stage3.yaml
+```
+
+To name a recipe once, write a **chain config**: a YAML holding nothing but a
+`stages:` list. Point `--config` at it and it expands to exactly the chain above.
+
+```yaml
+# config/experiments/high_entropy_all.yaml
+title: "high_entropy v4 - full curriculum"
+description: "4-piece endgames -> the full game, wider net + more entropy."
+
+stages:
+  - high_entropy_phase1-1.yaml
+  - high_entropy_phase1-2.yaml
+  - high_entropy_phase2.yaml
+  - high_entropy_phase3.yaml
+```
+
+```bash
+kaisparov train --config config/experiments/high_entropy_all.yaml
+```
+
+| Rule | Detail |
+|------|--------|
+| Keys allowed | `stages:` plus `title` / `description` / `notes` (documentation). **No training settings** — those belong in the stage files, and putting one here is an error rather than a silently ignored override. |
+| Paths | Resolved next to the chain file first, then against the working directory — a recipe can sit beside its stages and still run from anywhere. |
+| Globs | An entry may be a pattern (`high_entropy_phase*.yaml`), expanded in **sorted** order. Prefer an explicit list when the order doesn't sort. |
+| Nesting | A stage may itself be a chain; it is expanded in place. Loops are refused. |
+| Mixing | Chains and plain configs can be combined in one `--config` (`--config warmup.yaml recipe_all.yaml`). |
+
+The resolved stage list is printed before training starts, and the lineage
+(`run1 -> run2 -> ...`) when it ends — inspect it with `kaisparov runs lineage <id>`.
+
+---
+
 ## CLI overrides
 
 Flags override the file (handy for quick tweaks without editing YAML):
@@ -236,3 +279,5 @@ reward: aggressive
 
 **Fast CPU sanity run:** see [`experiments/smoke.yaml`](experiments/smoke.yaml).
 **Resuming:** see [`experiments/resume_example.yaml`](experiments/resume_example.yaml).
+**A whole curriculum in one command:** see
+[`experiments/high_entropy_all.yaml`](experiments/high_entropy_all.yaml).
