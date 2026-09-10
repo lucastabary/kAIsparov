@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass
 
 from kaisparov.agents.base import Policy
+from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.core.pieces import Piece, Player
 from kaisparov.envs.chess_env import ChessEnv
 
@@ -55,8 +56,9 @@ def play_game(
     *,
     board: Grid | None = None,
     max_plies: int = 200,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
 ) -> GameResult:
-    env = ChessEnv(max_plies=max_plies)
+    env = ChessEnv(max_plies=max_plies, draw_rules=draw_rules)
     game = env.reset(board=board)
     policies = {Player.WHITE: white, Player.BLACK: black}
 
@@ -74,7 +76,8 @@ def play_game(
 
         result = env.step(move)
         if result.done:
-            reason = "king_captured" if env.winner is not None else "stalemate_or_limit"
+            # "king_captured", "stalemate", "max_plies", or a draw rule's name.
+            reason = env.end_reason or "max_plies"
 
     return GameResult(winner=env.winner, plies=env.plies, reason=reason)
 
@@ -85,13 +88,14 @@ def evaluate(
     games: int = 20,
     *,
     max_plies: int = 200,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
 ) -> MatchStats:
     """Play ``games`` games, alternating colors so first-move bias cancels out."""
     wins_a = wins_b = draws = 0
     for i in range(games):
         a_is_white = i % 2 == 0
         white, black = (agent_a, agent_b) if a_is_white else (agent_b, agent_a)
-        result = play_game(white, black, max_plies=max_plies)
+        result = play_game(white, black, max_plies=max_plies, draw_rules=draw_rules)
 
         if result.winner is None:
             draws += 1
