@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kaisparov.core import coords, movegen, rules
+from kaisparov.core import coords, draw, movegen, rules, zobrist
 from kaisparov.core.coords import Coord
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 
@@ -24,6 +24,8 @@ class Undo:
     prev_en_passant: Coord | None
     prev_last_move: tuple[Coord, Coord] | None
     turn_advanced: bool
+    prev_zobrist: int
+    prev_halfmove_clock: int
 
 
 class ChessGame:
@@ -43,6 +45,14 @@ class ChessGame:
         self.en_passant_target: Coord | None = None
         # (source, dest) of the last move played — for UI highlighting.
         self.last_move: tuple[Coord, Coord] | None = None
+        # Draw bookkeeping, kept up to date by make/unmake (see kaisparov.core.draw):
+        # a Zobrist fingerprint of the position, the fingerprint of every position the
+        # game has been in, and the plies since the last capture or pawn move. The
+        # history is a list rather than a tally because make/unmake pay for it on every
+        # node of a search, while only the env and the rollouts ever ask for a count.
+        self.zobrist: int = zobrist.hash_position(self.grid, self.turn, self.en_passant_target)
+        self.position_history: list[int] = [self.zobrist]
+        self.halfmove_clock: int = 0
 
     # ------------------------------------------------------------------ setup
     @staticmethod
@@ -95,6 +105,13 @@ class ChessGame:
         self.count = 0
         self.en_passant_target = None
         self.last_move = None
+        self._reset_draw_state()
+
+    def _reset_draw_state(self) -> None:
+        """Start the draw bookkeeping over from the current position."""
+        self.zobrist = zobrist.hash_position(self.grid, self.turn, self.en_passant_target)
+        self.position_history = [self.zobrist]
+        self.halfmove_clock = 0
 
     def copy(self) -> ChessGame:
         """Return a deep, independent copy of the current state."""
@@ -102,6 +119,9 @@ class ChessGame:
         clone.count = self.count
         clone.en_passant_target = self.en_passant_target
         clone.last_move = self.last_move
+        clone.zobrist = self.zobrist
+        clone.position_history = list(self.position_history)
+        clone.halfmove_clock = self.halfmove_clock
         return clone
 
     # ------------------------------------------------------------------ moves
@@ -132,6 +152,22 @@ class ChessGame:
         piece_had_moved = piece.has_moved
         prev_en_passant = self.en_passant_target
         prev_last_move = self.last_move
+        prev_zobrist = self.zobrist
+        prev_halfmove_clock = self.halfmove_clock
+
+        # Zobrist delta, accumulated as the move is applied: the piece leaves its
+        # source with its old ``has_moved`` and lands on its dest as "has moved".
+        # Indexed straight into the key tables rather than through
+        # :func:`zobrist.piece_key` — make/unmake is the search's inner loop, and the
+        # helper's two extra calls per piece cost more than the XOR itself.
+        piece_keys = zobrist.PIECE_KEYS
+        rows = piece_keys[piece.code]
+        moved_row = rows[1]
+        key = (
+            prev_zobrist
+            ^ rows[piece_had_moved][sy * BOARD_SIZE + sx]
+            ^ moved_row[dy * BOARD_SIZE + dx]
+        )
 
         # En passant: a pawn moving diagonally onto the (empty) skipped square captures
         # the pawn beside it, on the mover's own rank.
@@ -149,7 +185,9 @@ class ChessGame:
             captured = self.grid[dx][dy]
 
         if captured is not None:
-            self.grid[captured_square[0]][captured_square[1]] = None
+            cx, cy = captured_square
+            key ^= piece_keys[captured.code][captured.has_moved][cy * BOARD_SIZE + cx]
+            self.grid[cx][cy] = None
         self.grid[dx][dy] = piece
         self.grid[sx][sy] = None
         piece.has_moved = True
@@ -163,6 +201,9 @@ class ChessGame:
             rook = self.grid[rook_src[0]][rook_src[1]]
             if rook is not None and rook.type == PieceType.ROOK and rook.player == piece.player:
                 castle = (rook, rook_src, rook_dest, rook.has_moved)
+                rook_rows = piece_keys[rook.code]
+                key ^= rook_rows[rook.has_moved][rook_src[1] * BOARD_SIZE + rook_src[0]]
+                key ^= rook_rows[1][rook_dest[1] * BOARD_SIZE + rook_dest[0]]
                 self.grid[rook_dest[0]][rook_dest[1]] = rook
                 self.grid[rook_src[0]][rook_src[1]] = None
                 rook.has_moved = True
@@ -180,6 +221,24 @@ class ChessGame:
         turn_advanced = not king_captured
         if turn_advanced:
             self.turn = Player.BLACK if self.turn == Player.WHITE else Player.WHITE
+            key ^= zobrist.TURN_KEY
+
+        # Both targets are None on the overwhelming majority of moves; the guards keep
+        # the common case to two comparisons.
+        if prev_en_passant is not None:
+            key ^= zobrist.en_passant_key(prev_en_passant)
+        if self.en_passant_target is not None:
+            key ^= zobrist.en_passant_key(self.en_passant_target)
+        self.zobrist = key
+        self.position_history.append(key)
+
+        # A capture or a pawn move is irreversible: it resets the no-progress clock
+        # (and makes every earlier position unreachable, so keeping them in the
+        # history can never produce a false repetition).
+        if captured is not None or piece.type == PieceType.PAWN:
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock = prev_halfmove_clock + 1
 
         return Undo(
             source=source,
@@ -193,6 +252,8 @@ class ChessGame:
             prev_en_passant=prev_en_passant,
             prev_last_move=prev_last_move,
             turn_advanced=turn_advanced,
+            prev_zobrist=prev_zobrist,
+            prev_halfmove_clock=prev_halfmove_clock,
         )
 
     def unmake(self, undo: Undo) -> None:
@@ -216,6 +277,12 @@ class ChessGame:
         self.turn = undo.prev_turn
         self.en_passant_target = undo.prev_en_passant
         self.last_move = undo.prev_last_move
+
+        # Drop this position from the history again. make/unmake are perfectly nested
+        # (searches included), so the history always comes back to what it was.
+        self.position_history.pop()
+        self.zobrist = undo.prev_zobrist
+        self.halfmove_clock = undo.prev_halfmove_clock
 
     def play(self, source: Coord, dest: Coord) -> Piece | None:
         """Validate then apply a move. Returns the captured piece, or ``None``.
@@ -248,6 +315,18 @@ class ChessGame:
 
     def is_in_check(self, player: Player) -> bool:
         return rules.is_in_check(self.grid, player)
+
+    # ------------------------------------------------------------------- draws
+    def repetition_count(self) -> int:
+        """How many times the current position has occurred in this game (>= 1)."""
+        return self.position_history.count(self.zobrist)
+
+    def draw_reason(self, draw_rules: draw.DrawRules | None = draw.DEFAULT_RULES) -> str | None:
+        """Name the draw rule that applies right now, or ``None``. See :mod:`draw`."""
+        return draw.draw_reason(self, draw_rules)
+
+    def is_draw(self, draw_rules: draw.DrawRules | None = draw.DEFAULT_RULES) -> bool:
+        return draw.draw_reason(self, draw_rules) is not None
 
     # -------------------------------------------------------------------- misc
     def print_grid(self) -> None:

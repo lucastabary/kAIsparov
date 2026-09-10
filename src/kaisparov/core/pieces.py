@@ -36,13 +36,25 @@ _GLYPHS: dict[tuple[Player, PieceType], str] = {
 }
 
 
+# Dense index for a (player, type) pair, in enum declaration order (so the piece-type
+# half matches :data:`kaisparov.core.bitboard.PT_IDX`). Hot loops key flat tables with
+# this int instead of hashing enum members, which costs an order of magnitude more.
+PIECE_CODES: dict[tuple[Player, PieceType], int] = {
+    (player, piece_type): player_index * len(PieceType) + type_index
+    for player_index, player in enumerate(Player)
+    for type_index, piece_type in enumerate(PieceType)
+}
+NUM_PIECE_CODES = len(PIECE_CODES)
+
+
 class Piece:
-    __slots__ = ("player", "type", "has_moved")
+    __slots__ = ("player", "type", "has_moved", "code")
 
     def __init__(self, player: Player, type: PieceType):
         self.player = player
         self.type = type
         self.has_moved = False
+        self.code = PIECE_CODES[(player, type)]
 
     def __repr__(self) -> str:
         return _GLYPHS[(self.player, self.type)]
