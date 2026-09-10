@@ -40,6 +40,7 @@ import pygame
 
 from kaisparov.agents.base import Policy
 from kaisparov.analysis import GameReview, HeuristicEvaluator, MaterialEvaluator, MoveJudge
+from kaisparov.core import draw
 from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
 from kaisparov.core.game_interface import (
@@ -600,9 +601,22 @@ def run_match(
             print(f"Game over — {winner.name} wins by capturing the king!")
             return finish(f"Roi capture !  Les {_fr_color(winner)} gagnent.")
 
+        drawn = game.draw_reason()
+        if drawn is not None:
+            print(f"Game over — draw ({drawn}).")
+            return finish(f"Partie nulle : {_FR_DRAW_REASONS[drawn]}.")
+
 
 def _fr_color(player: Player) -> str:
     return "Blancs" if player == Player.WHITE else "Noirs"
+
+
+# One French line per draw rule, for the game-over panel.
+_FR_DRAW_REASONS = {
+    draw.REPETITION: f"position repetee {draw.REPETITION_LIMIT} fois",
+    draw.NO_PROGRESS: (f"{draw.NO_PROGRESS_PLIES // 2} coups sans prise ni poussee de pion"),
+    draw.INSUFFICIENT_MATERIAL: "materiel insuffisant",
+}
 
 
 # ----------------------------------------------------------------------- CLI
