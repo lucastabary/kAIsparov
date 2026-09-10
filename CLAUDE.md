@@ -31,7 +31,13 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
   lives in `core/coords.py` — use it, don't re-derive.
 - **Variant**: capture-the-king. Moves are pseudo-legal (not filtered for leaving
   your own king in check); the game ends when a king is captured. Castling and en
-  passant are implemented; no promotion or draws. This is intentional, not a bug.
+  passant are implemented; no promotion. This is intentional, not a bug.
+- **Draws** live in `core/draw.py`: threefold repetition, 50 moves without a capture
+  or a pawn move, and insufficient material — each switchable via `DrawRules`.
+  `ChessGame` keeps the bookkeeping (`zobrist`, `position_history`, `halfmove_clock`)
+  up to date in `make`/`unmake`. The material rule is a *convention* here: kings can
+  capture each other, so no position is ever strictly dead. A draw is **never** a
+  reward event — the drawing move scores what any non-capturing move scores.
 - **Style**: snake_case, English identifiers, ruff-formatted (line length 100).
 - **Experiment tracking** is the `runs/` registry. Do **not** reintroduce the old
   per-package `model_info.json` / `weights/` system — it was removed on purpose.

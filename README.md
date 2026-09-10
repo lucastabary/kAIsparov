@@ -51,8 +51,9 @@ and a pygame interface to play against a trained agent.
 > ⚠️ **Rule simplification.** To keep the RL problem tractable, the engine uses a
 > "capture-the-king" win condition: players are not required to get out of check,
 > and the game ends when a king is captured. Castling and en passant *are*
-> implemented; promotion and draw rules are not. This is a research simplification,
-> not a bug.
+> implemented; promotion is not. Draws are: threefold repetition, 50 moves without a
+> capture or a pawn move, and insufficient material (`core/draw.py`). This is a
+> research simplification, not a bug.
 
 ---
 

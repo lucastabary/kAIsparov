@@ -76,6 +76,7 @@ How much experience is gathered each epoch.
 |-----------|------|---------|--------------|
 | `episodes_per_epoch` | int | `8` | Self-play games collected per epoch. Also the parallel batch width — all games step together through one batched forward pass. |
 | `max_steps_per_episode` | int | `100` | Maximum plies (half-moves) before a game is truncated. |
+| `draw_rules` | bool | `true` | End an episode as a draw on threefold repetition, 50 moves without a capture or a pawn move, or insufficient material (`core/draw.py`) instead of shuffling to `max_steps_per_episode`. The draw carries **no** reward of its own. `false` restores the old behaviour. |
 | `opponent` | str | `self` | `self` = self-play (negamax). `pool` = a **league**: the learner trains against frozen past snapshots of itself (breaks the "everyone rushes" collapse). |
 | `pool_size` | int | `5` | (`pool` mode) how many past snapshots to keep. |
 | `snapshot_every` | int | `20` | (`pool` mode) add the current learner to the pool every N epochs. Until the first snapshot, training is plain self-play. |
