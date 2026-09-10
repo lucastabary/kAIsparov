@@ -23,6 +23,7 @@ import torch
 from torch_geometric.data import Batch
 
 from kaisparov.core.board import ChessGame
+from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.core.utils import get_piece_value
@@ -70,6 +71,7 @@ def collect_vs_opponent(
     opponent: Any | None = None,
     sample_opponent: Callable[[], Any] | None = None,
     seed: int | None = None,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
 ) -> dict[str, float]:
     """Collect learner transitions against a fixed or per-episode-sampled opponent.
 
@@ -78,6 +80,10 @@ def collect_vs_opponent(
     latter keeps a single epoch's batch from being homogeneous (all-vs-Material games
     are short and swing the critic; all-vs-Random games drift long), which otherwise
     makes the PPO gradient high-variance from one epoch to the next.
+
+    ``draw_rules`` ends an episode as a draw as soon as the position is drawn (see
+    :mod:`kaisparov.core.draw`) — scored like the truncated games it replaces, with
+    no reward of its own. Pass ``None`` to disable.
     """
     if (opponent is None) == (sample_opponent is None):
         raise ValueError("Pass exactly one of `opponent` or `sample_opponent`.")
@@ -180,6 +186,8 @@ def collect_vs_opponent(
                         reward -= _gain(reward_settings, captured_o)
                         if _is_king(captured_o):
                             result, done = "loss", True
+                    if not done and game.is_draw(draw_rules):
+                        done = True  # drawn position (stays a draw)
                     if not done and steps[i] >= max_steps_per_episode:
                         done = True  # truncated (stays a draw)
 

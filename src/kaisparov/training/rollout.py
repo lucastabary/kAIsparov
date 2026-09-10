@@ -16,6 +16,7 @@ import torch
 from torch_geometric.data import Batch
 
 from kaisparov.core.board import ChessGame
+from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.core.pieces import PieceType
 from kaisparov.training.curriculum import BaseCurriculum
 from kaisparov.training.ppo import PPOBuffer
@@ -54,7 +55,16 @@ def collect_data(
     deterministic: bool = False,
     curriculum: BaseCurriculum | None = None,
     reward_fn=None,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
 ) -> dict[str, float]:
+    """Play ``num_episodes`` self-play games into ``buffer``; return per-epoch stats.
+
+    ``draw_rules`` ends an episode as soon as the position is drawn (repetition, no
+    progress, insufficient material — see :mod:`kaisparov.core.draw`), which stops a
+    shuffling loop from burning the whole ply budget. A draw is terminal but *not* a
+    reward event: the drawing move scores whatever ``reward_fn`` gives a
+    non-capturing move, exactly as it would mid-game. Pass ``None`` to disable.
+    """
     module = _resolve_module(model_module, model_name)
     processor = module.PROCESSOR_CLASS()
     device = _model_device(agent)
@@ -67,7 +77,7 @@ def collect_data(
     active = [True] * num_episodes
 
     # How episodes ended, for live monitoring.
-    n_king = n_truncated = n_stalemate = total_plies = 0
+    n_king = n_truncated = n_stalemate = n_draw = total_plies = 0
 
     def flush(i: int) -> None:
         transitions = pending[i]
@@ -113,9 +123,10 @@ def collect_data(
                 else:
                     reward = module.compute_reward(g, captured)
                 king_captured = captured is not None and captured.type == PieceType.KING
+                drawn = not king_captured and g.is_draw(draw_rules)
 
                 steps[i] += 1
-                done = king_captured or steps[i] >= max_steps_per_episode
+                done = king_captured or drawn or steps[i] >= max_steps_per_episode
                 pending[i].append(
                     {
                         "state": states[k],
@@ -130,6 +141,8 @@ def collect_data(
                 if done:
                     if king_captured:
                         n_king += 1
+                    elif drawn:
+                        n_draw += 1
                     else:
                         n_truncated += 1
                     total_plies += steps[i]
@@ -140,6 +153,7 @@ def collect_data(
         "king_capture_rate": n_king / n,
         "truncated_rate": n_truncated / n,
         "stalemate_rate": n_stalemate / n,
+        "draw_rate": n_draw / n,
         "avg_plies": total_plies / n,
         "transitions": float(len(buffer)),
     }

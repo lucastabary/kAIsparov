@@ -183,6 +183,7 @@ class Trainer:
                     gae_lambda=cfg.ppo.gae_lambda,
                     base_seed=cfg.seed + epoch,
                     rollout=cfg.rollout,
+                    draw_rules=cfg.rollout.draw_rule_set(),
                     snapshot_sds=self.pool.snapshot_state_dicts(),
                 )
 
@@ -201,6 +202,7 @@ class Trainer:
                 # all-vs-one — which was making game length and the critic target swing
                 # wildly from epoch to epoch.
                 sample_opponent=self.pool.sample,
+                draw_rules=cfg.rollout.draw_rule_set(),
                 seed=cfg.seed + epoch,
             )
 
@@ -224,6 +226,7 @@ class Trainer:
                 gamma=cfg.ppo.gamma,
                 gae_lambda=cfg.ppo.gae_lambda,
                 self_play=cfg.ppo.self_play,
+                draw_rules=cfg.rollout.draw_rule_set(),
                 base_seed=cfg.seed + epoch,
             )
 
@@ -236,6 +239,7 @@ class Trainer:
             model_module=self.module,
             curriculum=self.curriculum,
             reward_fn=self.reward_fn,
+            draw_rules=cfg.rollout.draw_rule_set(),
         )
 
     # ------------------------------------------------------------------ training
@@ -329,6 +333,10 @@ class Trainer:
             f"| king_capture={rollout_stats.get('king_capture_rate', 0):.0%} "
             f"plies={rollout_stats.get('avg_plies', 0):.0f}"
         )
+        # Self-play only: how many episodes ended on a draw rule rather than a king
+        # capture or the ply cap. A rising number means the agent is shuffling.
+        if rollout_stats.get("draw_rate"):
+            line += f" draw={rollout_stats['draw_rate']:.0%}"
         # In league (pool) mode the learner's own win/loss split is the informative
         # signal; the self-play rollout doesn't report one, hence the guard.
         if "winrate" in rollout_stats:

@@ -32,6 +32,7 @@ from typing import Any
 import torch
 
 from kaisparov.core.board import ChessGame
+from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.training.config import CurriculumSettings, RewardSettings, RolloutSettings
 
 # One persistent pool, reused across epochs so torch is imported once per worker
@@ -128,6 +129,7 @@ def _worker_collect(payload: dict[str, Any]) -> dict[str, Any]:
         model_module=module,
         curriculum=curriculum,
         reward_fn=reward_fn,
+        draw_rules=payload["draw_rules"],
     )
     return {
         "states": buffer.states,
@@ -144,7 +146,13 @@ def _worker_collect(payload: dict[str, Any]) -> dict[str, Any]:
 
 # Keys collect_data reports as per-episode rates/means; aggregated as an
 # episode-weighted average across worker slices.
-_WEIGHTED_KEYS = ("king_capture_rate", "truncated_rate", "stalemate_rate", "avg_plies")
+_WEIGHTED_KEYS = (
+    "king_capture_rate",
+    "truncated_rate",
+    "stalemate_rate",
+    "draw_rate",
+    "avg_plies",
+)
 
 
 def collect_data_parallel(
@@ -161,6 +169,7 @@ def collect_data_parallel(
     gamma: float,
     gae_lambda: float,
     self_play: bool,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
     base_seed: int,
 ) -> dict[str, float]:
     """Collect ``num_episodes`` self-play games across processes into ``buffer``.
@@ -189,6 +198,7 @@ def collect_data_parallel(
             "gamma": gamma,
             "gae_lambda": gae_lambda,
             "self_play": self_play,
+            "draw_rules": draw_rules,
             "seed": base_seed * 100003 + i,  # decorrelate worker RNG streams
         }
         for i, count in enumerate(counts)
@@ -267,6 +277,7 @@ def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
         curriculum=curriculum,
         reward_settings=RewardSettings(**payload["reward"]),
         sample_opponent=pool.sample,
+        draw_rules=payload["draw_rules"],
         seed=seed + 1,  # learner-colour RNG, distinct from the sampling stream
     )
     return {
@@ -301,6 +312,7 @@ def collect_vs_opponent_parallel(
     gae_lambda: float,
     base_seed: int,
     rollout: RolloutSettings,
+    draw_rules: DrawRules | None = DEFAULT_RULES,
     snapshot_sds: list[dict],
 ) -> dict[str, float]:
     """Collect ``num_episodes`` games vs the pool across processes into ``buffer``.
@@ -332,6 +344,7 @@ def collect_vs_opponent_parallel(
             "gae_lambda": gae_lambda,
             "seed": base_seed * 100003 + i,  # decorrelate worker RNG streams
             "rollout": rollout,
+            "draw_rules": draw_rules,
             "snapshot_sds": snapshot_sds,
         }
         for i, count in enumerate(counts)

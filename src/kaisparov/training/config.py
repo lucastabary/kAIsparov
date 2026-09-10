@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.training.chain import ensure_not_chain, read_config_mapping
 
 
@@ -32,6 +33,12 @@ class PPOSettings:
 class RolloutSettings:
     episodes_per_epoch: int = 8
     max_steps_per_episode: int = 100
+    # End an episode as a draw as soon as the position is drawn — threefold
+    # repetition, 50 moves without a capture or a pawn move, or insufficient material
+    # (see kaisparov.core.draw) — instead of shuffling until max_steps_per_episode.
+    # A draw is terminal but carries NO reward of its own: the drawing move scores
+    # exactly what any non-capturing move scores. Set false for the old behaviour.
+    draw_rules: bool = True
     # Collection is CPU-bound in the pure-Python engine; split the epoch's episodes
     # across this many worker processes (each with its own model copy) and merge their
     # buffers. 1 = in-process (default). 0 = auto (os.cpu_count()). Both self-play and
@@ -77,6 +84,10 @@ class RolloutSettings:
     # See PoolSpec / config/pools.yaml. Resolved (expanded) at load time so the run's
     # persisted config records the actual opponents, not just a preset name.
     pool: Any = None
+
+    def draw_rule_set(self) -> DrawRules | None:
+        """The core draw rules the rollouts should apply (``None`` when off)."""
+        return DEFAULT_RULES if self.draw_rules else None
 
 
 @dataclass
