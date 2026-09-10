@@ -1,0 +1,53 @@
+# high_entropy v4 — phase 1b/4 · opponents start defending (4-piece endgames)
+#   1) run phase1-1, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_phase1-2.yaml
+#
+# Same as phase1-1 but the pool switches to opponents that defend their own king
+# (avoid_king_suicide: true) — the model can no longer win by rushing a hung king,
+# it has to keep forcing a *sound* capture. Width/entropy/epochs scaled the same way
+# as every other stage in this curriculum (hidden_dim 64, entropy_coef x4, epochs x2
+# vs scratch_v4).
+
+resume_from_run: PASTE_PHASE1_1_RUN_ID_HERE
+
+title: "high_entropy v4 - phase 1b (4 pieces, defending opponents)"
+description: |
+  Continue phase 1a with opponents that defend their own king. Pure outcome reward
+  kept. Same pool/rollout shape as scratch_v4 stage1-2, just wider (hidden_dim=64)
+  and with entropy pushed up 4x for more exploration/creativity.
+
+model: rgcn
+hidden_dim: 64          # fixed for the WHOLE curriculum (resume requires matching width); v4 used 32
+epochs: 200             # 2x v4's 100
+seed: 0
+device: auto
+checkpoint_every: 20
+
+reward: king_capture_only
+
+curriculum:
+  name: "4 pieces/side, no pawns"
+  max_pieces_per_side: 4
+  allow_major: true
+  allow_minor: true
+  allow_pawns: false
+  ensure_kings_safe: true
+
+rollout:
+  opponent: pool
+  num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
+  pool: v4_phase1-2         # random + material, both avoid_king_suicide: true; no snapshots
+  episodes_per_epoch: 16    # less noisy PPO gradient than 8
+  max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
+
+ppo:
+  learning_rate: 0.0005
+  update_epochs: 2
+  entropy_coef: 0.08        # v4 x4 (0.02 -> 0.08)
+
+eval:
+  enabled: true
+  every: 10
+  games: 40
+  max_plies: 120

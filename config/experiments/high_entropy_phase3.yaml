@@ -1,0 +1,50 @@
+# high_entropy v4 — phase 3/4 · the real game (standard starting position)
+#   1) run phase2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_phase3.yaml
+#
+# Inherits architecture (rgcn/hidden_dim=64) and reward (king_capture_only) from the
+# phase-2 parent. `curriculum: null` disables the piece-count curriculum, so games
+# start from the normal chess position — the actual task the model is meant to play.
+#
+# Same stage goal as scratch_v4 stage3: full game, sound play. Pool switched to
+# v4_phase3: defending self-play (snapshots) dominates (weighted above the
+# baselines) and every opponent defends its own king. Width/entropy/epochs scaled
+# the same way as every stage in this curriculum — this phase still gets more
+# exploration room than v4 did, for a less brittle, more creative final policy.
+
+resume_from_run: PASTE_PHASE2_RUN_ID_HERE
+
+title: "high_entropy v4 - phase 3 (real game)"
+description: |
+  Final phase: full standard starting position, longest games. Pure outcome reward
+  kept. Pool tilts toward defending self-play; every opponent defends its king.
+  Lowest LR (1e-4) of the curriculum; entropy still x4 vs scratch_v4 and epochs
+  doubled, aiming for a more robust/creative final policy rather than pure sharpening.
+
+# 2x v4's 200 — the only stage trained on the target distribution (real games from
+# the standard opening); wider net + higher entropy need the extra iterations too.
+epochs: 400
+
+reward: king_capture_only
+
+# Disable the curriculum -> start from the normal chess position ("vraie partie").
+curriculum: null
+
+rollout:
+  opponent: pool
+  num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
+  pool: v4_phase3                  # material + random + snapshots (weighted up), all guarded
+  max_steps_per_episode: 150
+  # episodes_per_epoch (16) inherited from earlier phases.
+
+ppo:
+  learning_rate: 0.0001            # refinement only
+  entropy_coef: 0.024               # v4 x4 (0.006 -> 0.024): sharpen less than v4, keep some exploration alive
+  update_epochs: 2
+
+eval:
+  enabled: true
+  every: 10
+  games: 40
+  max_plies: 200

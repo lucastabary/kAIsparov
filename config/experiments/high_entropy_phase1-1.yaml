@@ -1,0 +1,49 @@
+# high_entropy v4 — phase 1a/4 · sound play from the start (4-piece endgames)
+#   kaisparov train --config config/experiments/high_entropy_phase1-1.yaml
+#   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
+#
+# Same curriculum as scratch_v4 (opponents DEFEND from epoch 1 via avoid_king_suicide
+# in config/pools.yaml; pure king-capture reward, no shaping) but wider and pushed
+# toward more exploration: hidden_dim 32->64, entropy_coef x4, epochs x2 at every
+# stage. Goal: a more robust, less exploitable, more "creative" policy than v4 —
+# same pools/rollout settings throughout, only width/entropy/length change.
+#
+# Stage goal (unchanged from v4): in tiny 4-piece (per side) piece-only endgames,
+# learn to force a *sound* king capture against defenders, over a horizon short
+# enough for the sparse +/-1 to propagate and the critic to fit it.
+
+model: rgcn
+hidden_dim: 64          # fixed for the WHOLE curriculum (resume requires matching width); v4 used 32
+epochs: 200             # 2x v4's 100 — wider net + higher entropy needs more iterations to settle
+seed: 0
+device: auto            # -> CPU on this machine
+checkpoint_every: 20
+
+# Pure outcome. All shaping terms (king_safety, check, step_penalty) are OFF.
+reward: king_capture_only
+
+curriculum:
+  name: "4 pieces/side, no pawns"
+  max_pieces_per_side: 4
+  allow_major: true
+  allow_minor: true
+  allow_pawns: false
+  ensure_kings_safe: true   # no free ply-0 king capture
+
+rollout:
+  opponent: pool
+  num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
+  pool: v4_phase1-1         # random + material, both avoid_king_suicide: false; no snapshots
+  episodes_per_epoch: 16    # less noisy PPO gradient than 8
+  max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
+
+ppo:
+  learning_rate: 0.0005     # v3/v4's setting; 1e-3 was too hot
+  update_epochs: 2          # less overfitting of each small batch
+  entropy_coef: 0.08        # v4 x4 (0.02 -> 0.08): push exploration harder for a more creative policy
+
+eval:
+  enabled: true
+  every: 10                 # catch the peak
+  games: 40
+  max_plies: 120

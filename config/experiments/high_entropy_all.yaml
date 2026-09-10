@@ -1,0 +1,23 @@
+# high_entropy v4 — the whole curriculum in one command
+#   kaisparov train --config config/experiments/high_entropy_all.yaml
+#   tensorboard --logdir runs/
+#
+# This file is an *entry point*, not a training config: it holds nothing but the
+# ordered list of stages to run. Each stage after the first automatically resumes
+# from the run the previous one produced, so the `resume_from_run: PASTE_..._HERE`
+# placeholders inside the phase files are overridden with the real run ids — you
+# never copy a run id by hand. Equivalent to passing the four files to --config.
+#
+# Everything about the recipe (width, entropy, epochs, pools, reward) lives in the
+# stage files; edit those, not this one.
+
+title: "high_entropy v4 - full curriculum (phases 1a -> 3)"
+description: >
+  Sound play from 4-piece endgames to the full game, with hidden_dim 64 and 4x the
+  entropy bonus of scratch_v4: wider, more exploratory, less brittle final policy.
+
+stages:
+  - high_entropy_phase1-1.yaml   # 4 pieces/side, no pawns — force a sound king capture
+  - high_entropy_phase1-2.yaml   # same, but opponents defend their king
+  - high_entropy_phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool
+  - high_entropy_phase3.yaml     # standard starting position, defending self-play
