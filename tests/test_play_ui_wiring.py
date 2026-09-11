@@ -17,7 +17,9 @@ pytest.importorskip("pygame", reason="pygame UI modules are not installed")
 # Nothing here opens a window; keep SDL headless anyway in case a driver is probed.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
+from kaisparov.core.board import ChessGame  # noqa: E402
 from kaisparov.core.game_interface import GameInterface, MatchSetup  # noqa: E402
+from kaisparov.core.notation import numbered_moves  # noqa: E402
 from kaisparov.core.pieces import Player  # noqa: E402
 from kaisparov.insights import MoveQuality  # noqa: E402
 from kaisparov.play import _board_orientation, _legend_entries  # noqa: E402
@@ -43,3 +45,19 @@ def test_the_legend_explains_every_grade_the_judge_can_hand_out():
 def test_every_legend_tone_has_a_colour():
     palette = GameInterface()._quality_colors
     assert all(entry.tone in palette for entry in _legend_entries())
+
+
+def test_a_new_game_starts_with_a_blank_move_list():
+    ui = GameInterface()
+    ui.set_history(numbered_moves(["e4", "e5"]))
+    ui._history_scroll = 3
+    ui.set_game(ChessGame())
+    assert ui.history == []
+    assert ui._history_scroll == 0
+
+
+def test_a_new_move_brings_the_list_back_to_the_latest_row():
+    ui = GameInterface()
+    ui._history_scroll = 5  # the reader had scrolled back
+    ui.set_history(numbered_moves(["e4"]))
+    assert ui._history_scroll == 0

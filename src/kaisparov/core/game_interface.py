@@ -7,6 +7,7 @@ import pygame
 
 from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
+from kaisparov.core.notation import MoveRow
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
 Color = tuple[int, int, int]
@@ -99,12 +100,20 @@ class GameInterface:
         self.board_size_px = self.cell_size * BOARD_SIZE
         self.margin = 34
         self.panel_width = 250
-        self.window_width = self.board_size_px + self.margin * 2 + self.panel_width
+        self.history_width = 210
+        self.window_width = (
+            self.board_size_px + self.margin * 2 + self.panel_width + self.history_width
+        )
         self.window_height = self.board_size_px + self.margin * 2
 
         # Rows for the badge legend, best grade first. Empty means "no review in
         # this session", and the button that opens it stays hidden.
         self.legend: list[LegendEntry] = []
+
+        # The scoresheet of the game on the board (see set_history), and how many
+        # rows the reader has scrolled back from the latest move.
+        self.history: list[MoveRow] = []
+        self._history_scroll = 0
 
         self._initialized = False
         self._screen: pygame.Surface | None = None
@@ -144,8 +153,19 @@ class GameInterface:
         }
 
     def set_game(self, game: ChessGame) -> None:
-        """Assigns a ChessGame instance to this interface."""
+        """Assigns a ChessGame instance to this interface (with a blank history)."""
         self.game = game
+        self.set_history([])
+
+    def set_history(self, rows: list[MoveRow]) -> None:
+        """Replace the move list, and jump back to its latest move.
+
+        The caller owns the notation (see :mod:`kaisparov.core.notation`); the
+        interface only lays the rows out. A new move always brings the list back to
+        the bottom, so scrolling back never hides the move just played.
+        """
+        self.history = rows
+        self._history_scroll = 0
 
     def _ensure_initialized(self) -> None:
         if self._initialized:
@@ -534,7 +554,9 @@ class GameInterface:
         title_font = self._make_font(34, bold=True)
         label_font = self._make_font(22, bold=True)
         value_font = self._make_font(30, bold=True)
-        small_font = self._make_font(18, bold=False)
+        # Small enough that the footer stays inside the panel instead of running
+        # under the move list beside it.
+        small_font = self._make_font(16, bold=False)
 
         title = title_font.render("kAIsparov", True, self._colors["panel_text"])
         self._screen.blit(title, (panel_left + 18, self.margin + 18))
@@ -577,6 +599,92 @@ class GameInterface:
         self._screen.blit(view_text, (panel_left + 20, self.margin + self.board_size_px - 72))
         self._screen.blit(hint_text, (panel_left + 20, self.margin + self.board_size_px - 44))
 
+    # ---------------------------------------------------------------- history
+    _HISTORY_TOP = 78  # title band above the first row
+    _HISTORY_ROW_H = 26
+
+    def _history_rect(self) -> pygame.Rect:
+        """The move-list column, right of the side panel."""
+        left = self.margin + self.board_size_px + self.panel_width + 16
+        return pygame.Rect(left, self.margin, self.history_width - 16, self.board_size_px)
+
+    def _history_capacity(self) -> int:
+        """How many rows fit below the title."""
+        return (self._history_rect().height - self._HISTORY_TOP - 12) // self._HISTORY_ROW_H
+
+    def _scroll_history(self, event) -> None:
+        """Mouse wheel over the move list: scroll back through the game (or forward)."""
+        if event.type != pygame.MOUSEWHEEL:
+            return
+        if not self._history_rect().collidepoint(pygame.mouse.get_pos()):
+            return
+        max_scroll = max(0, len(self.history) - self._history_capacity())
+        self._history_scroll = max(0, min(max_scroll, self._history_scroll + event.y))
+
+    def _draw_history_panel(self) -> None:
+        """The scoresheet: one row per move number, White then Black.
+
+        The latest rows are shown by default; the wheel scrolls back, and the move
+        just played sits on an accent chip so it reads at a glance.
+        """
+        assert self._screen is not None
+        rect = self._history_rect()
+        pygame.draw.rect(self._screen, self._colors["panel"], rect, border_radius=16)
+        pygame.draw.rect(self._screen, self._colors["accent"], rect, width=2, border_radius=16)
+
+        title_font = self._make_font(26, bold=True)
+        hint_font = self._make_font(15, bold=False)
+        move_font = self._make_font(19, bold=False)
+        latest_font = self._make_font(19, bold=True)
+
+        title = title_font.render("Coups", True, self._colors["panel_text"])
+        self._screen.blit(title, (rect.x + 16, rect.y + 16))
+
+        rows = self.history
+        if not rows:
+            empty = hint_font.render("Aucun coup joue.", True, self._colors["panel_subtext"])
+            self._screen.blit(empty, (rect.x + 16, rect.y + self._HISTORY_TOP))
+            return
+
+        capacity = self._history_capacity()
+        last = max(0, len(rows) - self._history_scroll)
+        first = max(0, last - capacity)
+        if len(rows) > capacity:
+            hint = "molette: defiler" if self._history_scroll == 0 else "molette: revenir"
+            text = hint_font.render(hint, True, self._colors["panel_subtext"])
+            self._screen.blit(text, (rect.x + 16, rect.y + 54))
+
+        # The move just played: Black's reply on the last row, or White's move if
+        # Black has not answered yet.
+        latest = (len(rows) - 1, "black" if rows[-1].black else "white")
+        number_x, white_x, black_x = rect.x + 12, rect.x + 54, rect.x + 122
+
+        for offset, index in enumerate(range(first, last)):
+            row = rows[index]
+            y = rect.y + self._HISTORY_TOP + offset * self._HISTORY_ROW_H
+            band = pygame.Rect(rect.x + 6, y, rect.width - 12, self._HISTORY_ROW_H)
+            if index % 2:
+                pygame.draw.rect(self._screen, self._colors["button"], band, border_radius=6)
+
+            number = move_font.render(f"{row.number}.", True, self._colors["panel_subtext"])
+            self._screen.blit(number, (number_x, band.centery - number.get_height() // 2))
+
+            for side, x, san in (("white", white_x, row.white), ("black", black_x, row.black)):
+                if not san:
+                    continue
+                is_latest = (index, side) == latest
+                font = latest_font if is_latest else move_font
+                text = font.render(san, True, self._colors["panel_text"])
+                if is_latest:
+                    chip = text.get_rect(topleft=(x, band.centery - text.get_height() // 2))
+                    pygame.draw.rect(
+                        self._screen,
+                        self._colors["button_active"],
+                        chip.inflate(10, 4),
+                        border_radius=5,
+                    )
+                self._screen.blit(text, (x, band.centery - text.get_height() // 2))
+
     def _draw_frame(
         self,
         view_as: Player | None,
@@ -599,6 +707,7 @@ class GameInterface:
         self._draw_side_panel(
             view_as=view_as, status_lines=status_lines, legend_button=legend_button
         )
+        self._draw_history_panel()
 
     def render(self, view_as: Player | None = None, fps: int = 60) -> None:
         """Opens a dedicated window and renders the game continuously.
@@ -977,6 +1086,7 @@ class GameInterface:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return False
+                self._scroll_history(event)
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
                     if not self.show_legend(view_as=view_as):
                         return False
@@ -1033,6 +1143,7 @@ class GameInterface:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return False
+                self._scroll_history(event)
                 if event.type == pygame.KEYDOWN and event.key in back_keys:
                     return True
                 if (
@@ -1086,6 +1197,7 @@ class GameInterface:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
+                self._scroll_history(event)
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_l:
                     if not self.show_legend(view_as=view_as):

@@ -27,6 +27,10 @@ end-of-game banner reports each side's accuracy. Both switches are independent a
 also live on the start menu, so either can be toggled without restarting. See
 :mod:`kaisparov.analysis` for how a move is graded.
 
+Every move played is written down in the move list on the right, in algebraic
+notation with French piece letters (see :mod:`kaisparov.core.notation`); the mouse
+wheel scrolls back through a long game.
+
 What each badge means is one click away — from the menu, or from the side panel
 during the game (or the ``L`` key). The wording lives in ``_QUALITY_HELP`` here; the
 interface only lays the rows out.
@@ -51,6 +55,7 @@ from kaisparov.core.game_interface import (
     MoveArrow,
     MoveBadge,
 )
+from kaisparov.core.notation import move_to_san, numbered_moves
 from kaisparov.core.pieces import PieceType, Player
 from kaisparov.insights import Analyzer, MoveQuality, MoveVerdict, PositionAnalysis
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
@@ -512,7 +517,8 @@ def run_match(
     keyboard. ``step_mode`` makes AI seats wait for the user to request each move (the
     "Coup suivant" button) instead of auto-advancing on a timer.
     ``judge`` (optional) grades each move as it is played and drives the badge on the
-    board, the panel text, and the end-of-game accuracy recap.
+    board, the panel text, and the end-of-game accuracy recap. Every move is also
+    written down in the move list beside the panel, and stays there on the result.
 
     Returns ``"quit"`` if the window was closed, or ``"menu"`` when the game ends (so
     the caller can return to the start menu without tearing down the window).
@@ -521,6 +527,9 @@ def run_match(
     review = GameReview()
     badge: MoveBadge | None = None
     review_status: list[str] = []
+    first_player = game.turn
+    moves_played: list[str] = []
+    ui.set_history([])
 
     def finish(message: str) -> str:
         summary = _review_summary(review) if judge is not None else []
@@ -577,16 +586,20 @@ def run_match(
                     f"Les {_fr_color(side)} n'ont aucun coup.\nLes {_fr_color(winner)} gagnent !"
                 )
 
-        # Grading must happen before the move is played: the verdict compares it
-        # against every alternative in the position it was played from.
+        # Grading and notation both read the position the move is played from, so
+        # they happen before it: the verdict compares it against every alternative,
+        # and the notation needs to know which twin piece made it.
         if judge is not None:
             verdict = judge.judge(game, move)
             if verdict is not None:
                 review.add(side, verdict)
                 badge = _badge_from_verdict(verdict)
                 review_status = _review_lines(side, verdict)
+        san = move_to_san(game, *move)
 
         captured = game.play(*move)
+        moves_played.append(san)
+        ui.set_history(numbered_moves(moves_played, first=first_player))
         ui._draw_frame(
             view_as=view_as,
             badge=badge,
