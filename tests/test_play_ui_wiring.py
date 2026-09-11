@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-pytest.importorskip("pygame", reason="pygame UI modules are not installed")
+pygame = pytest.importorskip("pygame", reason="pygame UI modules are not installed")
 
 # Nothing here opens a window; keep SDL headless anyway in case a driver is probed.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -22,7 +22,7 @@ from kaisparov.core.game_interface import GameInterface, MatchSetup  # noqa: E40
 from kaisparov.core.notation import numbered_moves  # noqa: E402
 from kaisparov.core.pieces import Player  # noqa: E402
 from kaisparov.insights import MoveQuality  # noqa: E402
-from kaisparov.play import _board_orientation, _legend_entries  # noqa: E402
+from kaisparov.play import _board_orientation, _legend_entries, _sidebar_layout  # noqa: E402
 
 W, B = Player.WHITE, Player.BLACK
 
@@ -54,6 +54,28 @@ def test_a_new_game_starts_with_a_blank_move_list():
     ui.set_game(ChessGame())
     assert ui.history == []
     assert ui._history_scroll == 0
+
+
+def test_sidebar_buttons_sit_under_the_cards_not_inside_them():
+    ui = GameInterface()
+    ui.set_layout(_sidebar_layout(analysis=True, review=True, stepping=True))
+    rects = ui._sidebar()
+    cards = [rects["history"], rects["status"]]
+    assert rects["history"].bottom < rects["status"].top
+    for button in (rects["step"], rects["legend"]):
+        assert not any(button.colliderect(card) for card in cards)
+        assert button.top > rects["status"].bottom
+    assert rects["step"].bottom < rects["legend"].top
+    column = pygame.Rect(0, ui.margin, ui.window_width - ui.margin, ui.board_size_px)
+    assert all(column.contains(rect) for rect in rects.values())
+
+
+def test_a_plain_game_gives_the_move_list_the_whole_column():
+    ui = GameInterface()
+    ui.set_layout(_sidebar_layout(analysis=False, review=False, stepping=False))
+    rects = ui._sidebar()
+    assert set(rects) == {"history"}
+    assert rects["history"].height == ui.board_size_px
 
 
 def test_a_new_move_brings_the_list_back_to_the_latest_row():

@@ -19,7 +19,7 @@ returns to the menu instead of closing.
 
 ``--dev`` turns on developer mode: while a side backed by a trained model is to
 move, the board shows that model's top candidate moves as arrows and its value
-estimate in the side panel (see :mod:`kaisparov.insights`).
+estimate in the analysis card under the move list (see :mod:`kaisparov.insights`).
 
 ``--review`` turns on the move review: every move played gets a chess.com-style
 grade badge on its destination square (``!!`` brilliant ... ``??`` blunder), and the
@@ -31,9 +31,9 @@ Every move played is written down in the move list on the right, in algebraic
 notation with French piece letters (see :mod:`kaisparov.core.notation`); the mouse
 wheel scrolls back through a long game.
 
-What each badge means is one click away — from the menu, or from the side panel
-during the game (or the ``L`` key). The wording lives in ``_QUALITY_HELP`` here; the
-interface only lays the rows out.
+What each badge means is one click away — from the menu, or from the button under
+the move list during the game (or the ``L`` key). The wording lives in
+``_QUALITY_HELP`` here; the interface only lays the rows out.
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ from kaisparov.core.game_interface import (
     ModelOption,
     MoveArrow,
     MoveBadge,
+    SidebarLayout,
 )
 from kaisparov.core.notation import move_to_san, numbered_moves
 from kaisparov.core.pieces import PieceType, Player
@@ -417,6 +418,26 @@ def _board_orientation(setup: MatchSetup) -> Player | None:
     return None  # solo: follow the side to move
 
 
+# Lines each block of text can take in the analysis card: see _overlay_from_analysis
+# and _review_lines.
+_ANALYSIS_ROWS = 3
+_REVIEW_ROWS = 3
+
+
+def _sidebar_layout(*, analysis: bool, review: bool, stepping: bool) -> SidebarLayout:
+    """What the column beside the board needs for this match, known before it starts.
+
+    ``analysis``: a model comments on the position (developer mode with a model);
+    ``review``: moves are graded, which also brings the legend button; ``stepping``:
+    an AI seat waits for the "next move" button.
+    """
+    return SidebarLayout(
+        status_rows=(_ANALYSIS_ROWS if analysis else 0) + (_REVIEW_ROWS if review else 0),
+        step_button=stepping,
+        legend_button=review,
+    )
+
+
 def _badge_from_verdict(verdict: MoveVerdict) -> MoveBadge:
     """Map a verdict onto the mark the interface draws on the destination square."""
     return MoveBadge(
@@ -517,8 +538,8 @@ def run_match(
     keyboard. ``step_mode`` makes AI seats wait for the user to request each move (the
     "Coup suivant" button) instead of auto-advancing on a timer.
     ``judge`` (optional) grades each move as it is played and drives the badge on the
-    board, the panel text, and the end-of-game accuracy recap. Every move is also
-    written down in the move list beside the panel, and stays there on the result.
+    board, the analysis card, and the end-of-game accuracy recap. Every move is also
+    written down in the move list beside the board, and stays there on the result.
 
     Returns ``"quit"`` if the window was closed, or ``"menu"`` when the game ends (so
     the caller can return to the start menu without tearing down the window).
@@ -530,6 +551,13 @@ def run_match(
     first_player = game.turn
     moves_played: list[str] = []
     ui.set_history([])
+    ui.set_layout(
+        _sidebar_layout(
+            analysis=dev_mode and any(a is not None for a in analyzers.values()),
+            review=judge is not None,
+            stepping=step_mode and any(c is not None for c in controllers.values()),
+        )
+    )
 
     def finish(message: str) -> str:
         summary = _review_summary(review) if judge is not None else []
@@ -552,19 +580,19 @@ def run_match(
                 analysis_arrows=arrows,
                 status_lines=status,
                 badge=badge,
-                legend_button=judge is not None,
             )
             if move is None:
                 return "quit"
         else:  # AI seat
             if step_mode:
-                turn_status = status + [f"Trait aux {_fr_color(side)}"]
+                # The button names the side it plays for, now that no panel shows
+                # whose turn it is.
                 if not ui.wait_for_step(
                     view_as=view_as,
                     analysis_arrows=arrows,
-                    status_lines=turn_status,
+                    status_lines=status,
                     badge=badge,
-                    legend_button=judge is not None,
+                    label=f"Coup des {_fr_color(side)}  >",
                 ):
                     return "quit"
             else:
@@ -573,7 +601,6 @@ def run_match(
                     analysis_arrows=arrows,
                     status_lines=status,
                     badge=badge,
-                    legend_button=judge is not None,
                 )
                 pygame.display.flip()
                 if not _pump_events(ui, ai_delay_ms):
@@ -600,12 +627,7 @@ def run_match(
         captured = game.play(*move)
         moves_played.append(san)
         ui.set_history(numbered_moves(moves_played, first=first_player))
-        ui._draw_frame(
-            view_as=view_as,
-            badge=badge,
-            status_lines=review_status,
-            legend_button=judge is not None,
-        )
+        ui._draw_frame(view_as=view_as, badge=badge, status_lines=review_status)
         pygame.display.flip()
 
         if captured is not None and captured.type == PieceType.KING:
