@@ -17,6 +17,10 @@ independently in AI vs AI. AI vs AI keeps White at the bottom and advances one m
 at a time when you click "Coup suivant" (or press Space). When a game ends the window
 returns to the menu instead of closing.
 
+Against an AI your colour is drawn at random by default, anew for every game — in
+the menu ("Aleatoire", between "Blancs" and "Noirs") as on the command line
+(``--color random``). Pick ``white`` or ``black`` to fix it.
+
 ``--dev`` turns on developer mode: while a side backed by a trained model is to
 move, the board shows that model's top candidate moves as arrows and its value
 estimate in the analysis card under the move list (see :mod:`kaisparov.insights`).
@@ -39,6 +43,8 @@ the move list during the game (or the ``L`` key). The wording lives in
 from __future__ import annotations
 
 import argparse
+import random
+from dataclasses import replace
 
 import pygame
 
@@ -308,6 +314,7 @@ def _prepare_match(setup: MatchSetup, args, device):
     shared_analyzer: Analyzer | None = None
 
     if setup.mode == "vs_ai":
+        assert setup.human_color is not None, "draw the random colour first (_draw_color)"
         ai_color = _other(setup.human_color)
         if setup.ai_model is not None:
             agent, analyzer = _controller_from_key(
@@ -412,6 +419,8 @@ def _board_orientation(setup: MatchSetup) -> Player | None:
     at the bottom so the spectator's view never moves either.
     """
     if setup.mode == "vs_ai":
+        # An undrawn colour would read as "follow the side to move" here.
+        assert setup.human_color is not None, "draw the random colour first (_draw_color)"
         return setup.human_color
     if setup.mode == "ai_vs_ai":
         return Player.WHITE
@@ -658,9 +667,27 @@ _FR_DRAW_REASONS = {
 # ----------------------------------------------------------------------- CLI
 
 
+_CLI_COLORS: dict[str, Player | None] = {
+    "white": Player.WHITE,
+    "black": Player.BLACK,
+    "random": None,
+}
+
+
+def _draw_color(setup: MatchSetup, rng: random.Random) -> MatchSetup:
+    """Settle a "random" colour (``human_color=None``) for the match about to start.
+
+    Called once per match rather than once per session, so "random" stays random
+    from one game to the next. A colour picked explicitly is left alone.
+    """
+    if setup.human_color is not None:
+        return setup
+    return replace(setup, human_color=rng.choice((Player.WHITE, Player.BLACK)))
+
+
 def _setup_from_args(args) -> MatchSetup | None:
     """A mode chosen on the command line bypasses the menu; otherwise ``None``."""
-    human_color = Player.WHITE if args.color == "white" else Player.BLACK
+    human_color = _CLI_COLORS[args.color]
     if args.vs_ai:
         return MatchSetup("vs_ai", human_color, args.dev, args.review)
     if args.ai_vs_ai:
@@ -696,7 +723,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--best", action="store_true", help="Use the best-Elo checkpoint instead.")
     parser.add_argument(
-        "--color", choices=["white", "black"], default="white", help="Your color vs the AI."
+        "--color",
+        choices=list(_CLI_COLORS),
+        default="random",
+        help="Your color vs the AI (default: drawn at random each game).",
     )
     parser.add_argument(
         "--hidden-dim", type=int, default=None, help="AI width (default: inferred from checkpoint)."
@@ -719,6 +749,7 @@ def main(argv: list[str] | None = None) -> None:
     ui.legend = _legend_entries()  # menu + in-game key to the grade badges
     models = _available_models(args.runs_dir)
     device = None  # created lazily, the first time a seat or the overlay needs torch
+    color_rng = random.Random(args.seed)
 
     # A command-line mode plays the first match without the menu; afterwards (and on
     # "back to menu" from any game) control returns to the in-window menu.
@@ -732,6 +763,10 @@ def main(argv: list[str] | None = None) -> None:
                 setup = ui.select_setup(models)
                 if setup is None:
                     break  # window closed on the menu
+
+            setup = _draw_color(setup, color_rng)
+            if setup.mode == "vs_ai" and setup.human_color is not None:
+                print(f"You play {setup.human_color.name}.")
 
             needs_torch = (
                 setup.mode != "solo"

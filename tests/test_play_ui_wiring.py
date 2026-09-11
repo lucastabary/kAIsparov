@@ -8,7 +8,9 @@ when it is not.
 
 from __future__ import annotations
 
+import argparse
 import os
+import random
 
 import pytest
 
@@ -22,7 +24,13 @@ from kaisparov.core.game_interface import GameInterface, MatchSetup  # noqa: E40
 from kaisparov.core.notation import numbered_moves  # noqa: E402
 from kaisparov.core.pieces import Player  # noqa: E402
 from kaisparov.insights import MoveQuality  # noqa: E402
-from kaisparov.play import _board_orientation, _legend_entries, _sidebar_layout  # noqa: E402
+from kaisparov.play import (  # noqa: E402
+    _board_orientation,
+    _draw_color,
+    _legend_entries,
+    _setup_from_args,
+    _sidebar_layout,
+)
 
 W, B = Player.WHITE, Player.BLACK
 
@@ -32,6 +40,28 @@ def test_only_two_humans_on_one_keyboard_get_a_flipping_board():
     assert _board_orientation(MatchSetup("vs_ai", B)) is B
     assert _board_orientation(MatchSetup("ai_vs_ai", B)) is W  # spectator view is fixed
     assert _board_orientation(MatchSetup("solo", B)) is None
+
+
+def test_a_random_colour_is_drawn_for_each_match_and_a_chosen_one_is_kept():
+    rng = random.Random(0)
+    drawn = {_draw_color(MatchSetup("vs_ai", None), rng).human_color for _ in range(40)}
+    assert drawn == {W, B}
+    assert _draw_color(MatchSetup("vs_ai", B), rng).human_color is B
+
+
+def test_the_command_line_defaults_to_a_random_colour():
+    args = argparse.Namespace(
+        vs_ai=True, ai_vs_ai=False, solo=False, dev=False, review=False, color="random"
+    )
+    setup = _setup_from_args(args)
+    assert setup is not None and setup.human_color is None
+
+
+def test_the_menu_offers_random_between_white_and_black():
+    layout = GameInterface()._menu_layout()
+    white, random_, black = layout["white"], layout["random"], layout["black"]
+    assert white.right < random_.left and random_.right < black.left
+    assert white.y == random_.y == black.y
 
 
 def test_the_legend_explains_every_grade_the_judge_can_hand_out():

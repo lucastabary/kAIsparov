@@ -28,7 +28,10 @@ class MatchSetup:
     """The choice made on the pre-game menu (see :meth:`GameInterface.select_setup`)."""
 
     mode: str  # "solo" (two humans) | "vs_ai" (human vs model) | "ai_vs_ai"
-    human_color: Player = Player.WHITE  # only meaningful for "vs_ai"
+    # Only meaningful for "vs_ai". ``None`` is the menu's "random": the caller draws a
+    # side when the match starts (see ``play._draw_color``), so it is drawn anew for
+    # every game rather than once for the whole session.
+    human_color: Player | None = Player.WHITE
     dev_mode: bool = False  # surface the model's analysis while playing
     review_mode: bool = False  # grade each played move (chess.com-style badges)
     # Chosen model keys (see :class:`ModelOption`). ``ai_model`` is the opponent in
@@ -743,13 +746,14 @@ class GameInterface:
         width = 460
         left = cx - width // 2
         button_h = 64
-        half = (width - 16) // 2
+        third = (width - 2 * 12) // 3
         return {
             "solo": pygame.Rect(left, 232, width, button_h),
             "vs_ai": pygame.Rect(left, 312, width, button_h),
             "ai_vs_ai": pygame.Rect(left, 392, width, button_h),
-            "white": pygame.Rect(left, 512, half, 48),
-            "black": pygame.Rect(left + half + 16, 512, half, 48),
+            "white": pygame.Rect(left, 512, third, 48),
+            "random": pygame.Rect(left + third + 12, 512, third, 48),
+            "black": pygame.Rect(left + 2 * (third + 12), 512, third, 48),
             "dev": pygame.Rect(left, 578, width, 40),
             "review": pygame.Rect(left, 620, width, 40),
             "legend": pygame.Rect(left, 668, width, 42),
@@ -800,13 +804,16 @@ class GameInterface:
         and the two switches (developer mode, move review) persist until a mode is
         clicked. Solo starts immediately; the AI modes open a model-selection screen
         first so the user chooses which trained model plays each AI seat.
+
+        The colour starts on "random", which leaves ``human_color`` as ``None`` for
+        the caller to draw.
         """
         self._ensure_initialized()
         assert self._screen is not None
         assert self._clock is not None
 
         models = models or []
-        color = Player.WHITE
+        color: Player | None = None
         dev = False
         review = False
         cx = self.window_width // 2
@@ -837,6 +844,8 @@ class GameInterface:
                             return setup
                     if layout["white"].collidepoint(pos):
                         color = Player.WHITE
+                    if layout["random"].collidepoint(pos):
+                        color = None
                     if layout["black"].collidepoint(pos):
                         color = Player.BLACK
                     if layout["dev"].collidepoint(pos):
@@ -871,18 +880,18 @@ class GameInterface:
                 "Votre couleur (contre l'IA)", True, self._colors["panel_subtext"]
             )
             self._screen.blit(color_label, (layout["white"].x, layout["white"].y - 30))
-            self._draw_button(
-                layout["white"],
-                "Blancs",
-                hover=layout["white"].collidepoint(mouse),
-                active=color == Player.WHITE,
-            )
-            self._draw_button(
-                layout["black"],
-                "Noirs",
-                hover=layout["black"].collidepoint(mouse),
-                active=color == Player.BLACK,
-            )
+            for key, label, choice in (
+                ("white", "Blancs", Player.WHITE),
+                ("random", "Aleatoire", None),
+                ("black", "Noirs", Player.BLACK),
+            ):
+                self._draw_button(
+                    layout[key],
+                    label,
+                    hover=layout[key].collidepoint(mouse),
+                    active=color == choice,
+                    font_size=22,
+                )
 
             self._draw_checkbox(
                 layout["dev"],
@@ -942,7 +951,7 @@ class GameInterface:
         self._screen.blit(text, (rect.x + 14, rect.centery - text.get_height() // 2))
 
     def _select_models(
-        self, mode: str, color: Player, dev: bool, review: bool, models: list[ModelOption]
+        self, mode: str, color: Player | None, dev: bool, review: bool, models: list[ModelOption]
     ) -> MatchSetup | str | None:
         """Second menu screen: pick which model plays each AI seat.
 
