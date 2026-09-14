@@ -316,6 +316,24 @@ class ChessGame:
     def is_in_check(self, player: Player) -> bool:
         return rules.is_in_check(self.grid, player)
 
+    def hangs_own_king(self, source: Coord, dest: Coord) -> bool:
+        """Whether, after this move, the opponent can immediately capture the mover's king.
+
+        Plays the move via ``make``/``unmake`` (O(1), no clone). In capture-the-king a
+        king is takeable next ply exactly when it is attacked, so this reduces to a
+        single :meth:`is_in_check` on the mover — no opponent move list is generated.
+        """
+        mover = self.turn
+        undo = self.make(source, dest)
+        try:
+            # A move that captures the enemy king wins outright — the game ends, there
+            # is no reply, so it can never hang our own king.
+            if undo.captured is not None and undo.captured.type == PieceType.KING:
+                return False
+            return self.is_in_check(mover)
+        finally:
+            self.unmake(undo)
+
     # ------------------------------------------------------------------- draws
     def repetition_count(self) -> int:
         """How many times the current position has occurred in this game (>= 1)."""

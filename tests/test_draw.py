@@ -1,4 +1,4 @@
-"""Draw rules: repetition, no progress, insufficient material.
+"""Draw rules: repetition, no progress, insufficient material, stalemate.
 
 Torch-free and pygame-free: everything here runs on the pure-Python engine.
 """
@@ -273,3 +273,78 @@ def test_env_draw_rules_can_be_switched_off():
     env.reset(board=grid)
     result = env.step(((2, 2), (4, 4)))
     assert not result.done
+
+
+# ------------------------------------------------------------------------- stalemate
+
+# White's queen steps to c7 and boxes in the black king on a8: every square it could
+# go to is attacked, but a8 itself is not.
+STALEMATING_MOVE = ((2, 0), (2, 6))
+
+
+def stalemate_setup():
+    """White to move, one queen move away from stalemating Black."""
+    grid = empty_grid()
+    place(grid, (7, 0), W, PieceType.KING)
+    place(grid, (2, 0), W, PieceType.QUEEN)
+    place(grid, (0, 7), B, PieceType.KING)
+    return grid
+
+
+def stalemated_black():
+    """The position right after the stalemating move, Black to move."""
+    grid = empty_grid()
+    place(grid, (7, 0), W, PieceType.KING)
+    place(grid, (2, 6), W, PieceType.QUEEN)
+    place(grid, (0, 7), B, PieceType.KING)
+    return ChessGame(initial_board=grid, turn=B)
+
+
+def test_only_king_hanging_moves_and_no_check_is_stalemate():
+    game = stalemated_black()
+    assert not game.is_in_check(B)
+    assert draw.is_stalemate(game)
+    assert game.draw_reason() == draw.STALEMATE
+
+
+def test_in_check_with_no_safe_move_is_mate_not_stalemate():
+    """Mate is not a draw in capture-the-king: the game plays on to the capture."""
+    grid = empty_grid()
+    place(grid, (0, 7), B, PieceType.KING)
+    place(grid, (1, 6), W, PieceType.QUEEN)  # gives check
+    place(grid, (2, 5), W, PieceType.KING)  # and guards the queen
+    game = ChessGame(initial_board=grid, turn=B)
+
+    assert game.is_in_check(B)
+    assert not draw.is_stalemate(game)
+    assert game.draw_reason() is None
+
+
+def test_one_safe_move_is_enough_to_avoid_stalemate():
+    game = stalemated_black()
+    place(game.grid, (7, 5), B, PieceType.PAWN)  # a pawn push leaves the king alone
+    game._reset_draw_state()
+    assert not draw.is_stalemate(game)
+
+
+def test_stalemate_test_leaves_no_trace():
+    game = stalemated_black()
+    before = (game.zobrist, list(game.position_history), game.halfmove_clock)
+    draw.is_stalemate(game)
+    assert (game.zobrist, game.position_history, game.halfmove_clock) == before
+
+
+def test_stalemate_rule_can_be_switched_off():
+    game = stalemated_black()
+    assert game.draw_reason(DrawRules(stalemate=False)) is None
+
+
+def test_env_scores_a_stalemate_as_a_draw_worth_nothing():
+    env = ChessEnv()
+    env.reset(board=stalemate_setup())
+    result = env.step(STALEMATING_MOVE)
+
+    assert result.done
+    assert env.winner is None
+    assert env.end_reason == draw.STALEMATE
+    assert result.reward == 0.0

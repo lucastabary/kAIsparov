@@ -616,6 +616,7 @@ _FR_DRAW_REASONS = {
     draw.REPETITION: f"position repetee {draw.REPETITION_LIMIT} fois",
     draw.NO_PROGRESS: (f"{draw.NO_PROGRESS_PLIES // 2} coups sans prise ni poussee de pion"),
     draw.INSUFFICIENT_MATERIAL: "materiel insuffisant",
+    draw.STALEMATE: "pat",
 }
 
 

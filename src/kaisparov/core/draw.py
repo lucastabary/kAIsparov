@@ -1,6 +1,6 @@
 """Draw rules: when a game ends with nobody capturing a king.
 
-Three independent rules, each switchable through :class:`DrawRules`:
+Four independent rules, each switchable through :class:`DrawRules`:
 
 ``repetition``
     The same position (pieces, side to move, castling rights, en-passant target)
@@ -12,6 +12,13 @@ Three independent rules, each switchable through :class:`DrawRules`:
 ``insufficient_material``
     Neither side has the material to mate: bare kings, king + one minor against a
     bare king, or one bishop each on the same colour complex.
+``stalemate``
+    The side to move is not attacked, yet every move it has hands its own king to
+    the opponent (or it has no move at all). Capture-the-king has no legality
+    filter, so this never ends a game by itself: the player would have to play one
+    of those moves and lose the king next ply. The rule restores the classical
+    outcome. A side that *is* attacked with no safe move is not stalemated — that
+    is mate, and the game plays on to the capture.
 
 .. warning::
    The material rule is a **convention** in this variant, not a fact. Moves here
@@ -34,6 +41,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from kaisparov.core.coords import ALL_SQUARES
+from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import Piece, PieceType, Player
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a core import cycle
@@ -48,6 +56,7 @@ NO_PROGRESS_PLIES = 100  # 50 moves x 2 plies
 REPETITION = "repetition"
 NO_PROGRESS = "no_progress"
 INSUFFICIENT_MATERIAL = "insufficient_material"
+STALEMATE = "stalemate"
 
 _MINORS = (PieceType.BISHOP, PieceType.KNIGHT)
 
@@ -59,10 +68,13 @@ class DrawRules:
     repetition: int = REPETITION_LIMIT
     no_progress_plies: int = NO_PROGRESS_PLIES
     insufficient_material: bool = True
+    stalemate: bool = True
 
 
 DEFAULT_RULES = DrawRules()
-NO_RULES = DrawRules(repetition=0, no_progress_plies=0, insufficient_material=False)
+NO_RULES = DrawRules(
+    repetition=0, no_progress_plies=0, insufficient_material=False, stalemate=False
+)
 
 
 def is_insufficient_material(grid: Grid) -> bool:
@@ -88,11 +100,26 @@ def is_insufficient_material(grid: Grid) -> bool:
     return len(bishop_squares) == 2 and bishop_squares[0] == bishop_squares[1]
 
 
+def is_stalemate(game: ChessGame) -> bool:
+    """True if the side to move is not in check but has no move that keeps its king.
+
+    Cheap in the common case: a side in check returns at once, and otherwise the
+    scan stops at the first move that does not hang the king — almost always the
+    first one tried.
+    """
+    player = game.turn
+    if game.is_in_check(player):
+        return False
+    return all(
+        game.hangs_own_king(*move) for move in all_moves(game.grid, player, game.en_passant_target)
+    )
+
+
 def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str | None:
     """Name the rule that makes ``game`` a draw right now, or ``None``.
 
-    The two O(1) counters are tested before the material scan, so the common
-    "not a draw" answer costs two integer comparisons.
+    Cheapest first: the two O(1) counters, then the material scan, then the
+    stalemate test (a move generation plus a make/unmake per move it tries).
     """
     if rules is None:
         return None
@@ -102,6 +129,8 @@ def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str
         return NO_PROGRESS
     if rules.insufficient_material and is_insufficient_material(game.grid):
         return INSUFFICIENT_MATERIAL
+    if rules.stalemate and is_stalemate(game):
+        return STALEMATE
     return None
 
 
@@ -116,9 +145,11 @@ __all__ = [
     "REPETITION",
     "NO_PROGRESS",
     "INSUFFICIENT_MATERIAL",
+    "STALEMATE",
     "REPETITION_LIMIT",
     "NO_PROGRESS_PLIES",
     "is_insufficient_material",
+    "is_stalemate",
     "draw_reason",
     "is_draw",
 ]

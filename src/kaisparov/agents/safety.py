@@ -16,28 +16,15 @@ from __future__ import annotations
 
 from kaisparov.agents.base import Move
 from kaisparov.core.board import ChessGame
-from kaisparov.core.pieces import PieceType, Player
 
 
 def hangs_own_king(game: ChessGame, move: Move) -> bool:
     """Whether, after ``move``, the opponent can immediately capture the mover's king.
 
-    Plays the move via ``make``/``unmake`` (O(1), no clone). In capture-the-king a
-    king is takeable next ply exactly when it is attacked, so this reduces to a single
-    :func:`~kaisparov.core.rules.is_in_check` on the mover — no opponent move list is
-    generated.
+    The test itself lives on :meth:`ChessGame.hangs_own_king`, where the stalemate
+    rule (:func:`kaisparov.core.draw.is_stalemate`) needs it too.
     """
-    undo = game.make(*move)
-    try:
-        # A move that captures the enemy king wins outright — the game ends, there is
-        # no reply, so it can never hang our own king.
-        if undo.captured is not None and undo.captured.type == PieceType.KING:
-            return False
-        # ``make`` flipped the turn, so the mover is the side NOT to move now.
-        mover = Player.WHITE if game.turn == Player.BLACK else Player.BLACK
-        return game.is_in_check(mover)
-    finally:
-        game.unmake(undo)
+    return game.hangs_own_king(*move)
 
 
 def safe_moves(game: ChessGame, moves: list[Move]) -> list[Move]:
