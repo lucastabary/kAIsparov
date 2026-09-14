@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 
 from kaisparov.analysis.evaluators import Evaluator
 from kaisparov.core.board import ChessGame
+from kaisparov.core.draw import is_stalemate
 from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import attacked_squares
@@ -108,7 +109,14 @@ class MoveJudge:
         moves = all_moves(game.grid, game.turn, game.en_passant_target)
         if not moves:
             return self.evaluator.evaluate(game)  # stuck: judge the position as it stands
-        return max(self._value_after(game, move, plies - 1) for move in moves)
+        best = max(self._value_after(game, move, plies - 1) for move in moves)
+        # Every move loses. If the king is not attacked, that is stalemate — a draw,
+        # not the win the search just handed the opponent. The test only runs on
+        # these rare all-losing nodes, keeping it off the review's hot path; it must
+        # be the exact rule, since a deeper forced loss also scores -WIN.
+        if best <= -WIN and is_stalemate(game):
+            return 0.0
+        return best
 
     def _value_after(self, game: ChessGame, move: Move, plies: int) -> float:
         """Value of playing ``move``, for the player who plays it."""

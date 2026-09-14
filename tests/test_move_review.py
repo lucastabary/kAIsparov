@@ -180,3 +180,16 @@ def test_game_review_scores_the_cleaner_side_higher():
 
 def test_game_review_has_no_accuracy_for_a_side_that_never_moved():
     assert GameReview().accuracy(W) is None
+
+
+def test_stalemating_the_opponent_scores_as_a_draw_not_a_win():
+    """Qc7 boxes in the lone king on a8. Every black reply hangs the king, so a
+    search blind to stalemate calls it winning; the rules call it a draw."""
+    game = position(
+        {(7, 0): (W, PieceType.KING), (2, 0): (W, PieceType.QUEEN), (0, 7): (B, PieceType.KING)}
+    )
+    judge = MoveJudge(MaterialEvaluator(), lookahead=1)
+    scores = dict(judge.rank(game))
+
+    assert scores[((2, 0), (2, 6))] == 0.0
+    assert max(scores.values()) > 0.0  # keeping the queen on the board is better
