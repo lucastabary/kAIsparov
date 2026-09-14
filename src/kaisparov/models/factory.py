@@ -9,6 +9,7 @@ from kaisparov.models.backend_spec import BackendSpec
 DEFAULT_MODEL = "rgcn"
 MODEL_MODULES = {
     "rgcn": "kaisparov.models.rgcn",
+    "shared_rgcn": "kaisparov.models.shared_rgcn",
 }
 
 

@@ -10,6 +10,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 Recent additions:
 
+- **Second model backend — `shared_rgcn`**: `rgcn` with its message-passing steps
+  unified. Instead of 4 distinct `RGCNConv` layers (one per-relation weight set per
+  step), a single relational conv is applied `num_steps` times residually, on top of
+  a linear encoder that lifts features to the working width. Message passing becomes
+  an iterated operator rather than a stack: ~2.5× fewer parameters at equal width, and
+  depth costs nothing. The board encoding is reused verbatim from `rgcn`, so an
+  `rgcn` vs `shared_rgcn` run compares *only* the network.
 - **Run lineage view**: `kaisparov runs graph` renders the run registry as a
   self-contained `git log --graph`-style HTML page (one lane per resume family,
   forks where runs share a parent, status-coloured dots). Clicking a run shows its

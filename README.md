@@ -16,8 +16,9 @@ DQN, AlphaZero-style search later) can be swapped in and compared on identical
 footing — same engine, same evaluation, same experiment tracking.
 
 The first backend (`rgcn`) is a relational GCN actor–critic trained with
-**PPO self-play**. It ships with a custom, dependency-free chess engine and a
-pygame interface to play against a trained agent.
+**PPO self-play**; `shared_rgcn` is its weight-tied twin (one relational conv reused
+at every message-passing step). It ships with a custom, dependency-free chess engine
+and a pygame interface to play against a trained agent.
 
 > 🔬 **The deeper goal is interpretability** — not just to train a strong player,
 > but to understand *what a GNN learns about chess*: what its node embeddings
@@ -222,7 +223,7 @@ kAIsparov/
 ├─ src/kaisparov/
 │  ├─ core/        # chess engine: coords, board, movegen, rules, pieces, UI
 │  ├─ envs/        # ChessEnv — Gym-like reset/step/reward/terminal
-│  ├─ models/      # neural backends (base classes + rgcn) and factory
+│  ├─ models/      # neural backends (base classes + rgcn, shared_rgcn) and factory
 │  ├─ agents/      # policies: RandomAgent, MaterialAgent, NeuralAgent
 │  ├─ analysis/    # move review: evaluators + chess.com-style move grading
 │  ├─ eval/        # arena: play matches, win-rates, Elo
@@ -255,6 +256,9 @@ kAIsparov/
 
 `rgcn` is one point in this space. The architecture (how nodes reason) and the
 training method (how the policy learns) are independent axes you can vary.
+[`shared_rgcn`](src/kaisparov/models/shared_rgcn/README.md) is the second point: the
+same encoding and the same training, with the four conv layers replaced by **one**
+shared relational conv applied four times — so the comparison isolates weight tying.
 
 ---
 

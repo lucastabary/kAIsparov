@@ -33,7 +33,7 @@ kaisparov train --config config/default.yaml
 
 | Parameter | Type | Default | What it does |
 |-----------|------|---------|--------------|
-| `model` | str | `rgcn` | Which model backend to train (a folder under `src/kaisparov/models/`, loaded by name). |
+| `model` | str | `rgcn` | Which model backend to train (a folder under `src/kaisparov/models/`, loaded by name): `rgcn` or `shared_rgcn`. |
 | `hidden_dim` | int | `8` | Hidden size of the network — the main architecture knob. Must match the checkpoint when resuming. |
 | `epochs` | int | `50` | Number of training epochs. One epoch = collect self-play data, then run the PPO update. |
 | `seed` | int | `0` | Random seed for torch / numpy / python (reproducibility). |
