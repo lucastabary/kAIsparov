@@ -17,6 +17,7 @@ import torch
 from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
 from kaisparov.core.board import ChessGame
+from kaisparov.core.draw import is_stalemate
 from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import PieceType
 from kaisparov.core.utils import coord_to_index
@@ -63,6 +64,12 @@ class MinimaxAgent:
         return sorted(moves, key=score, reverse=True)
 
     def _search(self, game: ChessGame, depth: int, alpha: float, beta: float) -> float:
+        # A stalemated side would have to hang its king, which the search below reads
+        # as a forced loss — so without this, stalemating the opponent looks like a
+        # win. The rules call it a draw, and a draw is worth 0 (the training target).
+        # Tested before the forward, which it saves; the test is µs, the forward ms.
+        if is_stalemate(game):
+            return 0.0
         action_scores, value = self._forward(game)
         if depth == 0:
             return value

@@ -64,3 +64,14 @@ def test_minimax_returns_a_legal_move():
     assert move is not None
     source, dest = move
     assert dest in game.possible_moves(source)
+
+
+def test_minimax_scores_a_stalemate_as_a_draw():
+    # Black to move, not attacked, every move hangs the king: stalemate. The raw
+    # search would read "every move loses" and hand White a win for it.
+    game = empty_game(turn=Player.BLACK)
+    place(game, (0, 7), Player.BLACK, PieceType.KING)
+    place(game, (2, 6), Player.WHITE, PieceType.QUEEN)
+    place(game, (7, 0), Player.WHITE, PieceType.KING)
+
+    assert make_agent(depth=2)._search(game, 2, -1e9, 1e9) == 0.0
