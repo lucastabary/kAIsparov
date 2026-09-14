@@ -16,7 +16,7 @@ import torch
 from torch_geometric.data import Batch
 
 from kaisparov.core.board import ChessGame
-from kaisparov.core.draw import DEFAULT_RULES, DrawRules
+from kaisparov.core.draw import DEFAULT_RULES, STALEMATE, DrawRules
 from kaisparov.core.pieces import PieceType
 from kaisparov.training.curriculum import BaseCurriculum
 from kaisparov.training.ppo import PPOBuffer
@@ -60,9 +60,9 @@ def collect_data(
     """Play ``num_episodes`` self-play games into ``buffer``; return per-epoch stats.
 
     ``draw_rules`` ends an episode as soon as the position is drawn (repetition, no
-    progress, insufficient material — see :mod:`kaisparov.core.draw`), which stops a
-    shuffling loop from burning the whole ply budget. A draw is terminal but *not* a
-    reward event: the drawing move scores whatever ``reward_fn`` gives a
+    progress, insufficient material, stalemate — see :mod:`kaisparov.core.draw`),
+    which stops a shuffling loop from burning the whole ply budget. A draw is terminal
+    but *not* a reward event: the drawing move scores whatever ``reward_fn`` gives a
     non-capturing move, exactly as it would mid-game. Pass ``None`` to disable.
     """
     module = _resolve_module(model_module, model_name)
@@ -123,10 +123,10 @@ def collect_data(
                 else:
                     reward = module.compute_reward(g, captured)
                 king_captured = captured is not None and captured.type == PieceType.KING
-                drawn = not king_captured and g.is_draw(draw_rules)
+                drawn = None if king_captured else g.draw_reason(draw_rules)
 
                 steps[i] += 1
-                done = king_captured or drawn or steps[i] >= max_steps_per_episode
+                done = king_captured or drawn is not None or steps[i] >= max_steps_per_episode
                 pending[i].append(
                     {
                         "state": states[k],
@@ -141,7 +141,9 @@ def collect_data(
                 if done:
                     if king_captured:
                         n_king += 1
-                    elif drawn:
+                    elif drawn == STALEMATE:
+                        n_stalemate += 1  # same bucket as "no move at all" above
+                    elif drawn is not None:
                         n_draw += 1
                     else:
                         n_truncated += 1

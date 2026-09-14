@@ -34,8 +34,8 @@ class RolloutSettings:
     episodes_per_epoch: int = 8
     max_steps_per_episode: int = 100
     # End an episode as a draw as soon as the position is drawn — threefold
-    # repetition, 50 moves without a capture or a pawn move, or insufficient material
-    # (see kaisparov.core.draw) — instead of shuffling until max_steps_per_episode.
+    # repetition, 50 moves without a capture or a pawn move, insufficient material, or
+    # stalemate (see kaisparov.core.draw) — instead of shuffling until max_steps_per_episode.
     # A draw is terminal but carries NO reward of its own: the drawing move scores
     # exactly what any non-capturing move scores. Set false for the old behaviour.
     draw_rules: bool = True

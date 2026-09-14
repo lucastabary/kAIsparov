@@ -178,16 +178,23 @@ def collect_vs_opponent(
                     # King safety: did the learner leave its own king capturable?
                     if reward_settings.king_safety and game.is_in_check(learner):
                         reward -= reward_settings.king_safety
-                    moved, captured_o = _opponent_reply(game, opp)
-                    if not moved:
-                        done = True  # opponent stuck -> draw
-                    else:
-                        steps[i] += 1
-                        reward -= _gain(reward_settings, captured_o)
-                        if _is_king(captured_o):
-                            result, done = "loss", True
-                    if not done and game.is_draw(draw_rules):
+                    # The learner's own move can draw — above all by stalemating the
+                    # opponent. Test before the reply: once the opponent has played one
+                    # of its king-hanging moves, the stalemate is gone and the learner
+                    # would collect a king capture for what the rules call a draw.
+                    if game.is_draw(draw_rules):
                         done = True  # drawn position (stays a draw)
+                    else:
+                        moved, captured_o = _opponent_reply(game, opp)
+                        if not moved:
+                            done = True  # opponent stuck -> draw
+                        else:
+                            steps[i] += 1
+                            reward -= _gain(reward_settings, captured_o)
+                            if _is_king(captured_o):
+                                result, done = "loss", True
+                        if not done and game.is_draw(draw_rules):
+                            done = True  # the reply drew (e.g. stalemated the learner)
                     if not done and steps[i] >= max_steps_per_episode:
                         done = True  # truncated (stays a draw)
 
