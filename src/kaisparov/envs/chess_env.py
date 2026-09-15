@@ -52,8 +52,17 @@ class ChessEnv:
         self.end_reason: str | None = None
         self.plies = 0
 
-    def reset(self, board: Grid | None = None, turn: Player = Player.WHITE) -> ChessGame:
-        self.game = ChessGame(initial_board=board, turn=turn)
+    def reset(
+        self,
+        board: Grid | None = None,
+        turn: Player = Player.WHITE,
+        *,
+        game: ChessGame | None = None,
+    ) -> ChessGame:
+        """Start a new episode from ``board`` — or from ``game`` as it stands, history
+        included (en-passant target, repetition record), which a set-up benchmark
+        position needs. The env plays on ``game`` itself rather than a copy."""
+        self.game = game if game is not None else ChessGame(initial_board=board, turn=turn)
         self.done = False
         self.winner = None
         self.end_reason = None

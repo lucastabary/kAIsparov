@@ -35,14 +35,20 @@ class ChessGame:
     ``None``. The variant ends when a king is captured (see :mod:`kaisparov.core`).
     """
 
-    def __init__(self, initial_board: Grid | None = None, turn: Player = Player.WHITE):
+    def __init__(
+        self,
+        initial_board: Grid | None = None,
+        turn: Player = Player.WHITE,
+        en_passant_target: Coord | None = None,
+    ):
         self.grid: Grid = (
             self._build_grid() if initial_board is None else self._clone_grid(initial_board)
         )
         self.turn: Player = turn
         self.count = 0
         # Square a pawn just skipped on a double push; capturable en passant next ply.
-        self.en_passant_target: Coord | None = None
+        # Only a set-up position (e.g. one read from FEN) starts with one armed.
+        self.en_passant_target: Coord | None = en_passant_target
         # (source, dest) of the last move played — for UI highlighting.
         self.last_move: tuple[Coord, Coord] | None = None
         # Draw bookkeeping, kept up to date by make/unmake (see kaisparov.core.draw):
