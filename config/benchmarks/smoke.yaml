@@ -1,0 +1,42 @@
+# Smoke suite: small and fast, one example of every task kind. It checks that the
+# benchmark pipeline works end to end, not that a model is any good.
+#
+#   kaisparov bench run config/benchmarks/smoke.yaml -a random -a material
+#
+# Each entry names a generator (`kaisparov bench generators` lists them), how many
+# problems to draw and its parameters. The seed fixes every problem: same file, same
+# seed, same suite. Freeze one with `kaisparov bench generate <spec> -o <file>.jsonl`.
+
+name: smoke
+description: "Pipeline check: one example of each task kind."
+seed: 0
+
+problems:
+  - generator: king_capture
+    count: 20
+    params:
+      max_pieces: 4
+
+  - generator: fixed
+    params:
+      theme: handwritten
+      problems:
+        # The rook on a5 takes the king on e5; the other rook is a distraction.
+        - fen: "8/8/8/R3k3/8/8/8/4K2R w - - 0 1"
+          theme: king_capture
+          task: {kind: find_move, accepted: [a5e5]}
+
+        # Rooks hold the d- and f-files: every king step onto them hangs the king.
+        - fen: "3r1r1k/8/8/8/8/8/P7/4K3 w - - 0 1"
+          theme: king_safety
+          task: {kind: avoid_moves, forbidden: [e1d1, e1d2, e1f1, e1f2]}
+
+        # King and queen against a bare king: finish the job.
+        - fen: "8/8/8/4k3/8/8/2Q5/4K3 w - - 0 1"
+          theme: conversion
+          task: {kind: play_out, opponent: random, max_plies: 60, goal: win}
+
+        # Rook against rook: do not lose it.
+        - fen: "4k3/r7/8/8/8/8/7R/4K3 w - - 0 1"
+          theme: defence
+          task: {kind: play_out, opponent: material, max_plies: 40, goal: not_lose}
