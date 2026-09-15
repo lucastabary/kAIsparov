@@ -21,6 +21,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 | `analysis/` | Move review — `evaluators` (score a position), `judge` (grade a played move, chess.com-style labels + accuracy), `critic` (torch-backed evaluator). Vocabulary lives in `insights.py`. |
 | `training/` | `config` (typed), `trainer`, `ppo` (buffer + negamax GAE), `rollout`, `curriculum`. |
 | `eval/` | `arena` — play matches, win-rates, Elo. |
+| `bench/` | Skill benchmark on targeted problems. `Position` (FEN), `Task` (how an answer is scored), `Problem`, `generators/` (`ProblemGenerator` registry, propose-and-verify `SamplingGenerator`), `oracle` (exact ground truth), `Suite` (YAML spec / frozen JSONL), `Contestant` specs, `BenchmarkRunner` → `BenchmarkReport`. Torch-free. |
 | `tracking/` | `RunManager` writes `runs/<id>/`; `Registry` (torch-free) reads them. |
 | `cli.py` | Unified entry: `kaisparov <train\|eval\|play\|runs>`. |
 
@@ -52,6 +53,7 @@ pip install -e .
 
 kaisparov train --config config/default.yaml   # or: python -m kaisparov.cli train
 kaisparov eval  --games 60
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best  # skill profile
 kaisparov runs  list | show <id> | lineage <id> | best | graph  # graph = HTML lineage view
 kaisparov play  --vs-ai
 
@@ -92,6 +94,11 @@ pytest                                          # tests (torch-free where possib
 - Adding a backend = a new `models/<arch>/` folder (named by architecture, e.g.
   `rgcn`, `gat`) with a `BACKEND_SPEC` and a `README.md` describing the model (see
   `models/rgcn/README.md`), then a line in `models/factory.py`. Nothing else changes.
+- Adding a benchmark test = a `ProblemGenerator` subclass in `bench/generators/` (plus
+  an import line in its `__init__`) and, if no existing `Task` scores it, a `Task`
+  subclass in `bench/tasks.py`. Ground truth must come from the `Oracle` (or another
+  exact search) and respect the draw rules — never from a model. Suites live as YAML
+  specs in `config/benchmarks/`; reports go to `runs/benchmarks/` (git-ignored).
 
 ## graphify
 
