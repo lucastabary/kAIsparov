@@ -80,9 +80,11 @@ def _cmd_run(args: argparse.Namespace) -> None:
 
 
 def _cmd_show(args: argparse.Namespace) -> None:
-    report = BenchmarkReport.load(args.report)
-    print(f"{report.suite} ({report.created_at})\n")
-    print(report.format_table())
+    report = BenchmarkReport.merge(BenchmarkReport.load(path) for path in args.reports)
+    print(f"{report.suite} ({len(args.reports)} report(s))\n")
+    print(report.format_table(metric=args.metric, intervals=not args.no_intervals))
+    if args.output:
+        print(f"\nWrote {report.save(args.output)}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -107,8 +109,11 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--out", help="Report path (default: runs/benchmarks/<stamp>_<suite>.json)")
     run.add_argument("-q", "--quiet", action="store_true", help="No per-problem progress")
 
-    show = sub.add_parser("show", help="Print a saved report")
-    show.add_argument("report")
+    show = sub.add_parser("show", help="Print saved reports (several are merged)")
+    show.add_argument("reports", nargs="+")
+    show.add_argument("--metric", choices=["solve_rate", "score"], default="solve_rate")
+    show.add_argument("--no-intervals", action="store_true")
+    show.add_argument("-o", "--output", help="Save the merged report to this path")
 
     args = parser.parse_args(argv)
     commands = {
