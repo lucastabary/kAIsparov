@@ -141,17 +141,38 @@ def _resolve_checkpoint(checkpoint: str | None, runs_dir: str, use_best: bool = 
 
 # ---------------------------------------------------------------------- model
 
-def _load_model(checkpoint: str, hidden_dim: int | None, device):
+
+def _run_model_name(checkpoint: str) -> str | None:
+    """The backend a tracked checkpoint was trained with, or ``None`` if untracked.
+
+    Tracked checkpoints live at ``runs/<id>/checkpoints/<file>.pth``, next to the run's
+    ``run.json`` which records the backend name.
+    """
+    import json
+    from pathlib import Path
+
+    run_json = Path(checkpoint).parent.parent / "run.json"
+    try:
+        run = json.loads(run_json.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return run.get("model") or (run.get("config") or {}).get("model")
+
+
+def _load_model(checkpoint: str, hidden_dim: int | None, device, model_name: str | None = None):
     """Load the backend once; agents and the analyzer are cheap wrappers over it.
 
     ``hidden_dim=None`` means "infer it from the checkpoint" (the default), which
     avoids the size-mismatch crash when a model was trained at a non-default width.
+    ``model_name=None`` means "the backend recorded by the checkpoint's run", falling
+    back to the default backend for an untracked file.
     """
     import torch
 
     from kaisparov.models.factory import infer_hidden_dim, load_backend_spec
 
-    spec = load_backend_spec()
+    model_name = model_name or _run_model_name(checkpoint)
+    spec = load_backend_spec(model_name)
     state_dict = torch.load(checkpoint, map_location=device, weights_only=True)
 
     if hidden_dim is None:
@@ -177,7 +198,7 @@ def _build_ai(args, device, *, deterministic: bool, allow_fallback: bool):
     """
     try:
         checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
-        model, processor, path = _load_model(checkpoint, args.hidden_dim, device)
+        model, processor, path = _load_model(checkpoint, args.hidden_dim, device, args.model)
     except SystemExit:
         if not allow_fallback:
             raise
@@ -253,7 +274,7 @@ def _controller_from_key(key, args, device, *, deterministic: bool, model_cache:
 
         try:
             checkpoint = str(Registry(args.runs_dir).resolve_checkpoint(key, "best"))
-            model_cache[key] = _load_model(checkpoint, args.hidden_dim, device)
+            model_cache[key] = _load_model(checkpoint, args.hidden_dim, device, args.model)
         except (FileNotFoundError, KeyError, RuntimeError) as exc:
             print(f"Could not load run '{key}' ({exc}); using the material baseline.")
             model_cache[key] = None
@@ -324,7 +345,9 @@ def _prepare_match(setup: MatchSetup, args, device):
             # CLI shortcut: share one loaded model across both seats, sampling moves.
             try:
                 checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
-                model, processor, path = _load_model(checkpoint, args.hidden_dim, device)
+                model, processor, path = _load_model(
+                    checkpoint, args.hidden_dim, device, args.model
+                )
                 from kaisparov.agents.neural_agent import NeuralAgent
                 from kaisparov.agents.neural_analyzer import NeuralAnalyzer
 
@@ -357,7 +380,7 @@ def _try_build_analyzer(args, device):
     """Best-effort analyzer for developer mode in solo play; ``None`` if no model."""
     try:
         checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
-        model, processor, path = _load_model(checkpoint, args.hidden_dim, device)
+        model, processor, path = _load_model(checkpoint, args.hidden_dim, device, args.model)
     except SystemExit:
         print("Developer mode: no checkpoint found, analysis overlay disabled.")
         return None
@@ -709,6 +732,9 @@ def main(argv: list[str] | None = None) -> None:
         choices=list(_CLI_COLORS),
         default="random",
         help="Your color vs the AI (default: drawn at random each game).",
+    )
+    parser.add_argument(
+        "--model", default=None, help="AI backend (default: the one recorded by the run)."
     )
     parser.add_argument(
         "--hidden-dim", type=int, default=None, help="AI width (default: inferred from checkpoint)."
