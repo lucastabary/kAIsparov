@@ -128,9 +128,10 @@ class Position:
 
         A player who understands the position plays the mirrored move in it, which is
         what makes the mirror the natural way to test both colours with one problem.
-        Setup moves are baked in first, so the mirror has none.
+        Setup moves are mirrored too, so the history (a repetition, an en-passant
+        chance) survives the flip.
         """
-        game = self.to_game()
+        game = Position(self.fen).to_game()
         grid: Grid = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
         for col, row in ALL_SQUARES:
             piece = game.grid[col][row]
@@ -141,7 +142,8 @@ class Position:
         en_passant = game.en_passant_target
         if en_passant is not None:
             en_passant = (en_passant[0], BOARD_SIZE - 1 - en_passant[1])
-        return Position(to_fen(grid, other(game.turn), en_passant))
+        moves = tuple(move_to_uci(mirror_move(uci_to_move(move))) for move in self.moves)
+        return Position(to_fen(grid, other(game.turn), en_passant), moves)
 
 
 def mirror_move(move: Move) -> Move:
