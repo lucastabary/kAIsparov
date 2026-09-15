@@ -59,11 +59,12 @@ class BenchmarkRunner:
 
     def evaluate(self, contestant: Contestant) -> ContestantResult:
         result = ContestantResult(contestant.name, contestant.spec)
+        analyzer = contestant.analyzer()
         total = len(self.suite)
         for index, problem in enumerate(self.suite, start=1):
             seed = self.problem_seed(problem)
             policy = contestant.build(seed)
-            context = TaskContext(seed=seed, draw_rules=self.draw_rules)
+            context = TaskContext(seed=seed, draw_rules=self.draw_rules, analyzer=analyzer)
             outcome = problem.task.attempt(problem.position.to_game(), policy, context)
             result.results.append(
                 ProblemResult(problem.id, problem.theme, problem.difficulty, outcome)

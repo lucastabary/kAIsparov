@@ -63,7 +63,7 @@ class ProblemResult:
 
 @dataclass(frozen=True)
 class Tally:
-    """Aggregate over any group of results."""
+    """Aggregate over any group of results. Skipped outcomes are counted apart."""
 
     count: int = 0
     solved: int = 0
@@ -71,20 +71,24 @@ class Tally:
     seconds: float = 0.0  # summed decision time
     plies: int = 0
     errors: int = 0
+    skipped: int = 0
 
     @classmethod
     def of(cls, results: Iterable[ProblemResult]) -> Tally:
-        count = solved = plies = errors = 0
+        count = solved = plies = errors = skipped = 0
         score = seconds = 0.0
         for result in results:
             outcome = result.outcome
+            if outcome.skipped:
+                skipped += 1
+                continue
             count += 1
             solved += outcome.solved
             score += outcome.score
             seconds += outcome.seconds
             plies += outcome.plies
             errors += outcome.error is not None
-        return cls(count, solved, score, seconds, plies, errors)
+        return cls(count, solved, score, seconds, plies, errors, skipped)
 
     @property
     def solve_rate(self) -> float:
@@ -160,23 +164,39 @@ class BenchmarkReport:
         return sorted({r.theme for c in self.contestants for r in c.results})
 
     # ----------------------------------------------------------------- display
-    def format_table(self) -> str:
-        """Themes down, contestants across: solve rate, with the 95% interval below."""
+    def format_table(self, metric: str = "solve_rate", intervals: bool = True) -> str:
+        """Themes down, contestants across.
+
+        ``metric`` is ``"solve_rate"`` (with its 95% interval on the line below unless
+        ``intervals`` is off) or ``"score"``, the mean partial credit. A theme a
+        contestant skipped entirely (a probe, for a player with no analyzer) reads n/a.
+        """
+        if metric not in ("solve_rate", "score"):
+            raise ValueError("metric must be 'solve_rate' or 'score'")
         names = [c.name for c in self.contestants]
         width = max([12, *(len(name) for name in names)])
         theme_width = max([10, *(len(theme) for theme in self.themes())])
         header = f"{'theme':<{theme_width}} {'n':>4} " + " ".join(f"{n:>{width}}" for n in names)
         lines = [header, "-" * len(header)]
 
+        def cell(tally: Tally) -> str:
+            if not tally.count:
+                return f"{'n/a':>{width}}"
+            value = tally.solve_rate if metric == "solve_rate" else tally.mean_score
+            return f"{value:>{width}.0%}"
+
+        def span(tally: Tally) -> str:
+            low, high = tally.interval
+            return f"{f'{low:.0%}-{high:.0%}' if tally.count else '':>{width}}"
+
         tallies = [c.by_theme() for c in self.contestants]
         rows = [(theme, [t.get(theme, Tally()) for t in tallies]) for theme in self.themes()]
         rows.append(("ALL", [c.overall() for c in self.contestants]))
         for theme, row in rows:
-            count = max((t.count for t in row), default=0)
-            cells = " ".join(f"{t.solve_rate:>{width}.0%}" for t in row)
-            lines.append(f"{theme:<{theme_width}} {count:>4} {cells}")
-            spans = " ".join(f"{f'{t.interval[0]:.0%}-{t.interval[1]:.0%}':>{width}}" for t in row)
-            lines.append(f"{'':<{theme_width}} {'':>4} {spans}")
+            count = max((t.count + t.skipped for t in row), default=0)
+            lines.append(f"{theme:<{theme_width}} {count:>4} {' '.join(cell(t) for t in row)}")
+            if intervals and metric == "solve_rate":
+                lines.append(f"{'':<{theme_width}} {'':>4} {' '.join(span(t) for t in row)}")
 
         footer = []
         for contestant in self.contestants:
@@ -219,6 +239,24 @@ class BenchmarkReport:
     @classmethod
     def load(cls, path: str | Path) -> BenchmarkReport:
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    @classmethod
+    def merge(cls, reports: Iterable[BenchmarkReport]) -> BenchmarkReport:
+        """One report out of several runs of the same suite — say, one process per
+        contestant. Contestants keep their order; a name seen twice is an error."""
+        reports = list(reports)
+        if not reports:
+            raise ValueError("nothing to merge")
+        suites = {report.suite for report in reports}
+        if len(suites) > 1:
+            raise ValueError(f"cannot merge reports of different suites: {sorted(suites)}")
+        merged = cls(suite=reports[0].suite, seed=reports[0].seed, meta=dict(reports[0].meta))
+        for report in reports:
+            for contestant in report.contestants:
+                if any(c.name == contestant.name for c in merged.contestants):
+                    raise ValueError(f"contestant {contestant.name!r} appears in two reports")
+                merged.contestants.append(contestant)
+        return merged
 
 
 __all__ = ["BenchmarkReport", "ContestantResult", "ProblemResult", "Tally", "wilson_interval"]

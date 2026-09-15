@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from kaisparov.agents.base import Policy
+from kaisparov.insights import Analyzer
 
 _MINIMAX = re.compile(r"minimax(\d+)")
 
@@ -81,6 +82,10 @@ class Contestant(ABC):
     @abstractmethod
     def build(self, seed: int) -> Policy:
         """A fresh policy; building twice with one seed must give the same player."""
+
+    def analyzer(self) -> Analyzer | None:
+        """How the contestant explains a position, for the probe tasks. Default: none."""
+        return None
 
     @classmethod
     @abstractmethod
@@ -146,6 +151,14 @@ class BaselineContestant(Contestant):
         agent_class = RandomAgent if self.kind == "random" else MaterialAgent
         return agent_class(seed=seed, avoid_king_suicide=self.modifiers.safe)
 
+    def analyzer(self) -> Analyzer | None:
+        """Material explains itself by counting; random has nothing to explain."""
+        if self.kind != "material":
+            return None
+        from kaisparov.bench.analyzers import MaterialAnalyzer
+
+        return MaterialAnalyzer()
+
 
 # ------------------------------------------------------------------------ neural
 
@@ -163,6 +176,7 @@ class NeuralContestant(Contestant):
     name: str = ""
     spec: str = ""
     _loaded: Any = field(default=None, init=False, repr=False)
+    _policy: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.name = self.name or Path(self.checkpoint).stem + self.modifiers.suffix()
@@ -206,7 +220,13 @@ class NeuralContestant(Contestant):
             state_dict = torch.load(self.checkpoint, map_location=device, weights_only=True)
             hidden_dim = self.hidden_dim or infer_hidden_dim(state_dict) or 8
             model = spec.model_class.create_agent(device=device, hidden_dim=hidden_dim)
-            model.load_state_dict(state_dict)
+            try:
+                model.load_state_dict(state_dict)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    f"{self.name}: {self.checkpoint} does not fit the current {spec.name} "
+                    "backend — most likely trained before a change to its input features"
+                ) from exc
             model.eval()
             self._loaded = (model, spec.processor_class())
         return self._loaded
@@ -214,25 +234,37 @@ class NeuralContestant(Contestant):
     def build(self, seed: int) -> Policy:
         import torch
 
-        torch.manual_seed(seed)  # only matters with +sample
+        # The agents are stateless — only +sample draws from torch's global generator,
+        # which reseeding covers — so one agent serves every problem.
+        torch.manual_seed(seed)
+        if self._policy is None:
+            model, processor = self._load()
+            if self.modifiers.search_depth:
+                from kaisparov.agents.minimax_agent import MinimaxAgent
+
+                self._policy = MinimaxAgent(
+                    model,
+                    processor,
+                    depth=self.modifiers.search_depth,
+                    avoid_king_suicide=self.modifiers.safe,
+                )
+            else:
+                from kaisparov.agents.neural_agent import NeuralAgent
+
+                self._policy = NeuralAgent(
+                    model,
+                    processor,
+                    deterministic=not self.modifiers.sample,
+                    avoid_king_suicide=self.modifiers.safe,
+                )
+        return self._policy
+
+    def analyzer(self) -> Analyzer:
+        """The raw network's view (value head, full policy ranking), search or not."""
+        from kaisparov.agents.neural_analyzer import NeuralAnalyzer
+
         model, processor = self._load()
-        if self.modifiers.search_depth:
-            from kaisparov.agents.minimax_agent import MinimaxAgent
-
-            return MinimaxAgent(
-                model,
-                processor,
-                depth=self.modifiers.search_depth,
-                avoid_king_suicide=self.modifiers.safe,
-            )
-        from kaisparov.agents.neural_agent import NeuralAgent
-
-        return NeuralAgent(
-            model,
-            processor,
-            deterministic=not self.modifiers.sample,
-            avoid_king_suicide=self.modifiers.safe,
-        )
+        return NeuralAnalyzer(model, processor, top_k=4096)
 
 
 __all__ = ["BaselineContestant", "Contestant", "Modifiers", "NeuralContestant"]
