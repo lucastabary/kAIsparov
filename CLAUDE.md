@@ -96,7 +96,8 @@ pytest                                          # tests (torch-free where possib
   `models/rgcn/README.md`), then a line in `models/factory.py`. Nothing else changes.
 - Adding a benchmark test = a `ProblemGenerator` subclass in `bench/generators/` (plus
   an import line in its `__init__`) and, if no existing `Task` scores it, a `Task`
-  subclass in `bench/tasks.py`. Ground truth must come from the `Oracle` (or another
+  subclass in the matching `bench/tasks/` module (moves, play-outs, consistency,
+  probes). Ground truth must come from the `Oracle` (or another
   exact search) and respect the draw rules — never from a model. Suites live as YAML
   specs in `config/benchmarks/`; reports go to `runs/benchmarks/` (git-ignored).
 
