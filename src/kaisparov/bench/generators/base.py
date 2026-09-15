@@ -22,6 +22,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from typing import Any, ClassVar
 
+from kaisparov.bench.oracle import Oracle
 from kaisparov.bench.position import Position, other, to_fen
 from kaisparov.bench.problem import Problem
 from kaisparov.core.board import ChessGame
@@ -165,10 +166,18 @@ class BoardBuilder:
         square: Coord | None = None,
         *,
         rows: Iterable[int] | None = None,
+        squares: Iterable[Coord] | None = None,
     ) -> Coord | None:
-        """Put a piece on ``square``, or on a random allowed free square. ``None`` if full."""
+        """Put a piece on ``square``, or on a random allowed free square. ``None`` if full.
+
+        ``rows`` and ``squares`` narrow the random choice (a king on the edge, a piece
+        near the action); a piece that cannot legally stand anywhere left returns ``None``.
+        """
         if square is None:
             candidates = [sq for sq in self.free_squares(rows) if self._allowed(piece_type, sq)]
+            if squares is not None:
+                wanted = set(squares)
+                candidates = [sq for sq in candidates if sq in wanted]
             if piece_type == PieceType.KING:
                 candidates = [sq for sq in candidates if not self._next_to_king(sq, player)]
             if not candidates:
@@ -176,12 +185,47 @@ class BoardBuilder:
             square = self.rng.choice(candidates)
         elif self.grid[square[0]][square[1]] is not None:
             raise ValueError(f"square {square} is occupied")
+        elif not self._allowed(piece_type, square):
+            return None
         self.grid[square[0]][square[1]] = Piece(player, piece_type)
         return square
 
-    def place_all(self, player: Player, pieces: Sequence[PieceType]) -> bool:
+    def remove(self, square: Coord) -> None:
+        self.grid[square[0]][square[1]] = None
+
+    def place_all(
+        self,
+        player: Player,
+        pieces: Sequence[PieceType],
+        *,
+        rows: Iterable[int] | None = None,
+        squares: Iterable[Coord] | None = None,
+    ) -> bool:
         """Place every piece in ``pieces`` for ``player``; ``False`` if one did not fit."""
-        return all(self.place(player, piece_type) is not None for piece_type in pieces)
+        rows = None if rows is None else list(rows)
+        squares = None if squares is None else list(squares)
+        return all(
+            self.place(player, piece_type, rows=rows, squares=squares) is not None
+            for piece_type in pieces
+        )
+
+    @classmethod
+    def random_board(
+        cls,
+        rng: random.Random,
+        white: Sequence[PieceType],
+        black: Sequence[PieceType],
+        *,
+        black_king_squares: Iterable[Coord] | None = None,
+    ) -> BoardBuilder | None:
+        """Both kings, then ``white`` and ``black`` anywhere; ``None`` if something did not fit."""
+        board = cls(rng)
+        if board.place(Player.BLACK, PieceType.KING, squares=black_king_squares) is None:
+            return None
+        board.place(Player.WHITE, PieceType.KING)
+        if not (board.place_all(Player.WHITE, white) and board.place_all(Player.BLACK, black)):
+            return None
+        return board
 
     def random_material(
         self, count: int, types: Sequence[PieceType] = PIECE_TYPES
@@ -214,9 +258,46 @@ class BoardBuilder:
         return enemy is not None and max(abs(enemy[0] - square[0]), abs(enemy[1] - square[1])) <= 1
 
 
+# ---------------------------------------------------------------------- helpers
+
+EDGE_SQUARES: tuple[Coord, ...] = tuple(
+    (c, r) for c, r in ALL_SQUARES if c in (0, BOARD_SIZE - 1) or r in (0, BOARD_SIZE - 1)
+)
+
+HEAVY_TYPES: tuple[PieceType, ...] = (
+    PieceType.QUEEN,
+    PieceType.ROOK,
+    PieceType.ROOK,
+    PieceType.BISHOP,
+    PieceType.KNIGHT,
+)
+
+
+def near(square: Coord, radius: int) -> list[Coord]:
+    """Every square within ``radius`` king steps of ``square`` (itself excluded)."""
+    return [
+        (c, r)
+        for c, r in ALL_SQUARES
+        if (c, r) != square and max(abs(c - square[0]), abs(r - square[1])) <= radius
+    ]
+
+
+def is_quiet(game: ChessGame, oracle: Oracle) -> bool:
+    """Neither king is en prise and the game is not over: a position to *think* in."""
+    return (
+        not game.is_in_check(Player.WHITE)
+        and not game.is_in_check(Player.BLACK)
+        and not oracle.is_over(game)
+    )
+
+
 __all__ = [
+    "EDGE_SQUARES",
+    "HEAVY_TYPES",
     "PIECE_TYPES",
     "BoardBuilder",
+    "is_quiet",
+    "near",
     "GenerationError",
     "ProblemGenerator",
     "SamplingGenerator",

@@ -39,6 +39,10 @@ class SuiteEntry:
     count: int | None = None
     params: dict[str, Any] = field(default_factory=dict)
     name: str | None = None  # id prefix; needed when two entries share a generator
+    # Random stream to draw from (default: the entry's own). Two entries naming the same
+    # stream see the same random numbers — how `policy_rank` re-asks another theme's
+    # very positions.
+    stream: str | None = None
 
     @property
     def label(self) -> str:
@@ -46,7 +50,7 @@ class SuiteEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SuiteEntry:
-        unknown = set(data) - {"generator", "count", "params", "name"}
+        unknown = set(data) - {"generator", "count", "params", "name", "stream"}
         if unknown:
             raise ValueError(f"unknown suite entry keys: {sorted(unknown)}")
         count = data.get("count")
@@ -55,6 +59,7 @@ class SuiteEntry:
             count=None if count is None else int(count),
             params=dict(data.get("params") or {}),
             name=data.get("name"),
+            stream=data.get("stream"),
         )
 
 
@@ -93,7 +98,7 @@ class SuiteSpec:
         for entry in self.entries:
             # A string seed goes through SHA-512 in `random`: stable across processes
             # and Python versions, unlike hash().
-            rng = random.Random(f"{self.seed}:{entry.label}")
+            rng = random.Random(f"{self.seed}:{entry.stream or entry.label}")
             generator = ProblemGenerator.create(entry.generator, entry.params)
             for i, problem in enumerate(generator.generate(entry.count, rng)):
                 problems.append(replace(problem, id=f"{entry.label}-{i:04d}"))

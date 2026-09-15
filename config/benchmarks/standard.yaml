@@ -1,0 +1,102 @@
+# Standard suite: one entry per skill theme — the profile to compare models on.
+#
+# Building it takes a few minutes (win_in_3 and parry_threat run deep searches), so
+# freeze it once and run models on the frozen file:
+#
+#   kaisparov bench generate config/benchmarks/standard.yaml -o data/bench/standard.jsonl
+#   kaisparov bench run data/bench/standard.jsonl -a material -a run:<id>@best
+#
+# Counts are sized for CPU: about five minutes per neural contestant. Solve rates on
+# 30 problems carry a +-15-point interval — compare models on themes where the gap is
+# wider than that, or raise the counts.
+
+name: standard
+description: "Every skill theme: tactics, king safety, draw traps, endgames, heads, robustness."
+seed: 0
+
+problems:
+  # ---- tactics ------------------------------------------------------------------
+  - generator: king_capture
+    count: 30
+
+  - generator: win_in_n
+    name: win_in_2
+    count: 30
+    params: {depth: 2}
+
+  - generator: win_in_n
+    name: win_in_3
+    count: 20
+    params: {depth: 3}
+
+  - generator: free_capture
+    count: 30
+
+  - generator: fork
+    count: 30
+
+  - generator: parry_threat
+    count: 30
+
+  # ---- king safety & blunders ---------------------------------------------------
+  - generator: escape_check
+    count: 30
+
+  - generator: avoid_king_hang
+    count: 30
+
+  - generator: avoid_piece_hang
+    count: 30
+
+  # ---- special rules & draw traps -----------------------------------------------
+  - generator: special_rules
+    count: 30
+
+  - generator: stalemate_trap
+    count: 30
+
+  - generator: repetition_trap
+    count: 30
+
+  # ---- play-outs ----------------------------------------------------------------
+  - generator: conversion
+    count: 20
+    params: {materials: [Q, RR, R], opponent: material+safe, max_plies: 80}
+
+  - generator: material_edge
+    count: 20
+    params: {edges: [3, 5], opponent: material+safe, max_plies: 80}
+
+  - generator: hold
+    count: 20
+    params: {edges: [3], opponent: material+safe, max_plies: 40}
+
+  # ---- the model's heads (skipped by contestants without an analyzer) -----------
+  - generator: value_sign
+    count: 40
+
+  # Same positions as the move themes above (shared `stream`), asked of the ranking.
+  - generator: policy_rank
+    name: policy_win_in_2
+    stream: win_in_2
+    count: 30
+    params: {source: win_in_n, source_params: {depth: 2}, k: 3}
+
+  - generator: policy_rank
+    name: policy_escape_check
+    stream: escape_check
+    count: 30
+    params: {source: escape_check, k: 3}
+
+  - generator: policy_rank
+    name: policy_free_capture
+    stream: free_capture
+    count: 30
+    params: {source: free_capture, k: 3}
+
+  # ---- robustness ---------------------------------------------------------------
+  - generator: mirror_consistency
+    count: 30
+
+  - generator: distractor_invariance
+    count: 30
