@@ -22,6 +22,24 @@ def load_backend(model_name: str | None = None):
     return importlib.import_module(MODEL_MODULES.get(resolved, resolved))
 
 
+# state_dict keys whose first dimension equals hidden_dim, tried in order.
+_HIDDEN_DIM_KEYS = ("chess_rgcn.conv1.bias", "critic_head.0.bias", "actor_head.0.bias")
+
+
+def infer_hidden_dim(state_dict) -> int | None:
+    """Read hidden_dim off a checkpoint so it need not be passed on the CLI.
+
+    Checkpoints are plain ``state_dict``s with no metadata, but every candidate key
+    is a 1-D tensor of length ``hidden_dim`` — so its shape tells us the width the
+    model was trained at, tracked run or raw path alike.
+    """
+    for key in _HIDDEN_DIM_KEYS:
+        tensor = state_dict.get(key)
+        if tensor is not None and tensor.dim() >= 1:
+            return int(tensor.shape[0])
+    return None
+
+
 def load_backend_spec(model_name: str | None = None) -> BackendSpec:
     backend = load_backend(model_name)
     spec = getattr(backend, "BACKEND_SPEC", None)

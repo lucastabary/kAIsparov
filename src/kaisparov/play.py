@@ -141,24 +141,6 @@ def _resolve_checkpoint(checkpoint: str | None, runs_dir: str, use_best: bool = 
 
 # ---------------------------------------------------------------------- model
 
-# state_dict keys whose first dimension equals hidden_dim, tried in order.
-_HIDDEN_DIM_KEYS = ("chess_rgcn.conv1.bias", "critic_head.0.bias", "actor_head.0.bias")
-
-
-def _infer_hidden_dim(state_dict) -> int | None:
-    """Read hidden_dim off a checkpoint so it need not be passed on the CLI.
-
-    Checkpoints are plain ``state_dict``s with no metadata, but every candidate key
-    is a 1-D tensor of length ``hidden_dim`` — so its shape tells us the width the
-    model was trained at, tracked run or raw path alike.
-    """
-    for key in _HIDDEN_DIM_KEYS:
-        tensor = state_dict.get(key)
-        if tensor is not None and tensor.dim() >= 1:
-            return int(tensor.shape[0])
-    return None
-
-
 def _load_model(checkpoint: str, hidden_dim: int | None, device):
     """Load the backend once; agents and the analyzer are cheap wrappers over it.
 
@@ -167,13 +149,13 @@ def _load_model(checkpoint: str, hidden_dim: int | None, device):
     """
     import torch
 
-    from kaisparov.models.factory import load_backend_spec
+    from kaisparov.models.factory import infer_hidden_dim, load_backend_spec
 
     spec = load_backend_spec()
     state_dict = torch.load(checkpoint, map_location=device, weights_only=True)
 
     if hidden_dim is None:
-        hidden_dim = _infer_hidden_dim(state_dict)
+        hidden_dim = infer_hidden_dim(state_dict)
         if hidden_dim is None:
             hidden_dim = 8
             print("Could not infer hidden_dim from the checkpoint; falling back to 8.")
