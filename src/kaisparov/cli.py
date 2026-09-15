@@ -4,6 +4,7 @@ Commands (each has its own ``-h``):
 
     kaisparov train [--config ...] [--epochs N] [--cpu] ...
     kaisparov eval  [--games N] [--model rgcn --checkpoint ...] ...
+    kaisparov bench generators | generate <suite> | run <suite> -a <agent> ... | show <report>
     kaisparov play  [--vs-ai --checkpoint ...] ...
     kaisparov runs  list | show <id> | lineage <id> | best [--metric ...] | graph
 
@@ -15,9 +16,9 @@ from __future__ import annotations
 
 import sys
 
-COMMANDS = ("train", "eval", "play", "runs")
+COMMANDS = ("train", "eval", "bench", "play", "runs")
 
-_USAGE = "usage: kaisparov {train|eval|play|runs} [options]  (try: kaisparov <command> -h)"
+_USAGE = "usage: kaisparov {train|eval|bench|play|runs} [options]  (try: kaisparov <command> -h)"
 
 
 def _dispatch(command: str, rest: list[str]) -> None:
@@ -25,6 +26,8 @@ def _dispatch(command: str, rest: list[str]) -> None:
         from kaisparov.train import main
     elif command == "eval":
         from kaisparov.eval.arena import main
+    elif command == "bench":
+        from kaisparov.bench.cli import main
     elif command == "play":
         from kaisparov.play import main
     else:  # runs
