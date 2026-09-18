@@ -21,17 +21,22 @@ problems:
     params:
       theme: handwritten
       problems:
-        # The rook on a5 takes the king on e5; the other rook is a distraction.
-        - fen: "8/8/8/R3k3/8/8/8/4K2R w - - 0 1"
+        # Back-rank mate: the black king is shut in by its own pawns on f7/g7/h7.
+        - fen: "7k/5ppp/8/8/8/8/5PPP/R6K w - - 0 1"
           theme: mate_in_one
-          task: {kind: find_move, accepted: [a5e5]}
+          task: {kind: find_move, accepted: [a1a8]}
 
-        # Rooks hold the d- and f-files: every king step onto them hangs the king.
-        - fen: "3r1r1k/8/8/8/8/8/P7/4K3 w - - 0 1"
-          theme: king_safety
-          task: {kind: avoid_moves, forbidden: [e1d1, e1d2, e1f1, e1f2]}
+        # The rook on a2 is the only thing guarding the first rank. Every move that
+        # leaves it — grabbing the knight on a5 included — loses to ...Re1#, and so
+        # does h1, the one king move. Only a pawn move survives.
+        - fen: "4r1k1/5ppp/8/n7/8/8/R4PPP/6K1 w - - 0 1"
+          theme: avoid_mate
+          task:
+            kind: avoid_moves
+            forbidden: [a2a5, a2a4, a2a3, a2d2, a2c2, a2b2, g1h1]
 
-        # King and queen against a bare king: finish the job.
+        # King and queen against a bare king: finish the job. Genuinely hard for a
+        # baseline — mating technique is not something greed stumbles into.
         - fen: "8/8/8/4k3/8/8/2Q5/4K3 w - - 0 1"
           theme: conversion
           task: {kind: play_out, opponent: random, max_plies: 60, goal: win}
