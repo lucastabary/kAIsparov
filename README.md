@@ -48,12 +48,16 @@ and a pygame interface to play against a trained agent.
   played (`!!` brilliant ... `??` blunder) plus per-side accuracy at the end of the
   game, graded either by a handcrafted evaluator or by the model's own critic.
 
-> ⚠️ **Rule simplification.** To keep the RL problem tractable, the engine uses a
-> "capture-the-king" win condition: players are not required to get out of check,
-> and the game ends when a king is captured. Castling and en passant *are*
-> implemented; promotion is not. Draws are: threefold repetition, 50 moves without a
-> capture or a pawn move, insufficient material, and stalemate (`core/draw.py`). This
-> is a research simplification, not a bug.
+> ♟️ **Standard chess.** The engine plays the real game — legal moves only,
+> checkmate, stalemate, castling, en passant, promotion — on top of
+> [python-chess](https://python-chess.readthedocs.io/), with `core/game.py` as a thin
+> facade so the rest of the package keeps speaking `(col, row)` coordinates and
+> `Piece` objects. Draws are threefold repetition, 50 moves without a capture or a
+> pawn move, insufficient material, and stalemate (`core/draw.py`), each switchable.
+>
+> Earlier versions played a "capture-the-king" variant with pseudo-legal moves and no
+> promotion. That was a shortcut around implementing real chess, and it is gone: runs
+> recorded before the `pre-python-chess` tag are not comparable with what came after.
 
 ---
 
@@ -137,7 +141,7 @@ the config to document each experiment (shown by `kaisparov runs`).
 
 Reward shaping is config-driven too: `reward: aggressive` picks a preset from
 [config/rewards.yaml](config/rewards.yaml), or write the terms (`material`, `check`,
-`king_capture`, `step_penalty`) inline. The resolved shaping is saved in `run.json`.
+`checkmate`, `step_penalty`) inline. The resolved shaping is saved in `run.json`.
 
 Each run creates a self-contained directory under `runs/<run_id>/` with the
 resolved config, per-epoch metrics, TensorBoard logs, and checkpoints — plus a

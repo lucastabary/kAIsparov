@@ -1,17 +1,22 @@
 # Training recipe v3 — "victory is the only thing that matters"
 
-A ground-up restart on a **pure outcome** reward (king capture = ±1, *no* shaping).
+> **Historical.** Written while the engine still played capture-the-king. The recipe
+> carries over to standard chess unchanged in spirit — the win condition is now
+> checkmate — but the numbers recorded against it are not comparable across the
+> `pre-python-chess` tag.
+
+A ground-up restart on a **pure outcome** reward (checkmate = ±1, *no* shaping).
 The model must learn material value, piece defense and king safety on its own; the
 pressure to not blunder comes from the **opponent pool**, not from the reward.
 
 ## Why pure outcome + a teaching pool
 
-- Removing `king_safety`/`check`/`step_penalty` removes the asymmetric hand-crafting
+- Removing `check`/`step_penalty` removes the asymmetric hand-crafting
   that biased v2 toward grabbing over defending. `step_penalty` is redundant with
   `gamma` (a fast win is already worth more, discounted).
 - `material` is dropped too — but a pure-outcome signal is sparse, so it only becomes
   trainable because the pool contains opponents that *actually punish blunders*:
-  `MaterialAgent` (captures a hung king/piece) and depth-1 **minimax past-selves** that
+  `MaterialAgent` (captures a hung piece) and depth-1 **minimax past-selves** that
   refute one-move mistakes. Search — not reward shaping — injects the defense signal.
 - This is deliberately *not* AlphaZero: the actor still proposes actions and the critic
   evaluates states. We only borrow the idea that search is a policy-improvement operator
@@ -37,7 +42,7 @@ stage overrides curriculum / pool / LR / entropy. North-star metric:
 `eval/winrate_vs_material` (best checkpoint is selected on `elo_vs_material`).
 
 Reward preset lives in `config/rewards.yaml` as `checkmate_only`
-(`material: 0.0`, `checkmate: 1.0`).
+(`material: 0.0`, `promotion: 0.0`, `checkmate: 1.0`).
 
 ## Backlog — variants to try and compare
 

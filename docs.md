@@ -35,11 +35,15 @@ the variables you change and compare.
 The **deeper goal is interpretability** — understanding *what* the GNN learns about
 chess (piece relationships, board structure), not only how strong it gets.
 
-**Rule simplification (important).** To keep the RL problem tractable the engine
-plays a *capture-the-king* variant: moves are **pseudo-legal** (a side may leave its
-own king attacked), and a game ends when a king is actually captured. Castling and
-en passant are implemented; there is no check restriction, promotion, or
-draw-by-rule. This is intentional.
+**Rules.** Standard chess, backed by [python-chess](https://python-chess.readthedocs.io/):
+legal moves only (with real pin detection), checkmate, stalemate, castling, en
+passant, promotion, the fifty-move rule, threefold repetition and insufficient
+material. `core/game.py` is a thin facade over `chess.Board` so python-chess never
+leaks past that module — everything above it speaks `(col, row)` coordinates and
+`Piece` objects.
+
+Earlier versions played a capture-the-king variant with pseudo-legal moves and no
+promotion; it was a shortcut, and it was removed at the `pre-python-chess` tag.
 
 ---
 
@@ -77,17 +81,20 @@ Pure Python, no torch, no pygame — fast and unit-tested.
   `to_pov_coord` (an involution — applying it twice is identity) all live here.
 - **`pieces.py`** — `PieceType`, `Player`, and `Piece` (with `__slots__` for speed;
   fields `player`, `type`, `has_moved`).
-- **`attacks.py`** — movement geometry **precomputed once** at import: `KNIGHT_TARGETS`
-  / `KING_TARGETS` (on-board hops) and `ORTHO_RAYS` / `DIAG_RAYS` (ordered rays for
-  sliding pieces). Move generation is then table lookups, not recomputed ranges.
-- **`movegen.py`** — `pseudo_legal_moves(grid, source)` and `all_moves(grid, player)`.
-  Pure functions over a grid.
-- **`rules.py`** — `is_in_check` / `find_king` (used by the `check` reward-shaping
-  term; not required by the variant's move legality).
-- **`board.py`** — `ChessGame`, the mutable state. Key methods:
-  - `make(source, dest) -> Undo` and `unmake(undo)` — apply/reverse a move in **O(1)**
-    (no board cloning). This is the throughput lever for rollouts and any future
-    tree search. `Undo` captures everything needed to reverse, including castling.
+- **`move.py`** — `Move(source, dest, promotion)`, a `NamedTuple`, plus the
+  conversions to and from `chess.Move`. `e7e8` is four moves, so the old bare pair
+  grew a third field; `Move.coerce` normalises a pair coming in from outside.
+- **`rules.py`** — `is_in_check` / `find_king` / `attacked_squares` / `pawn_attacks`,
+  thin wrappers that take either a live game or a bare grid (the curriculum sampler
+  and the benchmark's board builder only ever hold a grid).
+- **`game.py`** — `ChessGame`, the mutable state, over `chess.Board`. Key methods:
+  - `make(source, dest, promotion=None) -> Undo` and `unmake(undo)` — apply/reverse a
+    move with no board cloning. A pawn reaching the last rank without a named
+    promotion queens.
+  - `legal_moves()`, `possible_moves(source)`, `is_checkmate()`, `is_stalemate()`.
+  - `grid` is a **cached snapshot**, rebuilt on demand and invalidated by every
+    make/unmake. Writing into it does not move a piece — use `place(coord, piece)` to
+    set a position up by hand. Hot paths should read `.board` and its bitboards.
   - `play(source, dest)` — validate then `make`; returns the captured piece or `None`.
   - `copy()` — a deep, independent clone.
   - `possible_moves`, `is_move_valid`, `to_pov_coord`/`get_pov_grid`, `is_in_check`.
@@ -156,24 +163,24 @@ loads backends by name (`load_backend`, `load_backend_spec`). `BaseModel`
 A small Gym-like wrapper and the **single place** reward/terminal logic lives:
 
 - `reset(board=None)` → observation (the `ChessGame`).
-- `step(move) -> StepResult(obs, reward, done, info)`. Reward is the **material value
-  of the captured piece** (king = 1.0), always from the point of view of the player
-  who just moved.
-- Terminal on: king captured (→ `winner`), the side to move having no legal move
-  (draw), or `max_plies` (draw).
-- `legal_moves()` → all legal `(source, dest)` moves.
+- `step(move) -> StepResult(obs, reward, done, info)`. Reward is the **material** the
+  move won — the captured piece, plus what a promotion gained — always from the point
+  of view of the player who just moved.
+- Terminal on: checkmate (→ `winner`), a draw rule (stalemate, repetition, no
+  progress, insufficient material), or `max_plies` (draw).
+- `legal_moves()` → every legal `Move`, promotions spelled out one by one.
 
 ### Policies (`agents/`)
 
 All agents implement `Policy.select_move(game) -> (source, dest) | None`:
 
 - `RandomAgent` — uniform legal move.
-- `MaterialAgent` — greedy 1-ply: capture the highest-value enemy piece (king if
-  possible), else random. A meaningful baseline.
+- `MaterialAgent` — greedy 1-ply: win the most material, counting the highest-value
+  capture and what a promotion gains; else random. A meaningful baseline.
 - `NeuralAgent` — wraps a model + processor; `select_move` graphifies, runs the model,
   masks, and returns the chosen move. (Imported lazily so baselines stay torch-free.)
 - `MinimaxAgent` — **negamax alpha-beta search** on the model: the critic evaluates
-  leaves, the actor orders moves (better ordering → more pruning), king capture = win.
+  leaves, the actor orders moves (better ordering → more pruning), mate = win.
   The search-improved player (stronger than the raw policy; the bridge to AlphaZero).
   Use it via `kaisparov play --vs-ai --minimax-depth D` or `kaisparov eval
   --minimax-depth D` to measure how much search improves the net. One forward per
@@ -288,12 +295,12 @@ checkpoints/
 Watch them live with `tensorboard --logdir runs/`:
 
 - **`train/`** — `loss`, `policy_loss`, `value_loss`, `entropy`, `steps` (per epoch).
-- **`rollout/`** — how self-play games ended: `king_capture_rate`, `truncated_rate`
+- **`rollout/`** — how self-play games ended: `checkmate_rate`, `truncated_rate`
   (hit the ply cap), `stalemate_rate` (no legal move), `avg_plies`, `transitions`.
 - **`eval/`** — every `eval.every` epochs: `winrate_vs_random`, `elo_vs_random`,
   `winrate_vs_material`, `elo_vs_material`.
 
-The per-epoch console line also shows the two losses, entropy, `king_capture`, and
+The per-epoch console line also shows the two losses, entropy, `checkmate`, and
 `plies`.
 
 ### Querying (`Registry`, torch-free)
@@ -346,7 +353,7 @@ reproducibility.
 each experiment; they're stored in `run.json` and shown by `kaisparov runs`.
 
 **Reward shaping.** The `reward` field configures the self-play reward (mover's point
-of view, per ply) — weighted terms `material`, `king_capture`, `check`, `step_penalty`.
+of view, per ply) — weighted terms `material`, `promotion`, `checkmate`, `check`, `step_penalty`.
 Reference a named preset from `config/rewards.yaml` (`reward: aggressive`) or write the
 terms inline. The resolved reward is stored in `run.json`, so every experiment records
 its shaping. `training/reward.py` turns the settings into the function the rollout uses.

@@ -14,7 +14,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 
 | Package | Responsibility |
 |---------|----------------|
-| `core/` | Chess engine — pure Python, no torch. `coords` (single source of truth), `board` (`make`/`unmake`), `movegen`, `rules`, `attacks` (precomputed tables), `pieces`, `game_interface` (pygame). |
+| `core/` | Chess engine — a facade over **python-chess**, no torch. `coords` (single source of truth), `move` (`Move` with its promotion), `game` (`ChessGame`: `make`/`unmake`, `legal_moves`, `grid` snapshot), `rules`, `draw`, `pieces`, `bitboard_batch` (vectorised control maps), `game_interface` (pygame). |
 | `envs/` | `ChessEnv` — Gym-like `reset`/`step`/reward/terminal. The only place reward & game-over logic live. |
 | `models/` | Neural backends. Each `models/<name>/` exposes a `BACKEND_SPEC` (`backend_spec.py`); `factory.py` loads by name. |
 | `agents/` | Policies with `select_move(game)`: `RandomAgent`, `MaterialAgent`, `NeuralAgent`. |
@@ -30,17 +30,27 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 - **Coordinates**: `(col, row)` == `(x, y)`, origin bottom-left; `grid[col][row]`.
   White advances toward higher `row`. Node index = `row * 8 + col`. All of this
   lives in `core/coords.py` — use it, don't re-derive.
-- **Variant**: capture-the-king. Moves are pseudo-legal (not filtered for leaving
-  your own king in check); the game ends when a king is captured. Castling and en
-  passant are implemented; no promotion. This is intentional, not a bug.
+- **Rules**: standard chess, on [python-chess](https://python-chess.readthedocs.io/).
+  Legal moves only, checkmate, stalemate, castling, en passant, promotion. The older
+  capture-the-king variant is gone (tag `pre-python-chess`); runs from before it are
+  not comparable. python-chess must not leak past `core/game.py` — everything above
+  speaks `(col, row)` and `Piece`.
+- **`Move` is a 3-tuple** `(source, dest, promotion)`. `game.make(*move)` and `move[0]`
+  work as before, but `source, dest = move` does not, and a `Move` never matches a bare
+  pair as a dict key — use `Move.coerce` on anything coming from outside. `make` with
+  no named promotion queens; the model's action space is `(source, dest)` only, so
+  underpromotion is not reachable by the policy yet.
+- **`game.grid` is a cached snapshot**, rebuilt on demand and invalidated by every
+  make/unmake. Writing into it does *not* move a piece — use `game.place(coord, piece)`
+  to set a position up by hand. Hot paths read `game.board` and its bitboards
+  (`board.pawns & board.occupied_co[chess.WHITE]`), already in the `row*8+col`
+  convention; see `models/rgcn/processor.graphify_batch`.
 - **Draws** live in `core/draw.py`: threefold repetition, 50 moves without a capture
-  or a pawn move, insufficient material, and stalemate (not in check, but every move
-  hangs the king) — each switchable via `DrawRules`.
-  `ChessGame` keeps the bookkeeping (`zobrist`, `position_history`, `halfmove_clock`)
-  up to date in `make`/`unmake`. The material rule is a *convention* here: kings can
-  capture each other, so no position is ever strictly dead. A draw is **never** a
-  reward event — the drawing move scores what any non-capturing move scores. Searches
-  (`MinimaxAgent`, `MoveJudge`) score a stalemate 0, or they would read it as a win.
+  or a pawn move, insufficient material, and stalemate — each switchable via
+  `DrawRules`. A draw is **never** a reward event: the drawing move scores what any
+  quiet move scores. Searches (`MinimaxAgent`, `MoveJudge`, `Oracle`) must score a
+  node with no legal move as mate (-WIN) or stalemate (0) — reading it off the
+  material on the board hands the win to whoever is up a queen.
 - **Style**: snake_case, English identifiers, ruff-formatted (line length 100).
 - **Experiment tracking** is the `runs/` registry. Do **not** reintroduce the old
   per-package `model_info.json` / `weights/` system — it was removed on purpose.
@@ -88,7 +98,7 @@ pytest                                          # tests (torch-free where possib
   package with `pip install -e . --no-deps`, so **pygame is not there at all** and any
   test importing `kaisparov.play` or `core/game_interface.py` fails at collection. Test
   UI-adjacent logic through the torch- and pygame-free layer underneath it where you can
-  (`core/board.py`, `insights.py`); when a test genuinely needs the UI modules, put it in
+  (`core/game.py`, `insights.py`); when a test genuinely needs the UI modules, put it in
   a module guarded by `pytest.importorskip("pygame")` — see `tests/test_play_ui_wiring.py`.
   For a headless *manual* check, set `SDL_VIDEODRIVER=dummy`.
 - Adding a backend = a new `models/<arch>/` folder (named by architecture, e.g.
@@ -100,6 +110,10 @@ pytest                                          # tests (torch-free where possib
   probes). Ground truth must come from the `Oracle` (or another
   exact search) and respect the draw rules — never from a model. Suites live as YAML
   specs in `config/benchmarks/`; reports go to `runs/benchmarks/` (git-ignored).
+- **Generated positions must be legal.** python-chess *will* generate the capture of a
+  king left in check, so a position where the side not to move is in check hands every
+  contestant a free "solution". `SamplingGenerator.generate` rejects those; a generator
+  that builds positions another way has to do the same.
 
 ## graphify
 

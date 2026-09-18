@@ -38,7 +38,11 @@ Encoding pieces as *ally/enemy* rather than *white/black* means the network alwa
 sees the position from the mover's perspective — no separate side-to-move plane, and
 White and Black share weights.
 
-Indices 12–13 are a **blocking-aware control map** (`core/rules.attacked_squares`):
+Indices 12–13 are a **blocking-aware control map**: the batched path computes them
+for every position at once with the vectorised Kogge-Stone fills in
+`core/bitboard_batch.py`, packed straight from python-chess's own bitboards
+(`core/rules.attacked_squares` is the single-position reference the tests compare
+against):
 whether each square is attacked by the opponent / defended by the mover, computed
 from the *actual* position (sliders stop at the first blocker; pawns control their
 diagonals). This is deliberate. The static edge set (below) encodes moves *on an
@@ -67,6 +71,12 @@ only the node features (and which edges are *legal*, applied later as a mask).
 > pawn move). **Castling is *not*** — the king only has 1-step edges, so `rgcn`
 > cannot emit a castling move even though the engine supports it. A future backend
 > could add castling edges.
+>
+> **Underpromotion is not either.** The action space is `(source, dest)`, and the four
+> promotions of one pawn push share that pair, so playing the edge queens. Adding it
+> is a natural fit for a *relational* model — three extra relations
+> (promote-to-rook/bishop/knight) and a promotion component in the move key — and is
+> written up in `todo.md`.
 
 ## The network (`model.py`)
 
@@ -93,7 +103,8 @@ handled natively by PyG (`Batch`), which the rollout and PPO update rely on.
    edges are legal moves in *this* position for the side to move.
 2. `masked_logits = action_scores.masked_fill(~legal_mask, -inf)`.
 3. `Categorical(logits=masked_logits)` → **sample** (training) or **argmax** (eval).
-4. Decode the chosen edge back to a `(source, dest)` move.
+4. Decode the chosen edge back to a `(source, dest)` move (a pawn reaching the last
+   rank queens — see the note on underpromotion above).
 
 The masking is what ties the fixed graph to the live position: the network proposes
 scores for all conceivable edges, and only the legal ones can be chosen.
@@ -111,7 +122,8 @@ scores for all conceivable edges, and only the legal ones can be chosen.
 | `train_one_epoch` | PPO update (`training/ppo.py`) |
 
 It is trained by **PPO self-play** with negamax advantage (see `docs.md` §6). The
-reward is configurable (`config/rewards.yaml`); the default is material captured.
+reward is configurable (`config/rewards.yaml`); the default counts material captured
+plus what a promotion gains, with a flat bonus for checkmate.
 
 ## Sizes
 

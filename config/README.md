@@ -141,7 +141,8 @@ reward:
 | Term | Type | Default | What it does |
 |------|------|---------|--------------|
 | `material` | float | `1.0` | Multiplier on the **value of the captured piece**. Piece values: pawn `0.01`, knight/bishop `0.03`, rook `0.05`, queen `0.09`, king `1.0`. |
-| `king_capture` | float | `0.0` | Extra bonus added when the move captures the king (wins the game). |
+| `checkmate` | float | `0.0` | Extra bonus added when the move delivers mate (wins the game). |
+| `promotion` | float | `1.0` | Multiplies the material a promotion gains (a queen is +8). |
 | `check` | float | `0.0` | Bonus if the move leaves the opponent in check. |
 | `step_penalty` | float | `0.0` | Subtracted every ply — rewards decisive (shorter) games. |
 
