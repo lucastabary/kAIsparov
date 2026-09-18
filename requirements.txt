@@ -5,6 +5,7 @@
 # For a CPU-only setup, swap the index for:
 #   https://download.pytorch.org/whl/cpu
 
+chess==1.11.2
 torch==2.4.1
 torch-geometric==2.7.0
 numpy==1.26.4
