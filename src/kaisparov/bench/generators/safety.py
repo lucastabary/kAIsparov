@@ -1,10 +1,12 @@
-"""Safety: the blunders this variant punishes hardest.
+"""Safety: the blunders that decide games.
 
-Moves are pseudo-legal and a captured king ends the game, so nothing stops a model
-from walking into a capture — it has to *see* it. These themes check that it does:
+The rules no longer let a model hang its own king — that move is simply illegal — so
+these themes ask the question one rung up: which moves lose the game, or a piece, for
+nothing.
 
-- ``escape_check`` — the king is attacked: play one of the moves that saves it;
-- ``avoid_king_hang`` — not in check, but many moves (pins, king walks) hang the king;
+- ``escape_check`` — the king is attacked: of the replies the rules allow, play one
+  that does not walk straight into mate;
+- ``avoid_mate`` — not in check, but many moves allow mate in one: play none of them;
 - ``avoid_piece_hang`` — many moves put a piece en prise for nothing.
 """
 
@@ -53,7 +55,7 @@ def _share_bucket(fraction: float) -> int:
 class EscapeCheckGenerator(SamplingGenerator):
     name = "escape_check"
     theme = "escape_check"
-    description = "The king is attacked: play a move after which it cannot be taken."
+    description = "The king is attacked: get out of it without walking into mate."
 
     def __init__(self, max_fraction: float = 0.5, **kwargs):
         super().__init__(**kwargs)
@@ -67,7 +69,7 @@ class EscapeCheckGenerator(SamplingGenerator):
         position = board.position(Player.WHITE)
         game = position.to_game()
         if not game.is_in_check(Player.WHITE) or game.is_in_check(Player.BLACK):
-            return None  # in check, and no enemy king to take first
+            return None  # White in check; Black in check too would be an illegal position
         if self.oracle.is_over(game):
             return None
         legal = game.legal_moves()
@@ -84,10 +86,10 @@ class EscapeCheckGenerator(SamplingGenerator):
         )
 
 
-class AvoidKingHangGenerator(SamplingGenerator):
-    name = "avoid_king_hang"
-    theme = "avoid_king_hang"
-    description = "Not in check, but many moves hang the king: play none of them."
+class AvoidMateGenerator(SamplingGenerator):
+    name = "avoid_mate"
+    theme = "avoid_mate"
+    description = "Not in check, but many moves allow mate in one: play none of them."
 
     def __init__(self, min_fraction: float = 0.2, min_forbidden: int = 3, **kwargs):
         super().__init__(**kwargs)
@@ -104,16 +106,16 @@ class AvoidKingHangGenerator(SamplingGenerator):
             return None
         legal = game.legal_moves()
         safe = set(self.oracle.safe_moves(game))
-        hanging = [m for m in legal if m not in safe]
-        if not safe or len(hanging) < max(self.min_forbidden, self.min_fraction * len(legal)):
+        losing = [m for m in legal if m not in safe]
+        if not safe or len(losing) < max(self.min_forbidden, self.min_fraction * len(legal)):
             return None
         return Problem(
             id="",
             theme=self.theme,
             position=position,
-            task=AvoidMoves.of(hanging),
+            task=AvoidMoves.of(losing),
             difficulty=_share_bucket(len(safe) / len(legal)),
-            meta={"hanging": len(hanging), "legal": len(legal)},
+            meta={"losing": len(losing), "legal": len(legal)},
         )
 
 
@@ -167,4 +169,4 @@ class AvoidPieceHangGenerator(SamplingGenerator):
         return self.oracle.material_gain(game, move, self.plies)
 
 
-__all__ = ["AvoidKingHangGenerator", "AvoidPieceHangGenerator", "EscapeCheckGenerator"]
+__all__ = ["AvoidMateGenerator", "AvoidPieceHangGenerator", "EscapeCheckGenerator"]

@@ -13,6 +13,7 @@ import pytest
 from kaisparov.bench import BenchmarkReport, ContestantResult, Oracle, Position, ProblemResult
 from kaisparov.bench.analyzers import MaterialAnalyzer
 from kaisparov.bench.generators import ProblemGenerator
+from kaisparov.bench.oracle import WIN
 from kaisparov.bench.position import mirror_move, move_to_uci, uci_to_move
 from kaisparov.bench.suite import SuiteSpec
 from kaisparov.bench.tasks import (
@@ -39,18 +40,27 @@ def test_material_gain_sees_a_free_piece_and_a_defended_one():
     assert oracle.material_gain(game, uci_to_move("d1h5"), 3) < 0  # Qxh5 gxh5
 
 
-def test_material_search_counts_a_hung_king_as_a_loss():
-    game = Position("4k3/8/8/8/8/8/3r4/4K3 w - - 0 1").to_game()
-    assert Oracle().material_gain(game, uci_to_move("e1e2"), 1) == -1e6
+def test_material_search_counts_a_mate_as_a_win():
+    """Mate is worth WIN, not the material on the board.
+
+    Ra8# leaves White a rook up and nothing else, so a search that only counted
+    material would score it 0 and rank it alongside any other quiet rook move.
+    """
+    game = Position("7k/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1").to_game()
+    assert Oracle().material_gain(game, uci_to_move("a1a8"), 1) == WIN
 
 
 def test_safe_moves_threats_and_forced_losses():
     oracle = Oracle()
-    # Back-rank: the black rook threatens Ra1 mate-like capture; h3 opens a flight square.
+    # Back rank: if White passes, the rook mates on a1. That is what threatens() asks.
     game = Position("r5k1/8/8/8/8/8/5PPP/6K1 w - - 0 1").to_game()
     assert oracle.threatens(game, 2)
-    lost = Position("6k1/8/8/8/8/8/r7/r5K1 w - - 0 1").to_game()  # in check, nowhere to go
-    assert oracle.safe_moves(lost) == []
+
+    # Black to move with a lone king on g8: the queen on c7 covers the 7th rank and
+    # the rook swings to a8, so both squares it can run to are mated next ply.
+    lost = Position("6k1/2Q5/8/8/2K5/R7/8/8 b - - 0 1").to_game()
+    assert lost.legal_moves()  # it is not already over...
+    assert oracle.safe_moves(lost) == []  # ...but nothing survives
     assert oracle.loses_within(lost, 1)
 
 
@@ -58,12 +68,14 @@ def test_draws_after_names_stalemate_and_repetition():
     oracle = Oracle()
     stalemate = Position("k7/8/8/8/8/8/8/2Q4K w - - 0 1").to_game()
     assert oracle.draws_after(stalemate, uci_to_move("c1c7")) == STALEMATE
-    # The queen's first move changes its has_moved key, so the cycle only starts
-    # counting once it has moved: Qa2 with the king on h8 comes round a third time.
-    shuffle = ("g8h8", "a1a2", "h8g8", "a2a1") * 2 + ("g8h8",)
-    repeated = Position("6k1/8/8/8/8/8/8/Q5K1 b - - 0 1", shuffle).to_game()
-    assert oracle.draws_after(repeated, uci_to_move("a1a2")) == REPETITION
-    assert oracle.draws_after(repeated, uci_to_move("a1a3")) is None
+
+    # Two rooks shuffling on and off their corner. Neither side has castling rights
+    # to lose, so every cycle lands on exactly the position it started from: after
+    # one and three quarter cycles, going home is the third occurrence.
+    shuffle = ("a1b1", "a8b8", "b1a1", "b8a8") * 2
+    repeated = Position("r5k1/8/8/8/8/8/8/R5K1 w - - 0 1", shuffle[:-1]).to_game()
+    assert oracle.draws_after(repeated, uci_to_move("b8a8")) == REPETITION
+    assert oracle.draws_after(repeated, uci_to_move("b8c8")) is None
 
 
 def test_mirroring_keeps_setup_moves_and_their_en_passant_right():
@@ -172,14 +184,14 @@ def test_skipped_outcomes_are_counted_apart_and_shown_as_na():
 # ------------------------------------------------------------------ generators
 
 CHEAP = {
-    "avoid_king_hang": {},
+    "avoid_mate": {},
     "conversion": {},
     "distractor_invariance": {},
     "escape_check": {},
     "fork": {},
     "free_capture": {},
     "hold": {},
-    "king_capture": {},
+    "mate_in_one": {},
     "material_edge": {},
     "mirror_consistency": {},
     "repetition_trap": {},

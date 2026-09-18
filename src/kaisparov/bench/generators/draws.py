@@ -153,7 +153,7 @@ class RepetitionTrapGenerator(SamplingGenerator):
                 continue
             if wanted is None and piece.type in (PieceType.KING, PieceType.PAWN):
                 continue
-            candidates.append((source, dest))
+            candidates.append(Move(source, dest))
         rng.shuffle(candidates)
         return next((m for m in candidates if self._keeps_calm(game, m)), None)
 
@@ -169,7 +169,7 @@ class RepetitionTrapGenerator(SamplingGenerator):
 
 
 def _back(move: Move) -> Move:
-    return (move[1], move[0])
+    return Move(move[1], move[0])
 
 
 __all__ = ["RepetitionTrapGenerator", "StalemateTrapGenerator", "army"]

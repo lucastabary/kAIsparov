@@ -84,7 +84,7 @@ class DistractorInvarianceGenerator(SamplingGenerator):
         position = board.position(Player.WHITE)
         game = position.to_game()
         white_before, black_before = _moves(game, Player.WHITE), _moves(game, Player.BLACK)
-        touched = {dest for _, dest in white_before} | {src for src, _ in white_before}
+        touched = {m.dest for m in white_before} | {m.source for m in white_before}
 
         squares = [s for s in board.free_squares(range(2, BOARD_SIZE - 1))]
         rng.shuffle(squares)

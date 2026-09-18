@@ -76,7 +76,7 @@ def play_game(
 
         result = env.step(move)
         if result.done:
-            # "king_captured", "stalemate", "max_plies", or a draw rule's name.
+            # "checkmate", "stalemate", "max_plies", or a draw rule's name.
             reason = env.end_reason or "max_plies"
 
     return GameResult(winner=env.winner, plies=env.plies, reason=reason)

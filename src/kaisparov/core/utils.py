@@ -7,11 +7,10 @@ truth) and are re-exported here for convenience / backward compatibility.
 from kaisparov.core.coords import coord_to_index, index_to_coord
 from kaisparov.core.pieces import PieceType
 
-# Standard chess material values. The king is a large sentinel so the greedy
-# MaterialAgent always prefers capturing it (which wins the game); training reward
-# does NOT scale a king capture by this value — it uses the flat ``king_capture``
-# term instead (see :mod:`kaisparov.training.reward`), keeping the win reward
-# controllable independently of this sentinel.
+# Standard chess material values. The king cannot be captured, so its value is a
+# sentinel that only ever shows up if something counts it by mistake — material
+# scores exclude kings, and winning is the flat ``checkmate`` reward term (see
+# :mod:`kaisparov.training.reward`), controllable independently of this number.
 _PIECE_VALUES: dict[PieceType, float] = {
     PieceType.PAWN: 1.0,
     PieceType.KNIGHT: 3.0,

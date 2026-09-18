@@ -12,7 +12,7 @@ description: "Pipeline check: one example of each task kind."
 seed: 0
 
 problems:
-  - generator: king_capture
+  - generator: mate_in_one
     count: 20
     params:
       max_pieces: 4
@@ -23,7 +23,7 @@ problems:
       problems:
         # The rook on a5 takes the king on e5; the other rook is a distraction.
         - fen: "8/8/8/R3k3/8/8/8/4K2R w - - 0 1"
-          theme: king_capture
+          theme: mate_in_one
           task: {kind: find_move, accepted: [a5e5]}
 
         # Rooks hold the d- and f-files: every king step onto them hangs the king.

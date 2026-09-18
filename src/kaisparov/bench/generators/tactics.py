@@ -52,7 +52,7 @@ class WinInNGenerator(SamplingGenerator):
     ):
         super().__init__(**kwargs)
         if depth < 2:
-            raise ValueError("win_in_n needs depth >= 2 (depth 1 is king_capture)")
+            raise ValueError("win_in_n needs depth >= 2 (depth 1 is mate_in_one)")
         self.depth = depth
         self.min_pieces, self.max_pieces = min_pieces, max_pieces
         self.max_solutions = max_solutions
@@ -197,7 +197,7 @@ class ForkGenerator(SamplingGenerator):
         game = position.to_game()
         if not is_quiet(game, self.oracle):
             return None
-        fork: Move = (origin, fork_square)
+        fork = Move(origin, fork_square)
         gain = self.oracle.material_gain(game, fork, self.plies)
         if not self.min_gain <= gain < WIN:
             return None

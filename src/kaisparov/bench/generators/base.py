@@ -2,7 +2,7 @@
 
 :class:`ProblemGenerator` is the whole contract — "give me ``count`` problems from this
 random stream". Subclasses register under their ``name`` on definition, so a suite
-file can ask for ``generator: king_capture`` and nothing else has to know the class.
+file can ask for ``generator: mate_in_one`` and nothing else has to know the class.
 
 Most generators are *propose-and-verify* loops — sample a position, ask the
 :class:`~kaisparov.bench.oracle.Oracle` whether it is a problem, keep it or try
@@ -111,6 +111,8 @@ class SamplingGenerator(ProblemGenerator):
             candidate = self.propose(rng)
             if candidate is None or candidate.position in seen:
                 continue
+            if not _is_legal_position(candidate.position):
+                continue
             seen.add(candidate.position)
             if self.mirror and rng.random() < 0.5:
                 candidate = candidate.mirrored()
@@ -128,6 +130,19 @@ class SamplingGenerator(ProblemGenerator):
                 "loosen its parameters or raise attempts_per_problem"
             )
         return problems
+
+
+def _is_legal_position(position: Position) -> bool:
+    """Reject a position the rules of chess cannot reach.
+
+    Specifically: the side *not* to move being in check. python-chess happily
+    generates the capture of a king standing in check, so such a position would
+    hand every contestant a free "solution" that says nothing about its play. Random
+    board builders produce them regularly, hence the check here rather than in each
+    generator.
+    """
+    game = position.to_game()
+    return not is_in_check(game, other(game.turn))
 
 
 # ------------------------------------------------------------------------ boards

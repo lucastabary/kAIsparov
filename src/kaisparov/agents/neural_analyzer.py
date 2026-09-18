@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import torch
 
+from kaisparov.core.move import Move
 from kaisparov.core.utils import index_to_coord
 from kaisparov.insights import MoveInsight, PositionAnalysis
 from kaisparov.models.base_processor import default_coord_to_index, get_legal_mask
@@ -50,12 +51,12 @@ class NeuralAnalyzer:
             # The static graph carries several typed edges for one (src, dst) square
             # pair (e.g. a rook step, a king step and a pawn push coincide), so sum
             # each move's probability mass across its edges to rank distinct moves.
-            move_prob: dict[tuple[tuple[int, int], tuple[int, int]], float] = {}
+            move_prob: dict[Move, float] = {}
             legal_idx = legal_mask.nonzero(as_tuple=False).flatten().tolist()
             for idx in legal_idx:
                 source = index_to_coord(int(edge_index[0, idx]))
                 dest = index_to_coord(int(edge_index[1, idx]))
-                move = ((int(source[0]), int(source[1])), (int(dest[0]), int(dest[1])))
+                move = Move((int(source[0]), int(source[1])), (int(dest[0]), int(dest[1])))
                 move_prob[move] = move_prob.get(move, 0.0) + float(probs[idx])
 
             ranked = sorted(move_prob.items(), key=lambda kv: kv[1], reverse=True)[: self.top_k]

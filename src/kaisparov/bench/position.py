@@ -69,16 +69,33 @@ def parse_square(name: str) -> Coord:
     return (ord(name[0]) - ord("a"), int(name[1]) - 1)
 
 
+# Promotion suffixes, as UCI spells them (lowercase, whatever the side to move).
+_PROMOTION_LETTERS: dict[str, PieceType] = {
+    "q": PieceType.QUEEN,
+    "r": PieceType.ROOK,
+    "b": PieceType.BISHOP,
+    "n": PieceType.KNIGHT,
+}
+_PROMOTION_SUFFIX: dict[PieceType, str] = {v: k for k, v in _PROMOTION_LETTERS.items()}
+
+
 def move_to_uci(move: Move) -> str:
-    """``((4, 1), (4, 3))`` -> ``"e2e4"``."""
-    return square_name(move[0]) + square_name(move[1])
+    """``Move((4, 1), (4, 3))`` -> ``"e2e4"``; a promotion gains its suffix (``e7e8q``)."""
+    text = square_name(move[0]) + square_name(move[1])
+    promotion = move[2] if len(move) > 2 else None
+    return text + _PROMOTION_SUFFIX[promotion] if promotion is not None else text
 
 
 def uci_to_move(text: str) -> Move:
-    """``"e2e4"`` -> ``((4, 1), (4, 3))``."""
-    if len(text) != 4:
+    """``"e2e4"`` -> ``Move((4, 1), (4, 3))``; ``"e7e8q"`` names the promotion piece."""
+    if len(text) not in (4, 5):
         raise ValueError(f"not a UCI move: {text!r}")
-    return (parse_square(text[:2]), parse_square(text[2:]))
+    promotion = None
+    if len(text) == 5:
+        promotion = _PROMOTION_LETTERS.get(text[4].lower())
+        if promotion is None:
+            raise ValueError(f"not a promotion piece: {text[4]!r} in {text!r}")
+    return Move(parse_square(text[:2]), parse_square(text[2:4]), promotion)
 
 
 # ---------------------------------------------------------------------- position
@@ -111,10 +128,10 @@ class Position:
         grid, turn, en_passant = _parse_fen(self.fen)
         game = ChessGame(initial_board=grid, turn=turn, en_passant_target=en_passant)
         for text in self.moves:
-            source, dest = uci_to_move(text)
-            if not game.is_move_valid(source, dest):
+            move = uci_to_move(text)
+            if not game.is_move_valid(*move):
                 raise ValueError(f"setup move {text} is not legal in {self.fen}")
-            game.make(source, dest)
+            game.make(*move)
         return game
 
     @property
@@ -147,9 +164,14 @@ class Position:
 
 
 def mirror_move(move: Move) -> Move:
-    """``move`` as it reads on the board :meth:`Position.mirrored` returns."""
-    (sc, sr), (dc, dr) = move
-    return ((sc, BOARD_SIZE - 1 - sr), (dc, BOARD_SIZE - 1 - dr))
+    """``move`` as it reads on the board :meth:`Position.mirrored` returns.
+
+    The promotion piece rides along unchanged: flipping the board swaps which side
+    promotes, not what the pawn becomes.
+    """
+    move = Move.coerce(move)
+    (sc, sr), (dc, dr) = move.source, move.dest
+    return Move((sc, BOARD_SIZE - 1 - sr), (dc, BOARD_SIZE - 1 - dr), move.promotion)
 
 
 # --------------------------------------------------------------------------- FEN

@@ -16,7 +16,7 @@ seed: 0
 
 problems:
   # ---- tactics ------------------------------------------------------------------
-  - generator: king_capture
+  - generator: mate_in_one
     count: 30
 
   - generator: win_in_n
@@ -42,7 +42,7 @@ problems:
   - generator: escape_check
     count: 30
 
-  - generator: avoid_king_hang
+  - generator: avoid_mate
     count: 30
 
   - generator: avoid_piece_hang

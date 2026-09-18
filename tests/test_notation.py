@@ -91,10 +91,29 @@ def test_a_twin_that_cannot_reach_the_square_needs_no_disambiguation():
     assert move_to_san(game, (0, 0), (3, 0)) == "Td1"
 
 
-def test_check_and_king_capture_suffixes():
-    game = game_with(((0, 0), W, PieceType.QUEEN), ((7, 7), B, PieceType.KING))
-    assert move_to_san(game, (0, 0), (0, 7)) == "Da8+"
-    assert move_to_san(game, (0, 0), (7, 7)) == "Dxh8#"
+def test_check_and_mate_suffixes():
+    # Lone black king on h8; the white king on g6 takes g7 and h7 away, so the
+    # queen landing on the eighth rank is mate while the same check down the
+    # h-file only chases the king.
+    game = game_with(
+        ((0, 0), W, PieceType.QUEEN),
+        ((7, 7), B, PieceType.KING),
+        ((6, 5), W, PieceType.KING),
+    )
+    assert move_to_san(game, (0, 0), (7, 0)) == "Dh1+"  # check, the king steps aside
+    assert move_to_san(game, (0, 0), (0, 7)) == "Da8#"  # mate on the back rank
+
+
+def test_promotion_names_the_piece_the_pawn_becomes():
+    game = game_with(
+        ((0, 6), W, PieceType.PAWN),
+        ((1, 7), B, PieceType.ROOK),
+        ((4, 0), W, PieceType.KING),
+        ((6, 4), B, PieceType.KING),
+    )
+    assert move_to_san(game, (0, 6), (0, 7)) == "a8=D"  # queening by default
+    assert move_to_san(game, (0, 6), (0, 7), PieceType.KNIGHT) == "a8=C"
+    assert move_to_san(game, (0, 6), (1, 7)) == "axb8=D"  # taking on the way
 
 
 def test_plies_pair_into_numbered_rows():

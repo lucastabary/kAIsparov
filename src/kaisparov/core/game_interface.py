@@ -7,6 +7,7 @@ import pygame
 
 from kaisparov.core.coords import Coord
 from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.notation import MoveRow
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
@@ -1183,7 +1184,7 @@ class GameInterface:
         analysis_arrows: list[MoveArrow] | None = None,
         status_lines: list[str] | None = None,
         badge: MoveBadge | None = None,
-    ) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    ) -> Move | None:
         """Internal method: waits for a single move without closing pygame.
 
         ``analysis_arrows``/``status_lines`` feed the developer overlay so the
@@ -1241,7 +1242,10 @@ class GameInterface:
                         continue
 
                     if real_coord in possible_destinations:
-                        return (selected_source, real_coord)
+                        # No promotion picker yet: a pawn reaching the last rank
+                        # queens, which is what ChessGame.make does for a Move that
+                        # names no piece.
+                        return Move(selected_source, real_coord)
 
             self._draw_frame(
                 view_as=view_as,
@@ -1301,11 +1305,13 @@ class GameInterface:
                 break
 
             source, dest = move[0], move[1]
-            captured = self.game.play(source, dest)
+            self.game.play(*move)
             print(f"Coup joue: {source} -> {dest}")
 
-            if captured is not None and captured.type.name == "KING":
-                print(f"Partie terminee: roi capture. {self.game.turn.name} gagne!")
+            if self.game.is_checkmate():
+                # game.turn is the side that has just been mated.
+                winner = Player.BLACK if self.game.turn == Player.WHITE else Player.WHITE
+                print(f"Partie terminee: echec et mat. {winner.name} gagne!")
                 break
 
         pygame.quit()

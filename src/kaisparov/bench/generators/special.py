@@ -27,6 +27,7 @@ from kaisparov.bench.oracle import Oracle
 from kaisparov.bench.position import Position, move_to_uci
 from kaisparov.bench.problem import Problem
 from kaisparov.bench.tasks import FindMove
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
 KINDS = ("castle", "en_passant")
@@ -68,7 +69,7 @@ class SpecialRulesGenerator(SamplingGenerator):
 
     @staticmethod
     def _is_special(kind: str, game, move) -> bool:
-        (sc, sr), (dc, dr) = move
+        (sc, sr), (dc, dr) = move[0], move[1]
         piece = game.grid[sc][sr]
         if kind == "castle":
             return piece is not None and piece.type == PieceType.KING and abs(dc - sc) == 2
@@ -128,7 +129,7 @@ class SpecialRulesGenerator(SamplingGenerator):
             Player.BLACK, [rng.choice(HEAVY_TYPES) for _ in range(rng.randint(2, 4))], squares=zone
         )
         start = board.position(Player.BLACK)
-        push = move_to_uci(((pawn_col, BOARD_SIZE - 2), (pawn_col, 4)))
+        push = move_to_uci(Move((pawn_col, BOARD_SIZE - 2), (pawn_col, 4)))
         try:
             return (
                 Position(start.fen, (push,))

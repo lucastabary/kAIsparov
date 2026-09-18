@@ -464,13 +464,13 @@ def _badge_from_verdict(verdict: MoveVerdict) -> MoveBadge:
 
 def _review_lines(side: Player, verdict: MoveVerdict) -> list[str]:
     """Side-panel text for the move just played."""
-    src, dst = verdict.move
+    src, dst = verdict.move[0], verdict.move[1]
     lines = [
         f"{_fr_color(side)}: {_algebraic(src)}->{_algebraic(dst)}",
         f"{verdict.quality.caption}  (-{verdict.loss:.1f} pts)",
     ]
     if verdict.best_move is not None and verdict.best_move != verdict.move:
-        best_src, best_dst = verdict.best_move
+        best_src, best_dst = verdict.best_move[0], verdict.best_move[1]
         lines.append(f"Mieux: {_algebraic(best_src)}->{_algebraic(best_dst)}")
     return lines
 
@@ -513,7 +513,7 @@ def _overlay_from_analysis(analysis: PositionAnalysis | None):
     if analysis.value is not None:
         status.append(f"Eval (trait): {analysis.value:+.2f}")
     if analysis.best is not None:
-        src, dst = analysis.best.move
+        src, dst = analysis.best.move[0], analysis.best.move[1]
         status.append(f"Idee: {_algebraic(src)}->{_algebraic(dst)}  {analysis.best.label}")
     return arrows, status
 

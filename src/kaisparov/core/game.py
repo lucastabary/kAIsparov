@@ -262,6 +262,7 @@ class ChessGame:
         assert moving is not None, f"no piece to move on {source}"
         piece = _piece_from_chess(moving, board, move.from_square)
 
+        captured: Piece | None
         is_en_passant = board.is_en_passant(move)
         if is_en_passant:
             captured_square: Coord | None = (dest[0], source[1])

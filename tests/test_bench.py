@@ -34,6 +34,7 @@ from kaisparov.bench.generators import GenerationError
 from kaisparov.bench.position import START_FEN, mirror_move
 from kaisparov.bench.report import wilson_interval
 from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import PieceType, Player
 
 # ------------------------------------------------------------------ positions
@@ -75,8 +76,11 @@ def test_bad_fen_and_illegal_setup_moves_are_rejected():
 
 
 def test_uci_round_trip():
-    assert uci_to_move("e2e4") == ((4, 1), (4, 3))
-    assert move_to_uci(((4, 1), (4, 3))) == "e2e4"
+    assert uci_to_move("e2e4") == Move((4, 1), (4, 3))
+    assert move_to_uci(Move((4, 1), (4, 3))) == "e2e4"
+    # Promotion rides in the fifth character, both ways.
+    assert uci_to_move("e7e8n") == Move((4, 6), (4, 7), PieceType.KNIGHT)
+    assert move_to_uci(Move((4, 6), (4, 7), PieceType.QUEEN)) == "e7e8q"
 
 
 def test_mirror_swaps_colours_and_is_an_involution():
@@ -84,25 +88,25 @@ def test_mirror_swaps_colours_and_is_an_involution():
     mirrored = position.mirrored()
     assert mirrored.fen == "4k2r/8/8/8/8/8/8/R3K3 b Qk - 0 1"
     assert mirrored.mirrored() == position
-    assert mirror_move(((4, 1), (4, 3))) == ((4, 6), (4, 4))
+    assert mirror_move(Move((4, 1), (4, 3))) == Move((4, 6), (4, 4))
 
 
 # --------------------------------------------------------------------- oracle
 
 
-def test_oracle_sees_an_en_prise_king():
-    game = Position("8/8/8/R3k3/8/8/8/4K2R w - - 0 1").to_game()
+def test_oracle_sees_a_mate_in_one():
+    game = Position(MATE_IN_ONE).to_game()
     oracle = Oracle()
-    assert oracle.king_captures(game) == [((0, 4), (4, 4))]
+    assert oracle.mates_in_one(game) == [Move((0, 0), (0, 7))]  # Ra1-a8#
     assert oracle.win_depth(game, 3) == 1
 
 
-def test_oracle_finds_a_back_rank_win_in_two():
-    """Ra8 boxes the king on h8 behind its pawns; Kxa8 is impossible from h8."""
-    game = Position("7k/6pp/8/8/8/8/8/R5K1 w - - 0 1").to_game()
+def test_oracle_finds_a_mate_in_two():
+    """King and rook against a bare king: Kf6 takes the opposition, then Rd8 mates."""
+    game = Position("4k3/6K1/8/8/8/8/3R4/8 w - - 0 1").to_game()
     oracle = Oracle()
-    assert not oracle.wins_within(game, 1)
-    assert oracle.winning_moves(game, 2) == [((0, 0), (0, 7))]
+    assert not oracle.wins_within(game, 1)  # nothing mates on the spot
+    assert oracle.winning_moves(game, 2) == [Move((6, 6), (5, 5))]  # Kg7-f6, and only that
     assert oracle.win_depth(game, 2) == 2
 
 
@@ -140,25 +144,27 @@ def _attempt(task: Task, fen: str, policy) -> Outcome:
     return task.attempt(Position(fen).to_game(), policy, TaskContext())
 
 
-KING_EN_PRISE = "8/8/8/R3k3/8/8/8/4K2R w - - 0 1"
+# Back-rank mate in one: Ra1-a8# is the answer, Rh1-h5 a plausible wrong rook move.
+# The old fixture put a king en prise, which standard chess simply cannot reach.
+MATE_IN_ONE = "7k/5ppp/8/8/8/8/5PPP/R6K w - - 0 1"
 
 
 def test_find_move_grades_accepted_partial_and_wrong_moves():
-    task = FindMove(accepted=("a5e5",), partial=(("h1h5", 0.25),))
-    assert _attempt(task, KING_EN_PRISE, _Fixed(uci_to_move("a5e5"))).solved
-    partial = _attempt(task, KING_EN_PRISE, _Fixed(uci_to_move("h1h5")))
+    task = FindMove(accepted=("a1a8",), partial=(("a1a7", 0.25),))
+    assert _attempt(task, MATE_IN_ONE, _Fixed(uci_to_move("a1a8"))).solved
+    partial = _attempt(task, MATE_IN_ONE, _Fixed(uci_to_move("a1a7")))
     assert (partial.score, partial.solved) == (0.25, False)
-    assert _attempt(task, KING_EN_PRISE, _Fixed(uci_to_move("e1e2"))).score == 0.0
+    assert _attempt(task, MATE_IN_ONE, _Fixed(uci_to_move("h2h3"))).score == 0.0
 
 
 def test_a_crashing_passing_or_illegal_policy_fails_instead_of_raising():
-    task = FindMove(accepted=("a5e5",))
+    task = FindMove(accepted=("a1a8",))
     for answer, error in [
         (RuntimeError("boom"), "RuntimeError: boom"),
         (None, "no move"),
-        (uci_to_move("a5e6"), "illegal move a5e6"),
+        (uci_to_move("a1b8"), "illegal move a1b8"),
     ]:
-        outcome = _attempt(task, KING_EN_PRISE, _Fixed(answer))
+        outcome = _attempt(task, MATE_IN_ONE, _Fixed(answer))
         assert (outcome.solved, outcome.error) == (False, error)
 
 
@@ -170,9 +176,9 @@ def test_avoid_moves_passes_anything_else():
 
 
 def test_task_validation_catches_moves_that_do_not_exist():
-    game = Position(KING_EN_PRISE).to_game()
+    game = Position(MATE_IN_ONE).to_game()
     with pytest.raises(ValueError):
-        FindMove(accepted=("a1a2",)).validate(game)
+        FindMove(accepted=("a1b8",)).validate(game)
 
 
 def test_play_out_converts_king_and_queen_against_random():
@@ -183,11 +189,13 @@ def test_play_out_converts_king_and_queen_against_random():
 
 
 def test_play_out_scores_the_goal():
-    """A king en prise: material takes it on move one, which wins and does not lose."""
+    """Mate in one, played by an agent that sees it: a win, and not a loss."""
     for goal in PlayOut.GOALS:
-        outcome = _attempt(PlayOut(opponent="random", goal=goal), KING_EN_PRISE, _material())
+        outcome = _attempt(
+            PlayOut(opponent="random", goal=goal), MATE_IN_ONE, _Fixed(uci_to_move("a1a8"))
+        )
         assert outcome.solved and outcome.plies == 1
-        assert outcome.details == {"result": "win", "end": "king_captured"}
+        assert outcome.details == {"result": "win", "end": "checkmate"}
 
 
 @pytest.mark.parametrize(
@@ -204,10 +212,10 @@ def test_tasks_round_trip_through_dicts_and_mirror_twice_to_themselves(task):
 
 
 def test_mirrored_problem_keeps_its_answer():
-    problem = Problem("p", "t", Position(KING_EN_PRISE), FindMove(accepted=("a5e5",)))
+    problem = Problem("p", "t", Position(MATE_IN_ONE), FindMove(accepted=("a1a8",)))
     mirrored = problem.mirrored()
     mirrored.validate()
-    assert mirrored.task == FindMove(accepted=("a4e4",))
+    assert mirrored.task == FindMove(accepted=("a8a1",))
     assert mirrored.tags == ("mirrored",) and mirrored.mirrored().tags == ()
 
 
@@ -215,15 +223,15 @@ def test_mirrored_problem_keeps_its_answer():
 
 
 def test_registry_lists_the_builtin_generators():
-    assert {"fixed", "king_capture"} <= set(ProblemGenerator.available())
+    assert {"fixed", "mate_in_one"} <= set(ProblemGenerator.available())
     with pytest.raises(ValueError):
         ProblemGenerator.create("no_such_generator")
     with pytest.raises(TypeError):
-        ProblemGenerator.create("king_capture", {"no_such_param": 1})
+        ProblemGenerator.create("mate_in_one", {"no_such_param": 1})
 
 
-def test_king_capture_problems_are_valid_and_reproducible():
-    make = lambda: ProblemGenerator.create("king_capture").generate(15, random.Random(7))  # noqa: E731
+def test_mate_in_one_problems_are_valid_and_reproducible():
+    make = lambda: ProblemGenerator.create("mate_in_one").generate(15, random.Random(7))  # noqa: E731
     problems = make()
     assert problems == make()
     assert len({p.position for p in problems}) == 15
@@ -232,7 +240,7 @@ def test_king_capture_problems_are_valid_and_reproducible():
     for problem in problems:
         problem.validate()
         game = problem.position.to_game()
-        assert set(problem.task.accepted) == {move_to_uci(m) for m in oracle.king_captures(game)}
+        assert set(problem.task.accepted) == {move_to_uci(m) for m in oracle.mates_in_one(game)}
 
 
 def test_a_generator_that_never_accepts_gives_up_loudly():
@@ -246,17 +254,39 @@ def test_a_generator_that_never_accepts_gives_up_loudly():
 
 # --------------------------------------------------------------------- suites
 
-SPEC = {
-    "name": "t",
+# Same shape as SPEC, but on a theme the greedy baseline actually solves.
+CAPTURE_SPEC = {
+    "name": "c",
     "seed": 3,
     "problems": [
-        {"generator": "king_capture", "count": 4},
+        {"generator": "free_capture", "count": 4},
         {
             "generator": "fixed",
             "params": {
                 "theme": "hand",
                 "problems": [
-                    {"fen": KING_EN_PRISE, "task": {"kind": "find_move", "accepted": ["a5e5"]}}
+                    {
+                        # A hanging queen on a6, straight down the open a-file.
+                        "fen": "7k/8/q7/8/8/8/8/R3K3 w - - 0 1",
+                        "task": {"kind": "find_move", "accepted": ["a1a6"]},
+                    }
+                ],
+            },
+        },
+    ],
+}
+
+SPEC = {
+    "name": "t",
+    "seed": 3,
+    "problems": [
+        {"generator": "mate_in_one", "count": 4},
+        {
+            "generator": "fixed",
+            "params": {
+                "theme": "hand",
+                "problems": [
+                    {"fen": MATE_IN_ONE, "task": {"kind": "find_move", "accepted": ["a1a8"]}}
                 ],
             },
         },
@@ -268,21 +298,21 @@ def test_suite_spec_builds_the_same_suite_every_time():
     first, second = SuiteSpec.from_dict(SPEC).build(), SuiteSpec.from_dict(SPEC).build()
     assert first.problems == second.problems
     assert [p.id for p in first][-1] == "fixed-0000"
-    assert first.themes() == ["hand", "king_capture"]
+    assert first.themes() == ["hand", "mate_in_one"]
 
 
 def test_adding_an_entry_does_not_reshuffle_the_others():
     base = SuiteSpec.from_dict(SPEC).build()
     grown = dict(
         SPEC,
-        problems=[{"generator": "king_capture", "count": 2, "name": "extra"}, *SPEC["problems"]],
+        problems=[{"generator": "mate_in_one", "count": 2, "name": "extra"}, *SPEC["problems"]],
     )
     rebuilt = SuiteSpec.from_dict(grown).build()
     assert [p for p in rebuilt if not p.id.startswith("extra")] == base.problems
 
 
 def test_entries_sharing_a_generator_need_names():
-    spec = dict(SPEC, problems=[{"generator": "king_capture"}, {"generator": "king_capture"}])
+    spec = dict(SPEC, problems=[{"generator": "mate_in_one"}, {"generator": "mate_in_one"}])
     with pytest.raises(ValueError, match="name"):
         SuiteSpec.from_dict(spec)
 
@@ -344,14 +374,19 @@ def _decision(result):
     return result.problem_id, result.outcome.move, result.outcome.score, result.outcome.error
 
 
-def test_runner_ranks_material_above_random_on_king_captures(tmp_path):
-    suite = SuiteSpec.from_dict(SPEC).build()
+def test_runner_ranks_material_above_random_on_free_captures(tmp_path):
+    """The greedy baseline must beat the random one where greed is the right answer.
+
+    On free_capture, not on mate_in_one: taking a hanging piece is exactly what the
+    material agent does, while a mate in one is invisible to it.
+    """
+    suite = SuiteSpec.from_dict(CAPTURE_SPEC).build()
     runner = BenchmarkRunner(suite, seed=1)
     report = runner.run([Contestant.parse("random"), Contestant.parse("material")])
     random_result, material_result = report.contestants
     assert material_result.overall().solve_rate == 1.0
     assert material_result.overall().solve_rate > random_result.overall().solve_rate
-    assert "king_capture" in report.format_table()
+    assert "free_capture" in report.format_table()
 
     loaded = BenchmarkReport.load(report.save(tmp_path / "report.json"))
     assert [_decision(r) for r in loaded.contestants[1].results] == [
@@ -363,11 +398,11 @@ def test_runner_ranks_material_above_random_on_king_captures(tmp_path):
 def test_outcomes_do_not_depend_on_the_rest_of_the_suite():
     suite = SuiteSpec.from_dict(SPEC).build()
     full = BenchmarkRunner(suite).evaluate(Contestant.parse("random"))
-    part = BenchmarkRunner(suite.select(themes=["king_capture"])).evaluate(
+    part = BenchmarkRunner(suite.select(themes=["mate_in_one"])).evaluate(
         Contestant.parse("random")
     )
     assert [_decision(r) for r in part.results] == [
-        _decision(r) for r in full.results if r.theme == "king_capture"
+        _decision(r) for r in full.results if r.theme == "mate_in_one"
     ]
 
 
@@ -384,7 +419,8 @@ def test_wilson_interval_is_sane():
     assert wilson_interval(0, 0) == (0.0, 1.0)
 
 
-def test_king_captures_lists_every_piece_that_can_take():
-    game = Position("8/8/8/R3k3/8/8/8/4R1K1 w - - 0 1").to_game()
-    assert Oracle().king_captures(game) == [((0, 4), (4, 4)), ((4, 0), (4, 4))]
-    assert game.grid[4][0].type is PieceType.ROOK
+def test_mates_in_one_lists_every_move_that_mates():
+    # The queen on c6 mates the king in the h-file corner two ways: Qh6 and Qg2.
+    game = Position("8/6R1/2Q5/5K2/8/8/7k/8 w - - 0 1").to_game()
+    assert set(Oracle().mates_in_one(game)) == {Move((2, 5), (7, 5)), Move((2, 5), (6, 1))}
+    assert game.grid[2][5].type is PieceType.QUEEN

@@ -22,14 +22,14 @@ from kaisparov.bench.generators.endgames import (
     MaterialEdgeGenerator,
 )
 from kaisparov.bench.generators.fixed import FixedGenerator
-from kaisparov.bench.generators.king_capture import KingCaptureGenerator
+from kaisparov.bench.generators.mate_in_one import MateInOneGenerator
 from kaisparov.bench.generators.probes import PolicyRankGenerator, ValueSignGenerator
 from kaisparov.bench.generators.robustness import (
     DistractorInvarianceGenerator,
     MirrorConsistencyGenerator,
 )
 from kaisparov.bench.generators.safety import (
-    AvoidKingHangGenerator,
+    AvoidMateGenerator,
     AvoidPieceHangGenerator,
     EscapeCheckGenerator,
 )
@@ -45,7 +45,7 @@ __all__ = [
     "EDGE_SQUARES",
     "HEAVY_TYPES",
     "PIECE_TYPES",
-    "AvoidKingHangGenerator",
+    "AvoidMateGenerator",
     "AvoidPieceHangGenerator",
     "BoardBuilder",
     "ConversionGenerator",
@@ -56,7 +56,7 @@ __all__ = [
     "FreeCaptureGenerator",
     "GenerationError",
     "HoldGenerator",
-    "KingCaptureGenerator",
+    "MateInOneGenerator",
     "MaterialEdgeGenerator",
     "MirrorConsistencyGenerator",
     "ParryThreatGenerator",

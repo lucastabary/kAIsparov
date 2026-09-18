@@ -37,19 +37,23 @@ def square_name(coord: Coord) -> str:
     return f"{chr(ord('a') + coord[0])}{coord[1] + 1}"
 
 
-def move_to_san(game: ChessGame, source: Coord, dest: Coord) -> str:
+def move_to_san(
+    game: ChessGame, source: Coord, dest: Coord, promotion: PieceType | None = None
+) -> str:
     """Notation for ``source -> dest``, read off the position *before* it is played.
 
-    The move is assumed legal, as for :meth:`ChessGame.make`. The check suffix needs
+    The move is assumed legal, as for :meth:`ChessGame.make`, and a pawn reaching the
+    last rank without a named ``promotion`` queens. The check and mate suffixes need
     the position after the move, so the move is made and unmade again: ``game`` comes
     back exactly as it was.
     """
     piece = game.grid[source[0]][source[1]]
     assert piece is not None, f"no piece to move on {source}"
 
-    undo = game.make(source, dest)
+    undo = game.make(source, dest, promotion)
     captured = undo.captured  # en passant included: the pawn taken is not on dest
-    if captured is not None and captured.type == PieceType.KING:
+    became = undo.move.promotion
+    if game.is_checkmate():
         suffix = "#"
     elif game.is_in_check(game.turn):
         suffix = "+"
@@ -61,6 +65,8 @@ def move_to_san(game: ChessGame, source: Coord, dest: Coord) -> str:
         return ("O-O" if dest[0] > source[0] else "O-O-O") + suffix
 
     target = square_name(dest)
+    if became is not None:
+        target += f"={PIECE_LETTERS[became]}"
     if piece.type == PieceType.PAWN:
         # A pawn capture names the file it left: exd5.
         body = f"{square_name(source)[0]}x{target}" if captured is not None else target
