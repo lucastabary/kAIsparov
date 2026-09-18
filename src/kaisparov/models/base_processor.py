@@ -40,26 +40,24 @@ def get_legal_mask(
 ) -> torch.Tensor:
     """Build a boolean mask for legal edges for the current player.
 
+    The policy is a distribution over ``(source, dest)`` pairs, so the four promotions
+    of one pawn push collapse to a single edge here: playing it queens (see
+    :meth:`ChessGame.make`). Underpromotion is not in the action space.
+
     Args:
-        game: Game object exposing `grid`, `turn` and `possible_moves`.
+        game: Game object exposing `grid`, `turn` and `legal_moves`.
         edge_index: Tensor of shape [2, E].
         coord_to_index_fn: Callable mapping (x, y) to node index.
     """
     board_size = len(game.grid)
     num_nodes = board_size * board_size
 
-    legal_pairs: list[int] = []
-
-    for col in range(board_size):
-        for row in range(board_size):
-            piece = game.grid[col][row]
-            if piece is None or piece.player != game.turn:
-                continue
-
-            source_idx = coord_to_index_fn((col, row), board_size)
-            for dest in game.possible_moves((col, row)):
-                dest_idx = coord_to_index_fn(dest, board_size)
-                legal_pairs.append(source_idx * num_nodes + dest_idx)
+    # One move list for the whole position. Asking per piece instead would walk the
+    # full legal-move list once per piece, which is the shape of a quadratic.
+    legal_pairs = [
+        coord_to_index_fn(move[0], board_size) * num_nodes + coord_to_index_fn(move[1], board_size)
+        for move in game.legal_moves()
+    ]
 
     if not legal_pairs:
         return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)

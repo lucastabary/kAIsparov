@@ -15,9 +15,6 @@ from kaisparov.models.base_processor import (
     aggregate_edge_logits_to_moves,
     create_static_full_chess_graph,
 )
-from kaisparov.models.base_processor import (
-    get_legal_mask as base_get_legal_mask,
-)
 from kaisparov.training.ppo import PPOBuffer, train_one_epoch
 
 # Ally/enemy one-hot slot per piece type (features 0-5 ally, 6-11 enemy).
@@ -41,6 +38,9 @@ _BB_ROWS = {
     PieceType.PAWN: (bbb.PAWNS,),
 }
 _SQUARES = np.arange(BOARD_SIZE * BOARD_SIZE, dtype=np.uint64)
+# chess.Board bitboard attributes, in the same order as _PIECE_ORDER above, so the
+# one-hot feature index of a type is its index here.
+_CHESS_BITBOARDS = ("kings", "queens", "bishops", "rooks", "knights", "pawns")
 
 
 def compute_reward(game: ChessGame, undo: Undo) -> float:
@@ -111,62 +111,49 @@ class RGCNProcessor(BaseProcessor):
     def graphify_batch(self, games: list[ChessGame]) -> list[Data]:
         """Vectorised :meth:`graphify` for several games — identical output, faster.
 
-        The one-hot piece features (0-11) are filled in a single per-square scan per
-        game (which also packs that game's bitboards for free); the two blocking-aware
-        control flags (12-13) are then computed for *all* games at once with the
-        vectorised Kogge-Stone maps in :mod:`kaisparov.core.bitboard_batch`, instead of
-        two per-game :func:`attacked_squares` calls. Feature index == square index
-        (``row*8+col``), so the control bitboards unpack straight into the columns.
+        Nothing here walks the board. python-chess already holds each position as one
+        bitboard per piece type plus a per-colour occupancy, in this project's own
+        ``sq = row * 8 + col`` convention, so the twelve one-hot piece planes unpack
+        straight out of those masks with numpy shifts, and the two blocking-aware
+        control flags come from the vectorised Kogge-Stone maps in
+        :mod:`kaisparov.core.bitboard_batch` for the whole batch at once.
+
+        This is the training hot path: the rollout calls it once per ply for every
+        game still running.
         """
         n = len(games)
         if n == 0:
             return []
 
         num_nodes = BOARD_SIZE * BOARD_SIZE
+        boards = [game.board for game in games]
+        white_to_move = np.fromiter((b.turn for b in boards), dtype=bool, count=n)
+
+        # (6, n) masks for the side to move and for its opponent, in _PIECE_ORDER.
+        own = np.zeros((6, n), dtype=np.uint64)
+        enemy = np.zeros((6, n), dtype=np.uint64)
+        for i, board in enumerate(boards):
+            mine = board.occupied_co[board.turn]
+            theirs = board.occupied_co[not board.turn]
+            for k, attribute in enumerate(_CHESS_BITBOARDS):
+                bb = getattr(board, attribute)
+                own[k, i] = bb & mine
+                enemy[k, i] = bb & theirs
+
+        one = np.uint64(1)
         x = torch.zeros((n, num_nodes, 14), dtype=torch.float32)
-        packed_white = np.zeros((6, n), dtype=np.uint64)
-        packed_black = np.zeros((6, n), dtype=np.uint64)
-        white_to_move = np.zeros(n, dtype=bool)
+        for k in range(6):
+            # Features 0-5: the side to move's pieces. 6-11: the opponent's.
+            x[:, :, k] = torch.from_numpy(((own[k][:, None] >> _SQUARES) & one).astype(np.float32))
+            x[:, :, 6 + k] = torch.from_numpy(
+                ((enemy[k][:, None] >> _SQUARES) & one).astype(np.float32)
+            )
 
-        for i, game in enumerate(games):
-            current = game.turn
-            white_to_move[i] = current == Player.WHITE
-            grid = game.grid
-            xi = x[i]
-            occ = 0
-            white_rows = [0, 0, 0, 0, 0]
-            black_rows = [0, 0, 0, 0, 0]
-
-            for col in range(BOARD_SIZE):
-                column = grid[col]
-                for row in range(BOARD_SIZE):
-                    piece = column[row]
-                    if piece is None:
-                        continue
-                    sq = row * BOARD_SIZE + col  # == coord_to_index((col, row)) == node index
-                    piece_idx = _PIECE_IDX[piece.type]
-                    if piece.player == current:
-                        xi[sq, piece_idx] = 1.0
-                    else:
-                        xi[sq, 6 + piece_idx] = 1.0
-                    bit = 1 << sq
-                    occ |= bit
-                    rows = white_rows if piece.player == Player.WHITE else black_rows
-                    for r in _BB_ROWS[piece.type]:
-                        rows[r] |= bit
-
-            for r in range(5):
-                packed_white[r, i] = white_rows[r]
-                packed_black[r, i] = black_rows[r]
-            packed_white[bbb.OCC, i] = occ
-            packed_black[bbb.OCC, i] = occ
-
-        atk_white = bbb.attacked_by_packed(packed_white, bbb.WHITE)
-        atk_black = bbb.attacked_by_packed(packed_black, bbb.BLACK)
+        atk_white = bbb.attacked_by_packed(bbb.pack_boards(boards, bbb.WHITE), bbb.WHITE)
+        atk_black = bbb.attacked_by_packed(bbb.pack_boards(boards, bbb.BLACK), bbb.BLACK)
         # Feature 12 = attacked by the opponent (side not to move); 13 = by the side to move.
         atk_enemy = np.where(white_to_move, atk_black, atk_white)
         atk_current = np.where(white_to_move, atk_white, atk_black)
-        one = np.uint64(1)
         x[:, :, 12] = torch.from_numpy(((atk_enemy[:, None] >> _SQUARES) & one).astype(np.float32))
         x[:, :, 13] = torch.from_numpy(
             ((atk_current[:, None] >> _SQUARES) & one).astype(np.float32)
@@ -221,7 +208,7 @@ class RGCNProcessor(BaseProcessor):
         move set (e.g. the king-safe moves — see ``NeuralAgent(avoid_king_suicide=...)``).
         """
         edge_index = self.static_graph_edges[0]
-        num_nodes = len(game.grid) ** 2
+        num_nodes = BOARD_SIZE * BOARD_SIZE
         if not moves:
             return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
         keys = torch.tensor(
@@ -229,8 +216,7 @@ class RGCNProcessor(BaseProcessor):
             dtype=edge_index.dtype,
             device=edge_index.device,
         )
-        packed_edges = edge_index[0] * num_nodes + edge_index[1]
-        return torch.isin(packed_edges, keys)
+        return torch.isin(_packed_edges(edge_index, num_nodes), keys)
 
 
 def _coord_to_index_adapter(coord: tuple[int, int], board_size: int) -> int:
@@ -238,8 +224,39 @@ def _coord_to_index_adapter(coord: tuple[int, int], board_size: int) -> int:
     return coord_to_index(coord)
 
 
+# edge_index -> its packed (src * 64 + dst) keys. The static graph is built once per
+# processor and never changes, but the mask is rebuilt every ply of every game, and
+# packing 4096 edges again each time costs more than the mask itself. Keyed by id()
+# with the tensor kept alive alongside, so an id is never reused for another graph.
+_PACKED_EDGES: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+
+
+def _packed_edges(edge_index: torch.Tensor, num_nodes: int) -> torch.Tensor:
+    cached = _PACKED_EDGES.get(id(edge_index))
+    if cached is None:
+        packed = edge_index[0] * num_nodes + edge_index[1]
+        _PACKED_EDGES[id(edge_index)] = (edge_index, packed)
+        return packed
+    return cached[1]
+
+
 def get_legal_mask(game: ChessGame, edge_index: torch.Tensor) -> torch.Tensor:
-    return base_get_legal_mask(game, edge_index, coord_to_index_fn=_coord_to_index_adapter)
+    """Boolean mask over graph edges: which ``(source, dest)`` pairs are legal now.
+
+    Reads python-chess's move list directly rather than going through
+    :class:`~kaisparov.core.move.Move`: its square indices are already this project's
+    ``row * 8 + col``, so the edge key is ``from_square * 64 + to_square`` with no
+    conversion at all. This runs once per game per ply during training.
+
+    The four promotions of one pawn push share a ``(source, dest)`` pair and so a
+    single edge; playing it queens. Underpromotion is not in the action space.
+    """
+    num_nodes = BOARD_SIZE * BOARD_SIZE
+    keys = {move.from_square * num_nodes + move.to_square for move in game.board.legal_moves}
+    if not keys:
+        return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
+    key_tensor = torch.tensor(sorted(keys), dtype=edge_index.dtype, device=edge_index.device)
+    return torch.isin(_packed_edges(edge_index, num_nodes), key_tensor)
 
 
 __all__ = [
