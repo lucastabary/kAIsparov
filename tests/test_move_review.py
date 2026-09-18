@@ -18,10 +18,18 @@ from kaisparov.analysis import (
 )
 from kaisparov.analysis.judge import WIN
 from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.insights import MoveQuality, MoveVerdict
 
 W, B = Player.WHITE, Player.BLACK
+
+
+def game_from(fen: str) -> ChessGame:
+    """A position straight from a FEN — clearer than listing squares, for real chess."""
+    import chess
+
+    return ChessGame(board=chess.Board(fen))
 
 
 def position(pieces: dict, turn: Player = W) -> ChessGame:
@@ -86,36 +94,25 @@ def test_hanging_a_queen_is_punished():
     assert hangs.quality in {MoveQuality.MISTAKE, MoveQuality.BLUNDER, MoveQuality.MISS}
 
 
-def test_missing_a_king_capture_is_a_miss():
-    game = position(
-        {
-            (4, 0): (W, PieceType.KING),
-            (0, 4): (W, PieceType.ROOK),  # Ra5 takes the king on e5
-            (7, 0): (W, PieceType.ROOK),
-            (4, 4): (B, PieceType.KING),
-        }
-    )
+def test_missing_a_mate_is_a_miss():
+    """Ra8 is mate on the back rank; shuffling the h-pawn instead throws the win away."""
+    game = game_from("7k/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
     judge = MoveJudge(MaterialEvaluator())
-    assert judge.judge(game, ((0, 4), (4, 4))).quality is MoveQuality.BEST
-    missed = judge.judge(game, ((7, 0), (7, 1)))
+    mate = judge.judge(game, ((0, 0), (0, 7)))  # Ra8#
+    # It is the only move that wins, so it earns GREAT rather than plain BEST.
+    assert mate.quality in {MoveQuality.BEST, MoveQuality.GREAT}
+    assert mate.best_move == Move((0, 0), (0, 7))
+    assert mate.win_prob_after == 1.0
+
+    missed = judge.judge(game, ((7, 1), (7, 2)))  # h2h3
     assert missed.quality is MoveQuality.MISS
     assert missed.win_prob_before == 1.0
 
 
 def test_a_sound_queen_sacrifice_is_brilliant():
-    """Qxg7 gives up the queen; Kxg7 loses the king to Rxg7, so the sac is sound."""
-    game = position(
-        {
-            (0, 0): (W, PieceType.KING),
-            (3, 3): (W, PieceType.QUEEN),
-            (6, 0): (W, PieceType.ROOK),
-            (7, 7): (B, PieceType.KING),
-            (6, 6): (B, PieceType.PAWN),
-            (7, 5): (B, PieceType.ROOK),
-            (2, 4): (B, PieceType.QUEEN),
-        }
-    )
-    verdict = MoveJudge(HeuristicEvaluator()).judge(game, ((3, 3), (6, 6)))
+    """Philidor's legacy: Qg8+ hands over the queen, and Rxg8 is forced into Nf7#."""
+    game = game_from("5r1k/6pp/7N/8/8/1Q6/8/6K1 w - - 0 1")
+    verdict = MoveJudge(HeuristicEvaluator(), lookahead=2).judge(game, ((1, 2), (6, 7)))
     assert verdict.quality is MoveQuality.BRILLIANT
     assert verdict.sacrificed >= 2.0
 
@@ -127,15 +124,12 @@ def test_a_quiet_best_move_is_not_a_sacrifice():
 
 
 def test_the_only_legal_move_is_forced():
-    """A single pawn one square from the last rank: it can push, and that is all.
-
-    Contrived on purpose: the variant filters nothing for legality, so a king always
-    has its steps available and can never be the piece that runs out of moves.
-    """
-    game = position({(0, 6): (W, PieceType.PAWN), (7, 7): (B, PieceType.KING)})
+    """The rook on g7 takes away g8 and h7, leaving the black king a single square."""
+    game = game_from("7k/6R1/8/8/8/8/8/6K1 b - - 0 1")
     judge = MoveJudge(MaterialEvaluator())
-    assert [move for move, _ in judge.rank(game)] == [((0, 6), (0, 7))]
-    assert judge.judge(game, ((0, 6), (0, 7))).quality is MoveQuality.FORCED
+    ranked = [move for move, _ in judge.rank(game)]
+    assert len(ranked) == 1
+    assert judge.judge(game, ranked[0]).quality is MoveQuality.FORCED
 
 
 def test_an_illegal_move_gets_no_verdict():
@@ -183,13 +177,14 @@ def test_game_review_has_no_accuracy_for_a_side_that_never_moved():
 
 
 def test_stalemating_the_opponent_scores_as_a_draw_not_a_win():
-    """Qc7 boxes in the lone king on a8. Every black reply hangs the king, so a
-    search blind to stalemate calls it winning; the rules call it a draw."""
-    game = position(
-        {(7, 0): (W, PieceType.KING), (2, 0): (W, PieceType.QUEEN), (0, 7): (B, PieceType.KING)}
-    )
+    """Qc7 boxes in the lone king on a8 with no legal reply: a draw, not a win.
+
+    A search that only asks "does the opponent have a move?" would read the empty
+    reply list as a forced loss for Black and hand White the game.
+    """
+    game = game_from("k7/8/8/8/8/8/8/2Q4K w - - 0 1")
     judge = MoveJudge(MaterialEvaluator(), lookahead=1)
     scores = dict(judge.rank(game))
 
-    assert scores[((2, 0), (2, 6))] == 0.0
-    assert max(scores.values()) > 0.0  # keeping the queen on the board is better
+    assert scores[Move((2, 0), (2, 6))] == 0.0  # Qc1-c7, stalemate
+    assert max(scores.values()) > 0.0  # keeping the king boxed without stalemating is better

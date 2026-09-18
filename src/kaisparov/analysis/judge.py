@@ -29,7 +29,6 @@ import math
 from dataclasses import dataclass, field
 
 from kaisparov.analysis.evaluators import Evaluator
-from kaisparov.core.draw import is_stalemate
 from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import attacked_squares
@@ -107,15 +106,12 @@ class MoveJudge:
             return self.evaluator.evaluate(game)
         moves = game.legal_moves()
         if not moves:
-            return self.evaluator.evaluate(game)  # stuck: judge the position as it stands
-        best = max(self._value_after(game, move, plies - 1) for move in moves)
-        # Every move loses. If the king is not attacked, that is stalemate — a draw,
-        # not the win the search just handed the opponent. The test only runs on
-        # these rare all-losing nodes, keeping it off the review's hot path; it must
-        # be the exact rule, since a deeper forced loss also scores -WIN.
-        if best <= -WIN and is_stalemate(game):
-            return 0.0
-        return best
+            # No move at all is either mate or stalemate, and the difference is the
+            # whole game: mate is the worst score there is, a stalemate is a draw
+            # worth 0. Reading it off the material on the board instead would call a
+            # stalemate a win for whoever happens to be up a queen.
+            return -WIN if game.is_checkmate() else 0.0
+        return max(self._value_after(game, move, plies - 1) for move in moves)
 
     def _value_after(self, game: ChessGame, move: Move, plies: int) -> float:
         """Value of playing ``move``, for the player who plays it."""
@@ -202,11 +198,20 @@ class MoveJudge:
     # ------------------------------------------------------------------ verdict
 
     def judge(self, game: ChessGame, move: Move) -> MoveVerdict | None:
-        """Grade ``move`` in ``game`` — the position *before* the move is played."""
+        """Grade ``move`` in ``game`` — the position *before* the move is played.
+
+        ``move`` may be a bare ``(source, dest)`` pair; a pawn reaching the last rank
+        without a named promotion is read as queening, matching :meth:`ChessGame.make`.
+        """
         ranked = self.rank(game)
         if not ranked:
             return None
         scores = dict(ranked)
+        move = Move.coerce(move)
+        if move not in scores and move.promotion is None:
+            # A pair naming a promotion square: the judge ranks the four promotions
+            # separately, so resolve the pair to the queening move.
+            move = Move(move.source, move.dest, PieceType.QUEEN)
         if move not in scores:
             return None  # not a move this position offers; nothing to say about it
 

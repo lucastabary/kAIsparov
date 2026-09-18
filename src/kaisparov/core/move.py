@@ -83,6 +83,18 @@ class Move(NamedTuple):
     def from_uci(cls, text: str) -> Move:
         return cls.from_chess(chess.Move.from_uci(text))
 
+    @classmethod
+    def coerce(cls, move) -> Move:
+        """Normalise a ``(source, dest)`` pair or a :class:`Move` into a ``Move``.
+
+        A ``Move`` is a 3-tuple, so it never compares equal to a bare pair and never
+        matches one as a dict key. Callers that take a move from the outside — a UI
+        click, a test, a benchmark answer — pass it through here first.
+        """
+        if isinstance(move, cls):
+            return move
+        return cls(move[0], move[1], move[2] if len(move) > 2 else None)
+
     def __str__(self) -> str:
         return self.uci()
 

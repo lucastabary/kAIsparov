@@ -19,9 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
-from kaisparov.core.coords import Coord
-
-Move = tuple[Coord, Coord]
+from kaisparov.core.move import Move
 
 
 @dataclass(frozen=True, slots=True)
