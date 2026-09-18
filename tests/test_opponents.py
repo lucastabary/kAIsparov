@@ -9,7 +9,6 @@ from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.minimax_agent import MinimaxAgent
 from kaisparov.agents.random_agent import RandomAgent
 from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
@@ -23,11 +22,28 @@ def _spec_and_agent():
     return spec, agent
 
 
-def test_gain_material_and_king():
-    r = RewardSettings(material=1.0, king_capture=4.0)
+def test_gain_counts_captures_and_promotions():
+    import chess
+
+    from kaisparov.core.game import ChessGame
+
+    r = RewardSettings(material=1.0, promotion=1.0, checkmate=4.0)
     assert _gain(r, None) == 0.0
-    assert _gain(r, Piece(Player.BLACK, PieceType.QUEEN)) == 9.0  # queen material
-    assert _gain(r, Piece(Player.BLACK, PieceType.KING)) == 4.0  # flat king bonus (decoupled)
+
+    # Rook takes the queen on a6.
+    game = ChessGame(board=chess.Board("7k/8/q7/8/8/8/8/R3K3 w - - 0 1"))
+    assert _gain(r, game.make((0, 0), (0, 5))) == 9.0
+
+    # Queening: the pawn leaves, a queen arrives.
+    game = ChessGame(board=chess.Board("8/P7/8/8/8/8/8/4K1k1 w - - 0 1"))
+    assert _gain(r, game.make((0, 6), (0, 7))) == 8.0
+
+    # The win bonus is not part of _gain: mate is a property of the position, and
+    # the caller adds it.
+    game = ChessGame(board=chess.Board("7k/6pp/8/8/8/8/8/R3K3 w - - 0 1"))
+    undo = game.make((0, 0), (0, 7))
+    assert game.is_checkmate()
+    assert _gain(r, undo) == 0.0
 
 
 def test_pool_snapshot_sample_and_cap():
@@ -125,14 +141,14 @@ def test_collect_vs_opponent_fills_buffer_and_reports():
         max_steps_per_episode=20,
         model_module=module,
         curriculum=curriculum,
-        reward_settings=RewardSettings(material=1.0, king_capture=4.0),
+        reward_settings=RewardSettings(material=1.0, checkmate=4.0),
         opponent=RandomAgent(seed=1),
         seed=0,
     )
     assert len(buffer) > 0
     assert stats["winrate"] + stats["lossrate"] + stats["drawrate"] == 1.0
-    # king_capture_rate = the decisive games (win + loss), mirroring the self-play key.
-    assert stats["king_capture_rate"] == pytest.approx(stats["winrate"] + stats["lossrate"])
+    # checkmate_rate = the decisive games (win + loss), mirroring the self-play key.
+    assert stats["checkmate_rate"] == pytest.approx(stats["winrate"] + stats["lossrate"])
     buffer.compute_returns_and_advantages()  # standard (single-agent) GAE runs
     assert len(buffer.advantages) == len(buffer)
 
@@ -161,7 +177,7 @@ def test_collect_vs_opponent_samples_per_episode():
         seed=0,
     )
     assert len(draws) == 4  # one opponent drawn per episode, not once per epoch
-    assert "king_capture_rate" in stats
+    assert "checkmate_rate" in stats
 
 
 def test_collect_vs_opponent_requires_exactly_one_opponent():

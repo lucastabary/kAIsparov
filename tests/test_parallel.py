@@ -15,7 +15,7 @@ from kaisparov.training.parallel_rollout import (
     shutdown_executor,
 )
 
-_VS_KEYS = ("king_capture_rate", "winrate", "lossrate", "drawrate", "avg_plies", "transitions")
+_VS_KEYS = ("checkmate_rate", "winrate", "lossrate", "drawrate", "avg_plies", "transitions")
 
 
 def test_collect_vs_opponent_parallel_fills_buffer():

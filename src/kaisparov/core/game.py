@@ -117,6 +117,9 @@ class ChessGame:
         It is *not* a move: the side to move, the move counters and the repetition
         history are reset, exactly as if the position had been handed in fresh.
 
+        A king or rook landing on its home square counts as unmoved, so castling
+        rights follow the pieces — the same convention ``initial_board=`` uses.
+
         Writing into :attr:`grid` does nothing — that list is a rebuilt snapshot, not
         the position.
         """
@@ -127,9 +130,28 @@ class ChessGame:
             self.board.set_piece_at(
                 square, chess.Piece(TO_CHESS_PIECE[piece.type], piece.player == Player.WHITE)
             )
+        self._refresh_castling_rights()
         self.count = 0
         self.last_move = None
         self._reset_derived()
+
+    def _refresh_castling_rights(self) -> None:
+        """Re-derive castling rights from what sits on the home squares."""
+        rights = chess.BB_EMPTY
+        for player, king_sq, rook_sq, right in _CASTLING_SLOTS:
+            colour = player == Player.WHITE
+            king = self.board.piece_at(king_sq)
+            rook = self.board.piece_at(rook_sq)
+            if (
+                king is not None
+                and king.piece_type == chess.KING
+                and king.color == colour
+                and rook is not None
+                and rook.piece_type == chess.ROOK
+                and rook.color == colour
+            ):
+                rights |= right
+        self.board.castling_rights = rights
 
     def _reset_derived(self) -> None:
         self._grid = None

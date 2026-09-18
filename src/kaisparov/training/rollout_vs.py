@@ -23,39 +23,45 @@ import torch
 from torch_geometric.data import Batch
 
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
-from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import Piece, PieceType, Player
+from kaisparov.core.game import ChessGame, Undo
+from kaisparov.core.pieces import PieceType, Player
 from kaisparov.core.utils import get_piece_value
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import BaseCurriculum
 
 
-def _gain(settings: RewardSettings, captured: Piece | None) -> float:
-    if captured is None:
+def _gain(settings: RewardSettings, undo: Undo | None) -> float:
+    """Material a move won, weighted (mirrors kaisparov.training.reward.make_reward_fn).
+
+    The win bonus is *not* here: mate is a property of the position after the move,
+    not of what the move captured, so the caller adds it.
+    """
+    if undo is None:
         return 0.0
-    # A king capture is the flat win bonus, decoupled from the king's sentinel
-    # material value (mirrors kaisparov.training.reward.make_reward_fn).
-    if captured.type == PieceType.KING:
-        return settings.king_capture
-    return settings.material * get_piece_value(captured.type)
-
-
-def _is_king(piece: Piece | None) -> bool:
-    return piece is not None and piece.type == PieceType.KING
+    gain = 0.0
+    if undo.captured is not None:
+        gain += settings.material * get_piece_value(undo.captured.type)
+    if undo.move.promotion is not None:
+        gain += settings.promotion * (
+            get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
+        )
+    return gain
 
 
 def _new_game(curriculum: BaseCurriculum | None) -> ChessGame:
     return ChessGame(initial_board=curriculum.get_initial_board() if curriculum else None)
 
 
-def _opponent_reply(game: ChessGame, opponent) -> tuple[bool, Piece | None]:
-    """Play the opponent's move. Returns (moved, captured_piece)."""
+def _opponent_reply(game: ChessGame, opponent) -> tuple[bool, Undo | None]:
+    """Play the opponent's move. Returns (moved, the Undo handle)."""
     if not game.legal_moves():
         return False, None
     move = opponent.select_move(game)
     if move is None:
         return False, None
-    return True, game.play(*move)
+    if not game.is_move_valid(move[0], move[1], move[2]):
+        return False, None
+    return True, game.make(*move)
 
 
 def collect_vs_opponent(
@@ -132,11 +138,11 @@ def collect_vs_opponent(
         opponents.append(opp)
         learners.append(learner)
         if game.turn != learner:
-            moved, captured = _opponent_reply(game, opp)
+            moved, _ = _opponent_reply(game, opp)
             if not moved:
                 finish(i, "draw")
-            elif _is_king(captured):
-                finish(i, "loss")
+            elif game.is_checkmate():
+                finish(i, "loss")  # mated before the learner ever moved
 
     # Batched play: at loop top, every active game has the learner to move.
     with torch.no_grad():
@@ -165,32 +171,30 @@ def collect_vs_opponent(
                     deterministic=False,
                     legal_mask=legal_mask,
                 )
-                captured_l = game.play(*action.move_coords)
+                undo_l = game.make(*action.move_coords)
                 steps[i] += 1
-                reward = _gain(reward_settings, captured_l) - reward_settings.step_penalty
+                reward = _gain(reward_settings, undo_l) - reward_settings.step_penalty
                 done = False
                 result = "draw"
 
-                if _is_king(captured_l):
+                if game.is_checkmate():
+                    reward += reward_settings.checkmate
                     result, done = "win", True
                 else:
-                    # King safety: did the learner leave its own king capturable?
-                    if reward_settings.king_safety and game.is_in_check(learner):
-                        reward -= reward_settings.king_safety
                     # The learner's own move can draw — above all by stalemating the
-                    # opponent. Test before the reply: once the opponent has played one
-                    # of its king-hanging moves, the stalemate is gone and the learner
-                    # would collect a king capture for what the rules call a draw.
+                    # opponent. Test before the reply, or the episode would run on past
+                    # a position the rules have already ended.
                     if game.is_draw(draw_rules):
                         done = True  # drawn position (stays a draw)
                     else:
-                        moved, captured_o = _opponent_reply(game, opp)
+                        moved, undo_o = _opponent_reply(game, opp)
                         if not moved:
                             done = True  # opponent stuck -> draw
                         else:
                             steps[i] += 1
-                            reward -= _gain(reward_settings, captured_o)
-                            if _is_king(captured_o):
+                            reward -= _gain(reward_settings, undo_o)
+                            if game.is_checkmate():
+                                reward -= reward_settings.checkmate
                                 result, done = "loss", True
                         if not done and game.is_draw(draw_rules):
                             done = True  # the reply drew (e.g. stalemated the learner)

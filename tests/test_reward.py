@@ -2,58 +2,72 @@
 
 from __future__ import annotations
 
+import chess
 import pytest
 
-from kaisparov.core.coords import BOARD_SIZE
 from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import Piece, PieceType, Player
+from kaisparov.core.pieces import PieceType
 from kaisparov.training.config import RewardSettings, TrainConfig
 from kaisparov.training.reward import make_reward_fn
 
 
-def empty_game(turn: Player = Player.WHITE) -> ChessGame:
-    grid = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
-    return ChessGame(initial_board=grid, turn=turn)
+def reward_for(settings: RewardSettings, fen: str, move) -> float:
+    """Play ``move`` in ``fen`` and score it, the way the rollout does.
+
+    The reward function reads the position *after* the move plus the Undo handle, so
+    it has to be given a real move rather than a synthetic capture.
+    """
+    game = ChessGame(board=chess.Board(fen))
+    undo = game.make(*move)
+    return make_reward_fn(settings)(game, undo)
 
 
 def test_material_reward():
-    rf = make_reward_fn(RewardSettings(material=1.0))
-    assert rf(empty_game(), Piece(Player.BLACK, PieceType.QUEEN)) == pytest.approx(9.0)
-    assert rf(empty_game(), None) == pytest.approx(0.0)
+    settings = RewardSettings(material=1.0)
+    # White rook on a1 takes the black queen on a6.
+    taking = reward_for(settings, "7k/8/q7/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (0, 5)))
+    assert taking == pytest.approx(9.0)
+    quiet = reward_for(settings, "7k/8/q7/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (1, 0)))
+    assert quiet == pytest.approx(0.0)
 
 
-def test_step_penalty_and_king_capture():
-    rf = make_reward_fn(RewardSettings(material=1.0, step_penalty=0.01, king_capture=0.5))
-    assert rf(empty_game(), None) == pytest.approx(-0.01)
-    # A king capture is the flat king_capture bonus (decoupled from material) - step.
-    got = rf(empty_game(), Piece(Player.BLACK, PieceType.KING))
-    assert got == pytest.approx(0.5 - 0.01)
+def test_promotion_is_worth_the_material_it_gains():
+    settings = RewardSettings(material=1.0, promotion=1.0)
+    queening = reward_for(settings, "8/P7/8/8/8/8/8/4K1k1 w - - 0 1", ((0, 6), (0, 7)))
+    assert queening == pytest.approx(8.0)  # queen (9) minus the pawn it was (1)
+    knight = reward_for(
+        settings, "8/P7/8/8/8/8/8/4K1k1 w - - 0 1", ((0, 6), (0, 7), PieceType.KNIGHT)
+    )
+    assert knight == pytest.approx(2.0)  # underpromotion gains less
 
 
-def test_king_safety_penalty_when_own_king_left_in_check():
-    # White just moved (so it's Black to move now) and left the WHITE king attacked
-    # by a black rook down the file: king_safety must fire for the white mover.
-    game = empty_game(turn=Player.BLACK)
-    game.grid[4][0] = Piece(Player.WHITE, PieceType.KING)
-    game.grid[4][5] = Piece(Player.BLACK, PieceType.ROOK)
-    assert game.is_in_check(Player.WHITE)
+def test_promotion_can_be_switched_off():
+    settings = RewardSettings(material=1.0, promotion=0.0)
+    assert reward_for(settings, "8/P7/8/8/8/8/8/4K1k1 w - - 0 1", ((0, 6), (0, 7))) == 0.0
 
-    rf = make_reward_fn(RewardSettings(material=0.0, king_safety=0.5))
-    assert rf(game, None) == pytest.approx(-0.5)
-    # No penalty when the mover's king is safe.
-    safe = empty_game(turn=Player.BLACK)
-    safe.grid[4][0] = Piece(Player.WHITE, PieceType.KING)
-    assert rf(safe, None) == pytest.approx(0.0)
+
+def test_step_penalty_and_checkmate():
+    settings = RewardSettings(material=1.0, step_penalty=0.01, checkmate=0.5)
+    quiet = reward_for(settings, "7k/8/q7/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (1, 0)))
+    assert quiet == pytest.approx(-0.01)
+
+    # Back-rank mate: Ra1-a8#, the black king shut in by its own pawns.
+    mate = reward_for(settings, "7k/6pp/8/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (0, 7)))
+    assert mate == pytest.approx(0.5 - 0.01)  # flat bonus, decoupled from material
 
 
 def test_check_bonus_applied_when_opponent_in_check():
-    game = empty_game(turn=Player.WHITE)
-    game.grid[4][0] = Piece(Player.WHITE, PieceType.KING)
-    game.grid[4][5] = Piece(Player.BLACK, PieceType.ROOK)  # attacks the white king down the file
-    assert game.is_in_check(Player.WHITE)
+    settings = RewardSettings(material=0.0, check=0.1)
+    # Ra1-a8+ checks the black king on h8 along the rank; ...Kg7 escapes, so it is a
+    # check and not mate.
+    checking = reward_for(settings, "7k/6p1/8/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (0, 7)))
+    assert checking == pytest.approx(0.1)
 
-    rf = make_reward_fn(RewardSettings(material=0.0, check=0.1))
-    assert rf(game, None) == pytest.approx(0.1)
+
+def test_a_mate_does_not_also_pay_the_check_bonus():
+    settings = RewardSettings(material=0.0, check=0.1, checkmate=1.0)
+    mate = reward_for(settings, "7k/6pp/8/8/8/8/8/R3K3 w - - 0 1", ((0, 0), (0, 7)))
+    assert mate == pytest.approx(1.0)
 
 
 # ----------------------------------------------------------------- config plumbing

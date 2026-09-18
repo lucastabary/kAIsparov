@@ -34,9 +34,9 @@ def shuffling_board():
     return grid
 
 
-# A full there-and-back cycle for both rooks: the position after it is identical
-# to the position before it (only the rooks' has_moved flag changes, on the first
-# cycle only).
+# A full there-and-back cycle for both rooks: the position after it is identical to
+# the position before it. Neither rook is on a castling square, so nothing about the
+# position changes at all — the very first cycle already repeats the start.
 CYCLE = [((3, 0), (4, 0)), ((3, 7), (4, 7)), ((4, 0), (3, 0)), ((4, 7), (3, 7))]
 
 
@@ -101,9 +101,9 @@ def test_threefold_repetition_is_a_draw():
     assert game.repetition_count() == 1
     assert game.draw_reason() is None
 
-    # The first cycle flips both rooks' has_moved, so it lands on a *new* position;
-    # from there each cycle repeats it. Three occurrences = threefold.
-    for _ in range(3):
+    # Each cycle returns to the starting position, so two of them make three
+    # occurrences in all — threefold.
+    for _ in range(2):
         for move in CYCLE:
             game.play(*move)
 
@@ -214,12 +214,24 @@ def test_the_same_position_hashes_the_same_however_it_was_reached():
 
 
 def test_castling_rights_are_part_of_the_fingerprint():
-    """Every piece is back on its square, but the rooks have moved: a new position."""
-    game = ChessGame(initial_board=shuffling_board())
+    """Every piece is back on its square, but the right to castle is gone for good.
+
+    This is the one case where a there-and-back cycle does *not* repeat a position:
+    moving the h1 rook forfeits White's kingside castling right, and the right is
+    part of what identifies a position.
+    """
+    grid = empty_grid()
+    place(grid, (4, 0), W, PieceType.KING)  # e1
+    place(grid, (7, 0), W, PieceType.ROOK)  # h1, castling rook
+    place(grid, (4, 7), B, PieceType.KING)  # e8
+    place(grid, (0, 7), B, PieceType.ROOK)  # a8, so Black has a quiet move too
+    game = ChessGame(initial_board=grid)
     start = game.zobrist
-    for move in CYCLE:
+
+    for move in [((7, 0), (7, 1)), ((0, 7), (0, 6)), ((7, 1), (7, 0)), ((0, 6), (0, 7))]:
         game.play(*move)
-    assert game.zobrist != start
+
+    assert game.zobrist != start  # the right is gone, so it is not the same position
     assert game.repetition_count() == 1
 
 
@@ -322,8 +334,7 @@ def test_in_check_with_no_safe_move_is_mate_not_stalemate():
 
 def test_one_safe_move_is_enough_to_avoid_stalemate():
     game = stalemated_black()
-    place(game.grid, (7, 5), B, PieceType.PAWN)  # a pawn push leaves the king alone
-    game._reset_draw_state()
+    game.place((7, 5), Piece(B, PieceType.PAWN))  # a pawn push leaves the king alone
     assert not draw.is_stalemate(game)
 
 

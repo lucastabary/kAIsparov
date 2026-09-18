@@ -35,7 +35,7 @@ def test_training_step_runs():
         curriculum=curriculum,
     )
     assert len(buffer) > 0, "self-play collected no transitions"
-    for key in ("king_capture_rate", "truncated_rate", "stalemate_rate", "avg_plies"):
+    for key in ("checkmate_rate", "truncated_rate", "stalemate_rate", "avg_plies"):
         assert key in rollout_stats
 
     metrics = spec.train_one_epoch(agent, buffer, optimizer, device=device)

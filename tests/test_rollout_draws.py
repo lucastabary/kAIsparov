@@ -87,7 +87,7 @@ def test_self_play_ends_a_stalemate_as_a_draw_worth_nothing():
     )
 
     assert stats["stalemate_rate"] == 1.0
-    assert stats["king_capture_rate"] == 0.0
+    assert stats["checkmate_rate"] == 0.0
     assert buffer.rewards == [0.0]
     assert buffer.dones == [True]
 

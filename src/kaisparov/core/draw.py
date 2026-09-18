@@ -60,9 +60,15 @@ NO_RULES = DrawRules(
 )
 
 
-def is_insufficient_material(game: ChessGame) -> bool:
-    """True if neither side has enough material to deliver mate."""
-    return game.board.is_insufficient_material()
+def is_insufficient_material(position) -> bool:
+    """True if neither side has enough material to deliver mate.
+
+    Takes a :class:`~kaisparov.core.game.ChessGame` or a bare grid, like
+    :mod:`kaisparov.core.rules` — a generated position is often still a grid.
+    """
+    from kaisparov.core.rules import as_board
+
+    return as_board(position).is_insufficient_material()
 
 
 def is_stalemate(game: ChessGame) -> bool:

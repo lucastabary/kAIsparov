@@ -20,7 +20,7 @@ Grid = list[list["Piece | None"]]
 Position = "ChessGame | Grid"
 
 
-def _as_board(position) -> chess.Board:
+def as_board(position) -> chess.Board:
     """Accept a :class:`ChessGame` or a bare grid, return a python-chess board."""
     board = getattr(position, "board", None)
     if board is not None:
@@ -41,7 +41,7 @@ def find_king(grid: Grid, player: Player) -> Coord | None:
 
 def is_in_check(position, player: Player) -> bool:
     """True if ``player``'s king is attacked. A side without a king is never in check."""
-    board = _as_board(position)
+    board = as_board(position)
     king = board.king(player == Player.WHITE)
     if king is None:
         return False
@@ -56,7 +56,7 @@ def attacked_squares(position, by_player: Player) -> set[Coord]:
     pawns control only their two forward diagonals, never the push square. Occupancy of
     the target is irrelevant, so this also answers "is that escape square safe?".
     """
-    board = _as_board(position)
+    board = as_board(position)
     colour = by_player == Player.WHITE
     controlled: set[Coord] = set()
     for square in chess.scan_forward(board.occupied_co[colour]):
@@ -75,4 +75,4 @@ def pawn_attacks(square: Coord, player: Player) -> tuple[Coord, ...]:
     return tuple(square_to_coord(s) for s in chess.scan_forward(mask))
 
 
-__all__ = ["find_king", "is_in_check", "attacked_squares", "pawn_attacks"]
+__all__ = ["as_board", "find_king", "is_in_check", "attacked_squares", "pawn_attacks"]
