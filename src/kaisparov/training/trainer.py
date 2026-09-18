@@ -10,7 +10,7 @@ import torch
 
 from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.eval.arena import evaluate
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.tracking.run import RunManager
@@ -330,7 +330,7 @@ class Trainer:
             f"policy={metrics.get('policy_loss', 0):+.4f} "
             f"value={metrics.get('value_loss', 0):.4f} "
             f"entropy={metrics.get('entropy', 0):.3f} "
-            f"| king_capture={rollout_stats.get('king_capture_rate', 0):.0%} "
+            f"| checkmate={rollout_stats.get('checkmate_rate', 0):.0%} "
             f"plies={rollout_stats.get('avg_plies', 0):.0f}"
         )
         # Self-play only: how many episodes ended on a draw rule rather than a king

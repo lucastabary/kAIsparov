@@ -8,8 +8,8 @@ from __future__ import annotations
 import pytest
 
 from kaisparov.core import draw
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import DrawRules, is_insufficient_material
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 from kaisparov.envs.chess_env import ChessEnv
 

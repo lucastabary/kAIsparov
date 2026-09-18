@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import torch
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 
 
 class CriticEvaluator:

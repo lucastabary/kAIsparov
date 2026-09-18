@@ -3,7 +3,7 @@
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/scratch_v3_stage2.yaml
 #
-# Inherits architecture (rgcn/hidden_dim=32), reward (king_capture_only) and any field
+# Inherits architecture (rgcn/hidden_dim=32), reward (checkmate_only) and any field
 # not overridden here from the stage-1 parent. Only the deltas below change.
 #
 # Stage 2 goal: real material and pawns appear. Under pure king-capture reward, "don't
@@ -21,7 +21,7 @@ description: |
 epochs: 180
 
 # Restated for clarity even though it is inherited — pure outcome, no shaping.
-reward: king_capture_only
+reward: checkmate_only
 
 curriculum:
   name: "12 pieces/side, all types + pawns"

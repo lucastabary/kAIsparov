@@ -3,7 +3,7 @@
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/high_entropy_phase2.yaml
 #
-# Inherits architecture (rgcn/hidden_dim=64), reward (king_capture_only) and any field
+# Inherits architecture (rgcn/hidden_dim=64), reward (checkmate_only) and any field
 # not overridden here from the phase-1b parent. Only the deltas below change.
 #
 # Same stage goal as scratch_v4 stage2: real material and pawns appear, and the
@@ -26,7 +26,7 @@ description: |
 epochs: 480
 
 # Restated for clarity even though it is inherited — pure outcome, no shaping.
-reward: king_capture_only
+reward: checkmate_only
 
 curriculum:
   name: "10 pieces/side, all types + pawns"

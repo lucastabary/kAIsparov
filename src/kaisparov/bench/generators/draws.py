@@ -18,9 +18,9 @@ from kaisparov.bench.oracle import Oracle
 from kaisparov.bench.position import Position, move_to_uci
 from kaisparov.bench.problem import Problem
 from kaisparov.bench.tasks import AvoidMoves
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import REPETITION, STALEMATE
-from kaisparov.core.movegen import Move, all_moves
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import PieceType, Player
 
 _ARMIES = {
@@ -59,7 +59,7 @@ class StalemateTrapGenerator(SamplingGenerator):
         game = position.to_game()
         if not is_quiet(game, self.oracle):
             return None
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         stalemating = [m for m in moves if self.oracle.draws_after(game, m) == STALEMATE]
         if not stalemating:
             return None
@@ -127,7 +127,7 @@ class RepetitionTrapGenerator(SamplingGenerator):
         else:
             return None
 
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         repeating = [m for m in moves if self.oracle.draws_after(game, m) == REPETITION]
         if not repeating or len(repeating) == len(moves):
             return None
@@ -145,7 +145,7 @@ class RepetitionTrapGenerator(SamplingGenerator):
         """A quiet, reversible move for ``player``'s king (Black) or heavy piece (White)."""
         wanted = PieceType.KING if player == Player.BLACK else None
         candidates = []
-        for source, dest in all_moves(game.grid, game.turn, game.en_passant_target):
+        for source, dest, _ in game.legal_moves():
             piece = game.grid[source[0]][source[1]]
             if piece is None or game.grid[dest[0]][dest[1]] is not None:
                 continue

@@ -114,10 +114,10 @@ class RewardSettings:
     """Weighted reward-shaping terms (from the mover's point of view, per ply)."""
 
     preset: str = ""  # name if resolved from config/rewards.yaml (for the record)
-    material: float = 1.0  # * value of the captured (non-king) piece
-    king_capture: float = 0.0  # flat reward for capturing the king (winning the game)
+    material: float = 1.0  # * value of the captured piece
+    promotion: float = 1.0  # * material gained by promoting a pawn (queen: +8)
+    checkmate: float = 0.0  # flat reward for delivering mate (winning the game)
     check: float = 0.0  # bonus if the move leaves the opponent in check
-    king_safety: float = 0.0  # penalty per ply your move leaves your own king capturable
     step_penalty: float = 0.0  # subtracted every ply (rewards decisive play)
 
 

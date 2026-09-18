@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.models.rgcn.processor import RGCNProcessor
 
@@ -50,7 +50,7 @@ def test_forward_and_decode_produce_a_legal_move():
     assert value.shape == (1,)
 
     action = processor.process_output((action_scores, value), game, deterministic=True)
-    source, dest = action.move_coords
+    source, dest = action.move_coords[0], action.move_coords[1]
     assert dest in game.possible_moves(source)
 
 

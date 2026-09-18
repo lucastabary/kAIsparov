@@ -6,9 +6,7 @@ import random
 
 import torch
 
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import all_moves
-from kaisparov.core.pieces import PieceType
+from kaisparov.core.game import ChessGame
 from kaisparov.models.rgcn.processor import RGCNProcessor
 
 
@@ -18,14 +16,11 @@ def _collect_games(n_target: int, seed: int = 3) -> list[ChessGame]:
     while len(games) < n_target:
         game = ChessGame()
         for _ in range(60):
-            moves = all_moves(game.grid, game.turn, game.en_passant_target)
+            moves = game.legal_moves()
             games.append(game.copy())
             if len(games) >= n_target or not moves:
                 break
-            src, dest = rng.choice(moves)
-            undo = game.make(src, dest)
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
-                break
+            game.make(*rng.choice(moves))
     return games[:n_target]
 
 

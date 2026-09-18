@@ -51,8 +51,8 @@ import pygame
 from kaisparov.agents.base import Policy
 from kaisparov.analysis import GameReview, HeuristicEvaluator, MaterialEvaluator, MoveJudge
 from kaisparov.core import draw
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
+from kaisparov.core.game import ChessGame
 from kaisparov.core.game_interface import (
     GameInterface,
     LegendEntry,

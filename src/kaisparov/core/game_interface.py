@@ -5,8 +5,8 @@ from dataclasses import dataclass, replace
 
 import pygame
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import Coord
+from kaisparov.core.game import ChessGame
 from kaisparov.core.notation import MoveRow
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
@@ -1300,7 +1300,7 @@ class GameInterface:
                 # Window closed
                 break
 
-            source, dest = move
+            source, dest = move[0], move[1]
             captured = self.game.play(source, dest)
             print(f"Coup joue: {source} -> {dest}")
 

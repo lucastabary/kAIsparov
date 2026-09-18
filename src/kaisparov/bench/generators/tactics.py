@@ -26,14 +26,14 @@ from kaisparov.bench.oracle import WIN, Oracle
 from kaisparov.bench.position import move_to_uci
 from kaisparov.bench.problem import Problem
 from kaisparov.bench.tasks import FindMove, WinMaterial
-from kaisparov.core.attacks import PAWN_CAPTURES_WHITE
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import Move, all_moves
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import PieceType, Player
+from kaisparov.core.rules import pawn_attacks
 
 
 def _captures(game: ChessGame) -> list[Move]:
-    moves = all_moves(game.grid, game.turn, game.en_passant_target)
+    moves = game.legal_moves()
     return [m for m in moves if game.grid[m[1][0]][m[1][1]] is not None]
 
 
@@ -151,7 +151,9 @@ class ForkGenerator(SamplingGenerator):
         if fork_square is None:
             return None
         if attacker == PieceType.PAWN:
-            targets = list(PAWN_CAPTURES_WHITE[fork_square])  # on an empty board, no captures show
+            targets = list(
+                pawn_attacks(fork_square, Player.WHITE)
+            )  # on an empty board, no captures show
         else:
             targets = board.game().possible_moves(fork_square)
         if len(targets) < 2:
@@ -239,7 +241,7 @@ class ParryThreatGenerator(SamplingGenerator):
         if self.oracle.wins_within(game, self.depth):
             return None  # White's own attack comes first: a different lesson
 
-        legal = all_moves(game.grid, game.turn, game.en_passant_target)
+        legal = game.legal_moves()
         parries = []
         for move in self.oracle.safe_moves(game):
             undo = game.make(*move)

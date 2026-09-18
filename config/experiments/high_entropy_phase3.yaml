@@ -3,7 +3,7 @@
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/high_entropy_phase3.yaml
 #
-# Inherits architecture (rgcn/hidden_dim=64) and reward (king_capture_only) from the
+# Inherits architecture (rgcn/hidden_dim=64) and reward (checkmate_only) from the
 # phase-2 parent. `curriculum: null` disables the piece-count curriculum, so games
 # start from the normal chess position — the actual task the model is meant to play.
 #
@@ -26,7 +26,7 @@ description: |
 # the standard opening); wider net + higher entropy need the extra iterations too.
 epochs: 400
 
-reward: king_capture_only
+reward: checkmate_only
 
 # Disable the curriculum -> start from the normal chess position ("vraie partie").
 curriculum: null

@@ -23,8 +23,7 @@ from kaisparov.bench.generators.base import (
 from kaisparov.bench.oracle import WIN, Oracle
 from kaisparov.bench.problem import Problem
 from kaisparov.bench.tasks import AvoidMoves, FindMove
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import PieceType, Player
 
 
@@ -71,7 +70,7 @@ class EscapeCheckGenerator(SamplingGenerator):
             return None  # in check, and no enemy king to take first
         if self.oracle.is_over(game):
             return None
-        legal = all_moves(game.grid, game.turn, game.en_passant_target)
+        legal = game.legal_moves()
         safe = self.oracle.safe_moves(game)
         if not safe or len(safe) > self.max_fraction * len(legal):
             return None
@@ -103,7 +102,7 @@ class AvoidKingHangGenerator(SamplingGenerator):
         game = position.to_game()
         if not is_quiet(game, self.oracle):
             return None
-        legal = all_moves(game.grid, game.turn, game.en_passant_target)
+        legal = game.legal_moves()
         safe = set(self.oracle.safe_moves(game))
         hanging = [m for m in legal if m not in safe]
         if not safe or len(hanging) < max(self.min_forbidden, self.min_fraction * len(legal)):

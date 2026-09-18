@@ -10,23 +10,19 @@ ignored them would call both a win, and a model that avoids them would be marked
 
 It answers three kinds of question:
 
-**Forced wins.** "Can the side to move force a king capture within ``depth`` of its own
-moves, whatever the defence?" — the capture-the-king analogue of mate-in-N (depth 1 is
-"the king is en prise", depth 2 "mate in one" in classical terms). An AND/OR search,
-cut at the first refutation, that uses one fact of the variant to stay affordable: the
-side to move can take the king *right now* exactly when that king is attacked, so the
-last ply is one attack lookup, never a move list.
+**Forced mates.** "Can the side to move force mate within ``depth`` of its own moves,
+whatever the defence?" — mate in N. An AND/OR search, cut at the first refutation.
 
-**King safety.** Which moves leave the mover's own king capturable, and would the
-opponent have a forced win if the mover passed (a *threat*)?
+**Safety.** Which moves do not walk into a forced mate, and would the opponent have a
+forced mate if the mover passed (a *threat*)?
 
 **Material.** What a move wins or loses in pawns once both sides have played their
 best ``plies`` replies, counting material only — an alpha-beta negamax with captures
-searched first. Kings are not material: taking one is a win (``±WIN``), and hanging
-your own is a loss. Draw rules are *not* applied here: material has no draw score, and
-within the three or so plies these questions need they almost never decide anything.
-Search an odd number of plies, so the line ends on the opponent's reply rather than on
-a capture nobody answers.
+searched first. Kings are not material: mating is a win (``±WIN``). Draw rules are
+*not* applied here: material has no draw score, and within the three or so plies these
+questions need they almost never decide anything. A stalemate found mid-search scores
+0 — equal — or the search would read it as a win. Search an odd number of plies, so
+the line ends on the opponent's reply rather than on a capture nobody answers.
 
 Torch-free, and it leaves the game exactly as it found it.
 """
@@ -34,14 +30,14 @@ Torch-free, and it leaves the game exactly as it found it.
 from __future__ import annotations
 
 from kaisparov.bench.position import other
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import ALL_SQUARES
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules, draw_reason
-from kaisparov.core.movegen import Move, all_moves
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import PieceType, Player
 from kaisparov.core.utils import get_piece_value
 
-WIN = 1e6  # a king capture, in pawns
+WIN = 1e6  # checkmate, in pawns
 _INF = float("inf")
 
 
@@ -49,25 +45,24 @@ class Oracle:
     def __init__(self, draw_rules: DrawRules | None = DEFAULT_RULES):
         self.draw_rules = draw_rules
 
-    # ----------------------------------------------------------- forced wins
+    # ---------------------------------------------------------- forced mates
     def winning_moves(self, game: ChessGame, depth: int) -> list[Move]:
-        """Every move that forces a king capture within ``depth`` of the mover's moves."""
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
-        return [move for move in moves if self._move_wins(game, move, depth)]
+        """Every move that forces mate within ``depth`` of the mover's moves."""
+        return [move for move in game.legal_moves() if self._move_wins(game, move, depth)]
 
     def wins_within(self, game: ChessGame, depth: int) -> bool:
-        """Whether the side to move can force a king capture within ``depth`` moves."""
+        """Whether the side to move can force mate within ``depth`` moves."""
         return self._attacker_wins(game, depth)
 
     def win_depth(self, game: ChessGame, max_depth: int) -> int | None:
-        """The fewest moves in which the side to move forces a win, or ``None``."""
+        """The fewest moves in which the side to move forces mate, or ``None``."""
         for depth in range(1, max_depth + 1):
             if self._attacker_wins(game, depth):
                 return depth
         return None
 
     def loses_within(self, game: ChessGame, depth: int) -> bool:
-        """Whether *every* move of the side to move lets the opponent win within ``depth``.
+        """Whether *every* move of the side to move lets the opponent mate within ``depth``.
 
         ``False`` in a position that is already over (a draw, or no move at all).
         """
@@ -75,43 +70,60 @@ class Oracle:
             return False
         return self._defender_loses(game, depth)
 
-    def king_captures(self, game: ChessGame) -> list[Move]:
-        """The moves that take the enemy king on the spot."""
-        return [
-            move
-            for move in all_moves(game.grid, game.turn, game.en_passant_target)
-            if (target := game.grid[move[1][0]][move[1][1]]) is not None
-            and target.type == PieceType.KING
-        ]
+    def mates_in_one(self, game: ChessGame) -> list[Move]:
+        """The moves that deliver checkmate on the spot."""
+        out: list[Move] = []
+        for move in game.legal_moves():
+            undo = game.make(*move)
+            try:
+                if game.is_checkmate():
+                    out.append(move)
+            finally:
+                game.unmake(undo)
+        return out
 
     def is_over(self, game: ChessGame) -> bool:
-        """The env's end-of-step test, minus the king capture: no move, or a draw rule."""
-        if not all_moves(game.grid, game.turn, game.en_passant_target):
+        """The env's end-of-step test: mate, no move at all, or a draw rule."""
+        if not game.legal_moves():
             return True
         return draw_reason(game, self.draw_rules) is not None
 
-    # ------------------------------------------------------------ king safety
+    # ----------------------------------------------------------------- safety
     def safe_moves(self, game: ChessGame) -> list[Move]:
-        """Moves after which the opponent cannot take the mover's king next ply."""
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
-        return [move for move in moves if not game.hangs_own_king(*move)]
+        """Moves after which the opponent cannot mate straight away.
+
+        Under the old capture-the-king variant this filtered out the moves that hung
+        your own king. Standard chess makes those illegal outright, so the question
+        that survives is the next one up: which moves walk into a mate in one.
+        """
+        out: list[Move] = []
+        for move in game.legal_moves():
+            undo = game.make(*move)
+            try:
+                if not self._attacker_wins(game, 1):
+                    out.append(move)
+            finally:
+                game.unmake(undo)
+        return out
 
     def threatens(self, game: ChessGame, depth: int = 2) -> bool:
-        """Would the opponent force a win within ``depth`` if the side to move passed?
+        """Would the opponent force mate within ``depth`` if the side to move passed?
 
-        The *null-move* test: the same board with the other side to move (no en-passant
-        target, which only the side that just moved could have granted).
+        The *null-move* test: the same board with the other side to move, and no
+        en-passant target (only the side that just moved could have granted one).
         """
-        passed = ChessGame(initial_board=game.grid, turn=other(game.turn))
-        return self._attacker_wins(passed, depth)
+        board = game.board.copy(stack=False)
+        board.turn = other(game.turn) == Player.WHITE
+        board.ep_square = None
+        return self._attacker_wins(ChessGame(board=board), depth)
 
     def draws_after(self, game: ChessGame, move: Move) -> str | None:
         """Why the game would end drawn right after ``move``, or ``None``."""
         undo = game.make(*move)
         try:
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
+            if game.is_checkmate():
                 return None
-            if not all_moves(game.grid, game.turn, game.en_passant_target):
+            if not game.legal_moves():
                 return "stalemate"
             return draw_reason(game, self.draw_rules)
         finally:
@@ -122,8 +134,9 @@ class Oracle:
     def material(game: ChessGame, player: Player) -> float:
         """``player``'s material minus the opponent's, in pawns, kings excluded."""
         score = 0.0
+        grid = game.grid
         for col, row in ALL_SQUARES:
-            piece = game.grid[col][row]
+            piece = grid[col][row]
             if piece is None or piece.type == PieceType.KING:
                 continue
             value = get_piece_value(piece.type)
@@ -143,41 +156,35 @@ class Oracle:
 
     def material_gains(self, game: ChessGame, plies: int) -> dict[Move, float]:
         """:meth:`material_gain` for every move, exactly (no pruning across moves)."""
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
-        return {move: self.material_gain(game, move, plies) for move in moves}
+        return {move: self.material_gain(game, move, plies) for move in game.legal_moves()}
 
     # ----------------------------------------------------------------- search
     def _attacker_wins(self, game: ChessGame, depth: int) -> bool:
-        if game.is_in_check(other(game.turn)):
-            return True  # the enemy king is en prise: take it
-        if depth <= 1:
+        if depth <= 0:
             return False
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
-        return any(self._move_wins(game, move, depth) for move in moves)
+        return any(self._move_wins(game, move, depth) for move in game.legal_moves())
 
     def _move_wins(self, game: ChessGame, move: Move, depth: int) -> bool:
-        mover = game.turn
         undo = game.make(*move)
         try:
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
+            if game.is_checkmate():
                 return True
             if depth <= 1:
                 return False
-            if game.is_in_check(mover):
-                return False  # hangs the king: the defender takes it first
             if self.is_over(game):
-                return False
+                return False  # stalemate or a draw rule: not a win
             return self._defender_loses(game, depth - 1)
         finally:
             game.unmake(undo)
 
     def _defender_loses(self, game: ChessGame, depth: int) -> bool:
-        """Every defence (the side to move's) still allows a win within ``depth``."""
-        for reply in all_moves(game.grid, game.turn, game.en_passant_target):
+        """Every defence (the side to move's) still allows a mate within ``depth``."""
+        replies = game.legal_moves()
+        if not replies:
+            return False  # already mate or stalemate; the caller decides which
+        for reply in replies:
             undo = game.make(*reply)
             try:
-                if undo.captured is not None and undo.captured.type == PieceType.KING:
-                    return False
                 if self.is_over(game) or not self._attacker_wins(game, depth):
                     return False
             finally:
@@ -192,7 +199,7 @@ class Oracle:
             target = grid[move[1][0]][move[1][1]]
             return get_piece_value(target.type) if target is not None else 0.0
 
-        moves = all_moves(grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         moves.sort(key=victim, reverse=True)
         return moves
 
@@ -203,15 +210,14 @@ class Oracle:
         mover = game.turn
         undo = game.make(*move)
         try:
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
-                return WIN
-            if game.is_in_check(mover):
-                return -WIN  # the reply takes the king
             if plies <= 0:
-                return self.material(game, mover)
+                # is_checkmate() short-circuits on is_check(), so the common quiet
+                # leaf never generates a move list.
+                return WIN if game.is_checkmate() else self.material(game, mover)
             replies = self._ordered_moves(game)
             if not replies:
-                return self.material(game, mover)
+                # Mate wins outright; a stalemate is equal, whatever is on the board.
+                return WIN if game.is_checkmate() else 0.0
             reply_alpha, reply_beta = -beta, -alpha  # the replier's window
             best = -_INF
             for reply in replies:

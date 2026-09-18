@@ -8,7 +8,7 @@ import torch
 from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.minimax_agent import MinimaxAgent
 from kaisparov.agents.random_agent import RandomAgent
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.training.config import RewardSettings

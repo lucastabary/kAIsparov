@@ -31,8 +31,8 @@ from typing import Any
 
 import torch
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
+from kaisparov.core.game import ChessGame
 from kaisparov.training.config import CurriculumSettings, RewardSettings, RolloutSettings
 
 # One persistent pool, reused across epochs so torch is imported once per worker
@@ -147,7 +147,7 @@ def _worker_collect(payload: dict[str, Any]) -> dict[str, Any]:
 # Keys collect_data reports as per-episode rates/means; aggregated as an
 # episode-weighted average across worker slices.
 _WEIGHTED_KEYS = (
-    "king_capture_rate",
+    "checkmate_rate",
     "truncated_rate",
     "stalemate_rate",
     "draw_rate",
@@ -294,7 +294,7 @@ def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # Keys collect_vs_opponent reports as per-episode rates/means.
-_VS_WEIGHTED_KEYS = ("king_capture_rate", "winrate", "lossrate", "drawrate", "avg_plies")
+_VS_WEIGHTED_KEYS = ("checkmate_rate", "winrate", "lossrate", "drawrate", "avg_plies")
 
 
 def collect_vs_opponent_parallel(

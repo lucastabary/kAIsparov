@@ -6,8 +6,7 @@ import random
 
 from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
 
 
 class RandomAgent:
@@ -20,7 +19,7 @@ class RandomAgent:
         self.avoid_king_suicide = avoid_king_suicide
 
     def select_move(self, game: ChessGame) -> Move | None:
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         if not moves:
             return None
         if self.avoid_king_suicide:

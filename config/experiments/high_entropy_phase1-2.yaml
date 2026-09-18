@@ -24,7 +24,7 @@ seed: 0
 device: auto
 checkpoint_every: 20
 
-reward: king_capture_only
+reward: checkmate_only
 
 curriculum:
   name: "4 pieces/side, no pawns"

@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from kaisparov.agents.base import Policy
 from kaisparov.bench.position import move_to_uci
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
-from kaisparov.core.movegen import Move, all_moves
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 
 if TYPE_CHECKING:
     from kaisparov.insights import Analyzer
@@ -131,7 +131,7 @@ def ask_move(policy: Policy, game: ChessGame) -> tuple[Move | None, float, str |
 
 
 def legal_uci(game: ChessGame) -> set[str]:
-    return {move_to_uci(m) for m in all_moves(game.grid, game.turn, game.en_passant_target)}
+    return {move_to_uci(m) for m in game.legal_moves()}
 
 
 class Task(ABC):

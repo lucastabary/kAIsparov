@@ -14,7 +14,7 @@ from typing import Any, ClassVar
 from kaisparov.agents.base import Policy
 from kaisparov.bench.position import Position, mirror_move, move_to_uci
 from kaisparov.bench.tasks.base import Outcome, Task, TaskContext, ask_move
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 
 
 @dataclass(frozen=True)

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.utils import get_piece_value
 

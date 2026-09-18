@@ -19,7 +19,7 @@ pygame = pytest.importorskip("pygame", reason="pygame UI modules are not install
 # Nothing here opens a window; keep SDL headless anyway in case a driver is probed.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
-from kaisparov.core.board import ChessGame  # noqa: E402
+from kaisparov.core.game import ChessGame  # noqa: E402
 from kaisparov.core.game_interface import GameInterface, MatchSetup  # noqa: E402
 from kaisparov.core.notation import numbered_moves  # noqa: E402
 from kaisparov.core.pieces import Player  # noqa: E402

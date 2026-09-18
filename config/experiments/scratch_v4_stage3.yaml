@@ -3,7 +3,7 @@
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/scratch_v4_stage3.yaml
 #
-# Inherits architecture (rgcn/hidden_dim=32) and reward (king_capture_only) from the
+# Inherits architecture (rgcn/hidden_dim=32) and reward (checkmate_only) from the
 # stage-2 parent. `curriculum: null` disables the piece-count curriculum, so games start
 # from the normal chess position — the actual task the model is meant to play.
 #
@@ -25,7 +25,7 @@ description: |
 # (refinement), so returns diminish beyond this.
 epochs: 200
 
-reward: king_capture_only
+reward: checkmate_only
 
 # Disable the curriculum -> start from the normal chess position ("vraie partie").
 curriculum: null

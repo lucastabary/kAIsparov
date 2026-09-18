@@ -17,7 +17,7 @@ from kaisparov.analysis import (
     win_probability,
 )
 from kaisparov.analysis.judge import WIN
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.insights import MoveQuality, MoveVerdict
 
@@ -28,7 +28,7 @@ def position(pieces: dict, turn: Player = W) -> ChessGame:
     """A board holding only ``{(col, row): (player, piece_type)}``."""
     game = ChessGame(initial_board=[[None] * 8 for _ in range(8)], turn=turn)
     for (col, row), (player, piece_type) in pieces.items():
-        game.grid[col][row] = Piece(player, piece_type)
+        game.place((col, row), Piece(player, piece_type))
     return game
 
 

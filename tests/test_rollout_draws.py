@@ -14,7 +14,7 @@ import types
 
 import torch
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 from kaisparov.models import rgcn
 from kaisparov.models.factory import load_backend_spec
@@ -30,7 +30,7 @@ W, B = Player.WHITE, Player.BLACK
 STALEMATING_MOVE = ((2, 0), (2, 6))
 
 # A king capture that would be worth a lot if the stalemate were mistaken for a win.
-REWARDS = RewardSettings(material=1.0, king_capture=10.0, step_penalty=0.0)
+REWARDS = RewardSettings(material=1.0, checkmate=10.0, step_penalty=0.0)
 
 
 class StalemateSetup(BaseCurriculum):

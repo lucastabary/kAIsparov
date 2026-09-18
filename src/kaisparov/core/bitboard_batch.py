@@ -154,34 +154,31 @@ def attacked_by(orth, diag, knights, kings, pawns, occ, color):
 
 
 # ------------------------------------------------------------------- batch packing
-# Per-type layer order in the packed array (see pack_positions).
+# Per-type layer order in the packed array (see pack_boards).
 ORTH, DIAG, KNIGHTS, KINGS, PAWNS, OCC = range(6)
 
 
-def pack_positions(positions, color: int) -> np.ndarray:
-    """Pack ``BitPosition`` objects into a (6, N) uint64 array for ``attacked_by``.
+def pack_boards(boards, color: int) -> np.ndarray:
+    """Pack :class:`chess.Board` objects into a (6, N) uint64 array for ``attacked_by``.
 
-    Rows are (orth, diag, knights, kings, pawns, occ) for ``color``.
+    Rows are (orth, diag, knights, kings, pawns, occ) for ``color``; ``occ`` is the
+    full occupancy, both colours, because sliders are blocked by anything.
+
+    python-chess already holds the position as one bitboard per piece type plus a
+    per-colour occupancy, in this project's own ``sq = row * 8 + col`` convention, so
+    packing is six masks per board and no per-square scan.
     """
-    from kaisparov.core.bitboard import (
-        BISHOP_IDX,
-        KING_IDX,
-        KNIGHT_IDX,
-        PAWN_IDX,
-        QUEEN_IDX,
-        ROOK_IDX,
-    )
-
-    n = len(positions)
+    n = len(boards)
     out = np.zeros((6, n), dtype=np.uint64)
-    for i, pos in enumerate(positions):
-        pbb = pos.pbb[color]
-        out[ORTH, i] = pbb[ROOK_IDX] | pbb[QUEEN_IDX]
-        out[DIAG, i] = pbb[BISHOP_IDX] | pbb[QUEEN_IDX]
-        out[KNIGHTS, i] = pbb[KNIGHT_IDX]
-        out[KINGS, i] = pbb[KING_IDX]
-        out[PAWNS, i] = pbb[PAWN_IDX]
-        out[OCC, i] = pos.all
+    for i, board in enumerate(boards):
+        own = board.occupied_co[color == WHITE]
+        queens = board.queens & own
+        out[ORTH, i] = (board.rooks & own) | queens
+        out[DIAG, i] = (board.bishops & own) | queens
+        out[KNIGHTS, i] = board.knights & own
+        out[KINGS, i] = board.kings & own
+        out[PAWNS, i] = board.pawns & own
+        out[OCC, i] = board.occupied
     return out
 
 
@@ -201,7 +198,7 @@ def attacked_by_packed(packed: np.ndarray, color: int) -> np.ndarray:
 __all__ = [
     "attacked_by",
     "attacked_by_packed",
-    "pack_positions",
+    "pack_boards",
     "rook_attacks",
     "bishop_attacks",
     "knight_attacks",

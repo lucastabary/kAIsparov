@@ -17,10 +17,10 @@ from kaisparov.bench.generators.tactics import board_material
 from kaisparov.bench.oracle import Oracle
 from kaisparov.bench.problem import Problem
 from kaisparov.bench.tasks import SameMove
-from kaisparov.core.attacks import PAWN_CAPTURES_BLACK
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
+from kaisparov.core.rules import pawn_attacks
 
 
 def _middlegame(rng: random.Random, oracle: Oracle) -> BoardBuilder | None:
@@ -31,9 +31,19 @@ def _middlegame(rng: random.Random, oracle: Oracle) -> BoardBuilder | None:
 
 
 def _moves(game: ChessGame, player: Player) -> set:
-    return set(
-        all_moves(game.grid, player, game.en_passant_target if player == game.turn else None)
-    )
+    """Every legal move ``player`` has, even when it is not their turn.
+
+    The mirror check compares a position with its colour-swapped twin, so it has to
+    ask both sides what they can do. python-chess only generates for the side to
+    move, hence the temporary flip.
+    """
+    board = game.board
+    previous = board.turn
+    board.turn = player == Player.WHITE
+    try:
+        return {Move.from_chess(m) for m in board.legal_moves}
+    finally:
+        board.turn = previous
 
 
 class MirrorConsistencyGenerator(SamplingGenerator):
@@ -79,7 +89,7 @@ class DistractorInvarianceGenerator(SamplingGenerator):
         squares = [s for s in board.free_squares(range(2, BOARD_SIZE - 1))]
         rng.shuffle(squares)
         for square in squares:
-            if any(target in touched for target in PAWN_CAPTURES_BLACK[square]):
+            if any(target in touched for target in pawn_attacks(square, Player.BLACK)):
                 continue  # it would guard (or threaten) something White cares about
             board.place(Player.BLACK, PieceType.PAWN, square)
             variant = board.position(Player.WHITE)

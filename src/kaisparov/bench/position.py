@@ -1,7 +1,7 @@
 """A position a problem starts from, written as FEN so it can be read and typed by hand.
 
 :class:`Position` is the benchmark's immutable, serialisable view of a board. The
-engine's :class:`~kaisparov.core.board.ChessGame` is mutable and carries per-piece
+engine's :class:`~kaisparov.core.game.ChessGame` is mutable and carries per-piece
 ``has_moved`` flags; a problem needs neither, it needs a string that survives a JSONL
 file and a code review. FEN is that string, with three conventions the variant needs:
 
@@ -25,9 +25,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import ALL_SQUARES, Coord
-from kaisparov.core.movegen import Move
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 from kaisparov.core.notation import square_name
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 

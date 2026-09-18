@@ -18,8 +18,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import NamedTuple
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import ALL_SQUARES, Coord
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import PieceType, Player
 
 PIECE_LETTERS: dict[PieceType, str] = {

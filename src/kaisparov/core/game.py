@@ -110,6 +110,27 @@ class ChessGame:
         self.last_move = None
         self._reset_derived()
 
+    def place(self, coord: Coord, piece: Piece | None) -> None:
+        """Put ``piece`` on ``coord`` (or clear it), and forget the game so far.
+
+        Setting up a position by hand, for a test or a generated benchmark problem.
+        It is *not* a move: the side to move, the move counters and the repetition
+        history are reset, exactly as if the position had been handed in fresh.
+
+        Writing into :attr:`grid` does nothing — that list is a rebuilt snapshot, not
+        the position.
+        """
+        square = coord_to_square(coord)
+        if piece is None:
+            self.board.remove_piece_at(square)
+        else:
+            self.board.set_piece_at(
+                square, chess.Piece(TO_CHESS_PIECE[piece.type], piece.player == Player.WHITE)
+            )
+        self.count = 0
+        self.last_move = None
+        self._reset_derived()
+
     def _reset_derived(self) -> None:
         self._grid = None
         self._zobrist = None

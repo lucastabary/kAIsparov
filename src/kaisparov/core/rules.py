@@ -1,14 +1,37 @@
-"""Board-level rules that are not tied to a single piece's movement."""
+"""Board-level rules that are not tied to a single piece's movement.
+
+Thin wrappers over python-chess, kept as free functions because two kinds of caller
+need them: the ones holding a live :class:`~kaisparov.core.game.ChessGame` (analysis,
+the models) and the ones holding only a hand-built ``grid`` that is not a game yet
+(the curriculum sampler, the benchmark's board builder). Both are accepted; passing a
+grid pays for building a throwaway :class:`chess.Board`, so hot paths should pass the
+game — or, better, read its bitboards directly.
+"""
 
 from __future__ import annotations
 
-from kaisparov.core import attacks
-from kaisparov.core.coords import ALL_SQUARES, Coord, in_bounds
-from kaisparov.core.movegen import Grid
-from kaisparov.core.pieces import PieceType, Player
+import chess
+
+from kaisparov.core.coords import ALL_SQUARES, Coord
+from kaisparov.core.move import coord_to_square, square_to_coord
+from kaisparov.core.pieces import Piece, PieceType, Player
+
+Grid = list[list["Piece | None"]]
+Position = "ChessGame | Grid"
+
+
+def _as_board(position) -> chess.Board:
+    """Accept a :class:`ChessGame` or a bare grid, return a python-chess board."""
+    board = getattr(position, "board", None)
+    if board is not None:
+        return board
+    from kaisparov.core.game import _board_from_grid
+
+    return _board_from_grid(position, Player.WHITE, None)
 
 
 def find_king(grid: Grid, player: Player) -> Coord | None:
+    """Locate ``player``'s king on a bare grid, or ``None`` if it has none."""
     for x, y in ALL_SQUARES:
         piece = grid[x][y]
         if piece is not None and piece.type == PieceType.KING and piece.player == player:
@@ -16,107 +39,40 @@ def find_king(grid: Grid, player: Player) -> Coord | None:
     return None
 
 
-def is_in_check(grid: Grid, player: Player) -> bool:
-    """True if ``player``'s king is attacked by any enemy piece.
-
-    Scans *outward from the king* along each attack pattern and returns on the first
-    enemy attacker, reusing the precomputed :mod:`kaisparov.core.attacks` tables: a
-    slider ray stops at its first blocker and no enemy move lists are ever built. This
-    is the same blocking-aware notion as before (equivalent to asking whether any enemy
-    ``pseudo_legal_moves`` reaches the king) at a fraction of the cost.
-    """
-    king_pos = find_king(grid, player)
-    if king_pos is None:
+def is_in_check(position, player: Player) -> bool:
+    """True if ``player``'s king is attacked. A side without a king is never in check."""
+    board = _as_board(position)
+    king = board.king(player == Player.WHITE)
+    if king is None:
         return False
-
-    enemy = Player.BLACK if player == Player.WHITE else Player.WHITE
-    kx, ky = king_pos
-
-    # Knight: an enemy knight on any knight-hop square attacks the king.
-    for tx, ty in attacks.KNIGHT_TARGETS[king_pos]:
-        piece = grid[tx][ty]
-        if piece is not None and piece.player == enemy and piece.type == PieceType.KNIGHT:
-            return True
-
-    # Adjacent enemy king (a king can capture an adjacent king in this variant).
-    for tx, ty in attacks.KING_TARGETS[king_pos]:
-        piece = grid[tx][ty]
-        if piece is not None and piece.player == enemy and piece.type == PieceType.KING:
-            return True
-
-    # Enemy pawns attack diagonally toward the king: a black pawn sits one row above
-    # the king (it captures downward), a white pawn one row below.
-    pawn_dy = 1 if enemy == Player.BLACK else -1
-    for dx in (-1, 1):
-        target = (kx + dx, ky + pawn_dy)
-        if in_bounds(target):
-            piece = grid[target[0]][target[1]]
-            if piece is not None and piece.player == enemy and piece.type == PieceType.PAWN:
-                return True
-
-    # Sliders: the first piece down each ray. Orthogonal -> enemy rook/queen;
-    # diagonal -> enemy bishop/queen. A blocker of any kind ends the ray.
-    for ray in attacks.ORTHO_RAYS[king_pos]:
-        for cx, cy in ray:
-            piece = grid[cx][cy]
-            if piece is not None:
-                if piece.player == enemy and piece.type in (PieceType.ROOK, PieceType.QUEEN):
-                    return True
-                break
-    for ray in attacks.DIAG_RAYS[king_pos]:
-        for cx, cy in ray:
-            piece = grid[cx][cy]
-            if piece is not None:
-                if piece.player == enemy and piece.type in (PieceType.BISHOP, PieceType.QUEEN):
-                    return True
-                break
-
-    return False
+    return board.is_attacked_by(player != Player.WHITE, king)
 
 
-def _slider_rays(piece_type: PieceType, source: Coord) -> list[list[Coord]]:
-    if piece_type == PieceType.ROOK:
-        return attacks.ORTHO_RAYS[source]
-    if piece_type == PieceType.BISHOP:
-        return attacks.DIAG_RAYS[source]
-    return attacks.QUEEN_RAYS[source]  # QUEEN
-
-
-def attacked_squares(grid: Grid, by_player: Player) -> set[Coord]:
-    """Return every square ``by_player`` controls in this position.
+def attacked_squares(position, by_player: Player) -> set[Coord]:
+    """Every square ``by_player`` controls in this position.
 
     A square is controlled if one of ``by_player``'s pieces could capture a piece
-    standing there. Sliding pieces stop at the first piece on each ray (that
-    blocker's square is attacked; squares behind it are not), so this is the same
-    blocking-aware notion :func:`is_in_check` uses — but exposed for *every* square,
-    empty ones included, so a caller can also test whether a would-be destination
-    (e.g. a king's escape square) is safe. Pawns control only their two forward
-    diagonals, never the push square; the king/knight control their step targets.
-
-    Unlike :func:`kaisparov.core.movegen.pseudo_legal_moves`, occupancy of the
-    target square is irrelevant here: a square an enemy pawn guards diagonally is
-    attacked whether it is empty, friendly, or hostile.
+    standing there. Sliders stop at the first blocker (whose square *is* attacked);
+    pawns control only their two forward diagonals, never the push square. Occupancy of
+    the target is irrelevant, so this also answers "is that escape square safe?".
     """
+    board = _as_board(position)
+    colour = by_player == Player.WHITE
     controlled: set[Coord] = set()
-    for x, y in ALL_SQUARES:
-        piece = grid[x][y]
-        if piece is None or piece.player != by_player:
-            continue
-
-        if piece.type == PieceType.KNIGHT:
-            controlled.update(attacks.KNIGHT_TARGETS[(x, y)])
-        elif piece.type == PieceType.KING:
-            controlled.update(attacks.KING_TARGETS[(x, y)])
-        elif piece.type == PieceType.PAWN:
-            direction = 1 if piece.player == Player.WHITE else -1
-            for dx in (-1, 1):
-                target = (x + dx, y + direction)
-                if in_bounds(target):
-                    controlled.add(target)
-        else:  # QUEEN / ROOK / BISHOP
-            for ray in _slider_rays(piece.type, (x, y)):
-                for cx, cy in ray:
-                    controlled.add((cx, cy))
-                    if grid[cx][cy] is not None:
-                        break  # blocked: attacks the blocker, nothing beyond it
+    for square in chess.scan_forward(board.occupied_co[colour]):
+        for target in board.attacks(square):
+            controlled.add(square_to_coord(target))
     return controlled
+
+
+def pawn_attacks(square: Coord, player: Player) -> tuple[Coord, ...]:
+    """The squares a ``player`` pawn on ``square`` would capture on.
+
+    Geometry only: it ignores what actually stands there, which is what a generator
+    placing pieces on an empty board needs.
+    """
+    mask = chess.BB_PAWN_ATTACKS[player == Player.WHITE][coord_to_square(square)]
+    return tuple(square_to_coord(s) for s in chess.scan_forward(mask))
+
+
+__all__ = ["find_king", "is_in_check", "attacked_squares", "pawn_attacks"]

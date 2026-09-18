@@ -5,8 +5,8 @@ import torch
 from torch_geometric.data import Data
 
 from kaisparov.core import bitboard_batch as bbb
-from kaisparov.core.board import ChessGame
-from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
+from kaisparov.core.game import ChessGame, Undo
+from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import attacked_squares
 from kaisparov.core.utils import coord_to_index, get_piece_value, index_to_coord
 from kaisparov.models.base_processor import (
@@ -43,12 +43,18 @@ _BB_ROWS = {
 _SQUARES = np.arange(BOARD_SIZE * BOARD_SIZE, dtype=np.uint64)
 
 
-def compute_reward(game: ChessGame, captured_piece: Piece | None) -> float:
-    reward = 0.0
-    if captured_piece is not None:
-        reward += get_piece_value(captured_piece.type)
+def compute_reward(game: ChessGame, undo: Undo) -> float:
+    """Fallback reward when the trainer supplies none: material only.
 
-    # TODO(phase 4): add shaping (e.g. bonus when the opponent is in check).
+    Mirrors :class:`~kaisparov.envs.chess_env.ChessEnv` — the captured piece, plus
+    what a promotion gained. Shaping (checkmate bonus, check, step penalty) lives in
+    :mod:`kaisparov.training.reward`.
+    """
+    reward = 0.0
+    if undo.captured is not None:
+        reward += get_piece_value(undo.captured.type)
+    if undo.move.promotion is not None:
+        reward += get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
     return reward
 
 
@@ -94,9 +100,9 @@ class RGCNProcessor(BaseProcessor):
         # Feature 12: attacked by the opponent (side NOT to move) — set on the ally
         # king's square exactly when it is in check, and on empty squares that are
         # unsafe to move onto. Feature 13: defended by the side to move.
-        for cx, cy in attacked_squares(game.grid, enemy_player):
+        for cx, cy in attacked_squares(game, enemy_player):
             x[coord_to_index((cx, cy)), 12] = 1.0
-        for cx, cy in attacked_squares(game.grid, current_player):
+        for cx, cy in attacked_squares(game, current_player):
             x[coord_to_index((cx, cy)), 13] = 1.0
 
         static_edge_index, static_edge_type = self.static_graph_edges
@@ -219,7 +225,7 @@ class RGCNProcessor(BaseProcessor):
         if not moves:
             return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
         keys = torch.tensor(
-            [coord_to_index(src) * num_nodes + coord_to_index(dst) for src, dst in moves],
+            [coord_to_index(m[0]) * num_nodes + coord_to_index(m[1]) for m in moves],
             dtype=edge_index.dtype,
             device=edge_index.device,
         )

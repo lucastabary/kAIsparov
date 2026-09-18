@@ -1,38 +1,29 @@
-"""Draw rules: when a game ends with nobody capturing a king.
+"""Draw rules: when a game ends without a winner.
 
 Four independent rules, each switchable through :class:`DrawRules`:
 
 ``repetition``
     The same position (pieces, side to move, castling rights, en-passant target)
-    has occurred N times — the players are shuffling in a loop. Counted from the
-    per-position tally :class:`~kaisparov.core.board.ChessGame` maintains.
+    has occurred N times. Counted from the Zobrist history
+    :class:`~kaisparov.core.game.ChessGame` maintains.
 ``no_progress_plies``
     N plies without a capture or a pawn move — the fifty-move rule, in plies.
     Catches the loops that drift instead of repeating a position exactly.
 ``insufficient_material``
     Neither side has the material to mate: bare kings, king + one minor against a
-    bare king, or one bishop each on the same colour complex.
+    bare king, or bishops on a single colour complex.
 ``stalemate``
-    The side to move is not attacked, yet every move it has hands its own king to
-    the opponent (or it has no move at all). Capture-the-king has no legality
-    filter, so this never ends a game by itself: the player would have to play one
-    of those moves and lose the king next ply. The rule restores the classical
-    outcome. A side that *is* attacked with no safe move is not stalemated — that
-    is mate, and the game plays on to the capture.
-
-.. warning::
-   The material rule is a **convention** in this variant, not a fact. Moves here
-   are pseudo-legal and the game ends on a king capture, so a king may walk next
-   to the enemy king and be taken: strictly speaking, no position is ever dead —
-   even bare kings can be "won" on a blunder. The rule declares those positions
-   drawn because nothing can be *played for* in them, which stops blunder
-   roulette from deciding endgames. Turn it off (``insufficient_material=False``)
-   to keep them alive.
+    The side to move is not in check and has no legal move.
 
 The rules are pure predicates over the game state; deciding what to *do* with a
 draw (end the episode, score it 0.5, …) belongs to the caller —
 :class:`~kaisparov.envs.chess_env.ChessEnv` for play and evaluation, the rollouts
 for training.
+
+All four are switchable because the training curriculum and the benchmark need to
+turn them off: a generated endgame that is "already drawn" by the material rule
+would otherwise never start. Standard play uses :data:`DEFAULT_RULES`, which has
+all four on.
 """
 
 from __future__ import annotations
@@ -40,14 +31,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from kaisparov.core.coords import ALL_SQUARES
-from kaisparov.core.movegen import all_moves
-from kaisparov.core.pieces import Piece, PieceType, Player
-
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a core import cycle
-    from kaisparov.core.board import ChessGame
-
-Grid = list[list["Piece | None"]]
+    from kaisparov.core.game import ChessGame
 
 REPETITION_LIMIT = 3  # threefold repetition
 NO_PROGRESS_PLIES = 100  # 50 moves x 2 plies
@@ -57,8 +42,6 @@ REPETITION = "repetition"
 NO_PROGRESS = "no_progress"
 INSUFFICIENT_MATERIAL = "insufficient_material"
 STALEMATE = "stalemate"
-
-_MINORS = (PieceType.BISHOP, PieceType.KNIGHT)
 
 
 @dataclass(frozen=True)
@@ -77,49 +60,21 @@ NO_RULES = DrawRules(
 )
 
 
-def is_insufficient_material(grid: Grid) -> bool:
-    """True if neither side has enough material to mate (see the module warning)."""
-    minors = {Player.WHITE: 0, Player.BLACK: 0}
-    bishop_squares: list[int] = []
-
-    for x, y in ALL_SQUARES:
-        piece = grid[x][y]
-        if piece is None or piece.type == PieceType.KING:
-            continue
-        if piece.type not in _MINORS:
-            return False  # a pawn, rook or queen is always enough
-        minors[piece.player] += 1
-        if minors[piece.player] > 1:
-            return False  # two minors can mate
-        if piece.type == PieceType.BISHOP:
-            bishop_squares.append((x + y) % 2)
-
-    if minors[Player.WHITE] + minors[Player.BLACK] <= 1:
-        return True  # K vs K, or K + one minor vs K
-    # One minor each: only two bishops on the same colour complex are dead.
-    return len(bishop_squares) == 2 and bishop_squares[0] == bishop_squares[1]
+def is_insufficient_material(game: ChessGame) -> bool:
+    """True if neither side has enough material to deliver mate."""
+    return game.board.is_insufficient_material()
 
 
 def is_stalemate(game: ChessGame) -> bool:
-    """True if the side to move is not in check but has no move that keeps its king.
-
-    Cheap in the common case: a side in check returns at once, and otherwise the
-    scan stops at the first move that does not hang the king — almost always the
-    first one tried.
-    """
-    player = game.turn
-    if game.is_in_check(player):
-        return False
-    return all(
-        game.hangs_own_king(*move) for move in all_moves(game.grid, player, game.en_passant_target)
-    )
+    """True if the side to move is not in check and has no legal move."""
+    return game.board.is_stalemate()
 
 
 def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str | None:
     """Name the rule that makes ``game`` a draw right now, or ``None``.
 
-    Cheapest first: the two O(1) counters, then the material scan, then the
-    stalemate test (a move generation plus a make/unmake per move it tries).
+    Cheapest first: the two counters, then the material test, then stalemate (which
+    has to generate moves).
     """
     if rules is None:
         return None
@@ -127,9 +82,9 @@ def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str
         return REPETITION
     if rules.no_progress_plies and game.halfmove_clock >= rules.no_progress_plies:
         return NO_PROGRESS
-    if rules.insufficient_material and is_insufficient_material(game.grid):
+    if rules.insufficient_material and game.board.is_insufficient_material():
         return INSUFFICIENT_MATERIAL
-    if rules.stalemate and is_stalemate(game):
+    if rules.stalemate and game.board.is_stalemate():
         return STALEMATE
     return None
 

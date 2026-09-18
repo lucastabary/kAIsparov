@@ -16,13 +16,11 @@ import torch
 
 from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import is_stalemate
-from kaisparov.core.movegen import all_moves
-from kaisparov.core.pieces import PieceType
+from kaisparov.core.game import ChessGame
 from kaisparov.core.utils import coord_to_index
 
-WIN = 1e6  # value of capturing the king (dominates any critic value)
+WIN = 1e6  # value of delivering mate (dominates any critic value)
 
 
 class MinimaxAgent:
@@ -34,9 +32,9 @@ class MinimaxAgent:
         self.model = model
         self.processor = processor
         self.depth = depth
-        # When True, drop root moves that hang our own king before searching. At
-        # depth 1 the search doesn't see the opponent's king-capture reply, so this
-        # guard is what stops a depth-1 minimax from walking into it.
+        # When True, drop root moves that walk into mate in one before searching.
+        # At depth 1 the search does not see the opponent's mating reply, so this
+        # guard is what stops a depth-1 minimax from stepping into it.
         self.avoid_king_suicide = avoid_king_suicide
         # Map a move (src, dst) to its position in the actor's edge scores, for ordering.
         edge_index = processor.static_graph_edges[0]
@@ -64,26 +62,25 @@ class MinimaxAgent:
         return sorted(moves, key=score, reverse=True)
 
     def _search(self, game: ChessGame, depth: int, alpha: float, beta: float) -> float:
-        # A stalemated side would have to hang its king, which the search below reads
-        # as a forced loss — so without this, stalemating the opponent looks like a
-        # win. The rules call it a draw, and a draw is worth 0 (the training target).
-        # Tested before the forward, which it saves; the test is µs, the forward ms.
+        # Mate and stalemate are read off the position before spending a forward
+        # pass on it: being mated is the worst outcome there is, and a stalemate is a
+        # draw worth 0 (the training target) — without that, stalemating the opponent
+        # would look like a win. The tests are µs, the forward is ms.
+        if game.is_checkmate():
+            return -WIN  # the side to move has been mated
         if is_stalemate(game):
             return 0.0
         action_scores, value = self._forward(game)
         if depth == 0:
             return value
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         if not moves:
             return value  # no move available -> evaluate statically
 
         best = -WIN * 2
         for mv in self._order(moves, action_scores):
             undo = game.make(*mv)
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
-                child = WIN  # this move wins outright
-            else:
-                child = -self._search(game, depth - 1, -beta, -alpha)
+            child = -self._search(game, depth - 1, -beta, -alpha)
             game.unmake(undo)
 
             if child > best:
@@ -95,7 +92,7 @@ class MinimaxAgent:
         return best
 
     def select_move(self, game: ChessGame) -> Move | None:
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         if not moves:
             return None
         if self.avoid_king_suicide:
@@ -107,10 +104,7 @@ class MinimaxAgent:
             best_move, best_val, alpha = None, -WIN * 2, -WIN * 2
             for mv in self._order(moves, action_scores):
                 undo = game.make(*mv)
-                if undo.captured is not None and undo.captured.type == PieceType.KING:
-                    value = WIN
-                else:
-                    value = -self._search(game, self.depth - 1, -WIN * 2, -alpha)
+                value = -self._search(game, self.depth - 1, -WIN * 2, -alpha)
                 game.unmake(undo)
 
                 if value > best_val:

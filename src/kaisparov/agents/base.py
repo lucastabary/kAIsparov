@@ -9,10 +9,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from kaisparov.core.board import ChessGame
-from kaisparov.core.coords import Coord
-
-Move = tuple[Coord, Coord]
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 
 
 @runtime_checkable
@@ -20,5 +18,5 @@ class Policy(Protocol):
     name: str
 
     def select_move(self, game: ChessGame) -> Move | None:
-        """Return a legal ``(source, dest)`` move, or ``None`` if none is available."""
+        """Return a legal move, or ``None`` if none is available."""
         ...

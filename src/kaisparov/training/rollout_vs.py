@@ -22,9 +22,8 @@ from typing import Any
 import torch
 from torch_geometric.data import Batch
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.core.utils import get_piece_value
 from kaisparov.training.config import RewardSettings
@@ -51,7 +50,7 @@ def _new_game(curriculum: BaseCurriculum | None) -> ChessGame:
 
 def _opponent_reply(game: ChessGame, opponent) -> tuple[bool, Piece | None]:
     """Play the opponent's move. Returns (moved, captured_piece)."""
-    if not all_moves(game.grid, game.turn, game.en_passant_target):
+    if not game.legal_moves():
         return False, None
     move = opponent.select_move(game)
     if move is None:
@@ -217,7 +216,7 @@ def collect_vs_opponent(
         # A decisive game here ends with a king capture by either side (win + loss);
         # named to match the self-play rollout's key so the trainer can log/print it
         # uniformly. ``winrate`` is the learner's own king-capture rate.
-        "king_capture_rate": (wins + losses) / n,
+        "checkmate_rate": (wins + losses) / n,
         "winrate": wins / n,
         "lossrate": losses / n,
         "drawrate": draws / n,

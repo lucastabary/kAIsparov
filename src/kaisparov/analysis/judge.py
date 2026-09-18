@@ -29,9 +29,8 @@ import math
 from dataclasses import dataclass, field
 
 from kaisparov.analysis.evaluators import Evaluator
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import is_stalemate
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import attacked_squares
 from kaisparov.core.utils import get_piece_value
@@ -106,7 +105,7 @@ class MoveJudge:
         """Value of ``game`` for the side to move, ``plies`` deep."""
         if plies <= 0:
             return self.evaluator.evaluate(game)
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         if not moves:
             return self.evaluator.evaluate(game)  # stuck: judge the position as it stands
         best = max(self._value_after(game, move, plies - 1) for move in moves)
@@ -122,20 +121,18 @@ class MoveJudge:
         """Value of playing ``move``, for the player who plays it."""
         undo = game.make(*move)
         try:
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
-                return WIN  # the game ends here, nothing left to search
-            # Hanging your own king loses on the spot in capture-the-king, and a
-            # static evaluator (lookahead 0) would never see it. The test is a single
-            # attack lookup, so run it at every depth and skip the subtree.
-            if game.is_in_check(_mover(game)):
-                return -WIN
+            # Mate ends the game here, and a static evaluator (lookahead 0) would
+            # never see it. is_checkmate() short-circuits on is_check(), so running it
+            # at every depth costs one attack lookup on a quiet node.
+            if game.is_checkmate():
+                return WIN
             return -self._negamax(game, plies)
         finally:
             game.unmake(undo)
 
     def rank(self, game: ChessGame) -> list[tuple[Move, float]]:
         """Every legal move scored for the side to move, best first."""
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         scored = [(move, self._value_after(game, move, self.lookahead)) for move in moves]
         scored.sort(key=lambda item: item[1], reverse=True)
         return scored
@@ -156,13 +153,12 @@ class MoveJudge:
     def _material_greed(self, game: ChessGame, player: Player, plies: int) -> float:
         """``player``'s material after ``plies`` of both sides grabbing greedily.
 
-        Deliberately *naive*: it counts material and nothing else — no king-capture
-        win, no idea that taking the piece loses on the spot. That blindness is the
-        point (see :meth:`_sacrifice`). Written as an explicit minimax on ``player``
-        rather than a negamax because ``make`` does not flip the turn when a king is
-        captured, so "the side to move" is not a reliable sign to alternate on.
+        Deliberately *naive*: it counts material and nothing else — no mate, no idea
+        that taking the piece loses on the spot. That blindness is the point (see
+        :meth:`_sacrifice`). Written as an explicit minimax on ``player`` rather than
+        a negamax so the sign never depends on whose turn the search happens to be on.
         """
-        moves = all_moves(game.grid, game.turn, game.en_passant_target) if plies > 0 else []
+        moves = game.legal_moves() if plies > 0 else []
         if not moves:
             return self._material(game, player)
 
@@ -171,10 +167,7 @@ class MoveJudge:
         for move in moves:
             undo = game.make(*move)
             try:
-                if undo.captured is not None and undo.captured.type == PieceType.KING:
-                    value = self._material(game, player)  # the game ends here
-                else:
-                    value = self._material_greed(game, player, plies - 1)
+                value = self._material_greed(game, player, plies - 1)
             finally:
                 game.unmake(undo)
             best = max(best, value) if maximising else min(best, value)
@@ -197,9 +190,9 @@ class MoveJudge:
         before = self._material(game, mover)
         undo = game.make(*move)
         try:
-            if undo.captured is not None and undo.captured.type == PieceType.KING:
-                return 0.0
-            if move[1] not in attacked_squares(game.grid, game.turn):
+            if game.is_checkmate():
+                return 0.0  # mate is not a sacrifice, whatever it left hanging
+            if move[1] not in attacked_squares(game, game.turn):
                 return 0.0
             after = self._material_greed(game, mover, 2)
         finally:
@@ -298,11 +291,6 @@ class MoveJudge:
         if wp_before >= t.winning:
             return MoveQuality.MISS
         return MoveQuality.MISTAKE if loss <= t.mistake else MoveQuality.BLUNDER
-
-
-def _mover(game: ChessGame) -> Player:
-    """The side that just moved (``make`` has already flipped ``game.turn``)."""
-    return Player.WHITE if game.turn == Player.BLACK else Player.BLACK
 
 
 @dataclass

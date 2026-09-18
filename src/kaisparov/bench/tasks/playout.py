@@ -8,8 +8,7 @@ from typing import Any, ClassVar
 from kaisparov.agents.base import Policy
 from kaisparov.bench.position import move_to_uci
 from kaisparov.bench.tasks.base import Outcome, Task, TaskContext, ask_move
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import all_moves
+from kaisparov.core.game import ChessGame
 from kaisparov.envs.chess_env import ChessEnv
 
 
@@ -79,7 +78,7 @@ class PlayOut(Task):
         )
 
     def validate(self, game: ChessGame) -> None:
-        if not all_moves(game.grid, game.turn, game.en_passant_target):
+        if not game.legal_moves():
             raise ValueError(f"{self.kind}: the side to move has no move")
 
     def params(self) -> dict[str, Any]:

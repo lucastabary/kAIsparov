@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import BOARD_SIZE
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
 from kaisparov.training.config import RewardSettings, TrainConfig
 from kaisparov.training.reward import make_reward_fn

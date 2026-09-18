@@ -1,102 +1,80 @@
-"""Tests for the optional king-safety move filter (kaisparov.agents.safety) and the
+"""Tests for the optional blunder filter (kaisparov.agents.safety) and the
 ``avoid_king_suicide`` flag on the baseline agents.
 
-The recurring scenario is the "troll pawn": a pawn is the only thing shielding its
-own king from an enemy rook down the file. Moving (here: capturing with) that pawn
-opens the file and hangs the king — exactly the blunder the guard must prevent.
+Standard chess makes hanging your own king illegal, so the guard now protects
+against the next blunder up: playing a move after which the opponent mates at once.
+The recurring scenario is a back-rank mate the greedy agent walks into while
+grabbing a free piece.
 """
 
 from __future__ import annotations
 
 from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
-from kaisparov.agents.safety import hangs_own_king, safe_moves
-from kaisparov.core.board import ChessGame
-from kaisparov.core.coords import BOARD_SIZE
-from kaisparov.core.movegen import all_moves
-from kaisparov.core.pieces import Piece, PieceType, Player
+from kaisparov.agents.safety import safe_moves, walks_into_mate
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 
 
-def empty_game(turn: Player = Player.WHITE) -> ChessGame:
-    grid = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
-    return ChessGame(initial_board=grid, turn=turn)
+def game_from(fen: str) -> ChessGame:
+    import chess
+
+    return ChessGame(board=chess.Board(fen))
 
 
-def place(game, coord, player, piece_type):
-    game.grid[coord[0]][coord[1]] = Piece(player, piece_type)
+# White to move. Taking the black knight on a5 with the rook is the only capture and
+# the greedy choice, but it abandons the first rank and Black mates with ...Re1#.
+# Everything else (h2h3 among them) keeps the escape square and survives.
+BAIT_FEN = "4r1k1/5ppp/8/n7/8/8/R4PPP/6K1 w - - 0 1"
+GREEDY_MOVE = Move((0, 1), (0, 4))  # Ra2xa5
+SAFE_MOVE = Move((7, 1), (7, 2))  # h2h3, making luft
 
 
-def troll_pawn_game() -> ChessGame:
-    """White to move. The white pawn on file 4 shields the white king from the black
-    rook; capturing the bait pawn with it (the only capture) opens the file and hangs
-    the king. The bait is a pawn on (3,2), which attacks (4,1)/(2,1) — not the king's
-    square (4,0) — so the king is genuinely safe until the shield moves."""
-    game = empty_game(turn=Player.WHITE)
-    place(game, (4, 0), Player.WHITE, PieceType.KING)  # king behind the pawn
-    place(game, (4, 1), Player.WHITE, PieceType.PAWN)  # the shield
-    place(game, (4, 7), Player.BLACK, PieceType.ROOK)  # aims down file 4
-    place(game, (3, 2), Player.BLACK, PieceType.PAWN)  # bait for the pawn capture
-    return game
+def test_the_bait_capture_is_legal_and_greedy():
+    game = game_from(BAIT_FEN)
+    moves = game.legal_moves()
+    assert GREEDY_MOVE in moves
+    assert MaterialAgent(seed=0).select_move(game) == GREEDY_MOVE
 
 
-SUICIDE_MOVE = ((4, 1), (3, 2))  # pawn takes pawn -> opens the file -> king hangs
+def test_walks_into_mate_detects_the_back_rank():
+    game = game_from(BAIT_FEN)
+    assert walks_into_mate(game, GREEDY_MOVE) is True
 
 
-def test_hangs_own_king_detects_opening_the_file():
-    game = troll_pawn_game()
-    assert hangs_own_king(game, SUICIDE_MOVE) is True
+def test_walks_into_mate_false_for_a_move_that_makes_luft():
+    game = game_from(BAIT_FEN)
+    assert walks_into_mate(game, SAFE_MOVE) is False
 
 
-def test_hangs_own_king_false_for_a_safe_move():
-    game = troll_pawn_game()
-    # Pushing the pawn straight keeps it on the file, still shielding the king.
-    assert hangs_own_king(game, ((4, 1), (4, 2))) is False
-
-
-def test_capturing_the_enemy_king_is_never_a_hang():
-    game = empty_game(turn=Player.WHITE)
-    place(game, (0, 0), Player.WHITE, PieceType.ROOK)
-    place(game, (3, 0), Player.BLACK, PieceType.KING)
-    # The winning move ends the game -> no reply -> not a hang, even though our own
-    # (here absent) king safety is irrelevant once the opponent king is captured.
-    assert hangs_own_king(game, ((0, 0), (3, 0))) is False
-
-
-def test_safe_moves_drops_the_suicide_but_keeps_the_rest():
-    game = troll_pawn_game()
-    moves = all_moves(game.grid, game.turn, game.en_passant_target)
+def test_safe_moves_drops_the_blunder_but_keeps_the_rest():
+    game = game_from(BAIT_FEN)
+    moves = game.legal_moves()
     filtered = safe_moves(game, moves)
-    assert SUICIDE_MOVE in moves  # it is a legal candidate...
-    assert SUICIDE_MOVE not in filtered  # ...but the guard removes it
-    assert filtered  # and safe alternatives remain
+    assert GREEDY_MOVE in moves  # it is a legal candidate...
+    assert GREEDY_MOVE not in filtered  # ...but the guard removes it
+    assert SAFE_MOVE in filtered
 
 
-def test_safe_moves_falls_back_when_every_move_hangs():
-    game = empty_game(turn=Player.WHITE)
-    place(game, (0, 0), Player.WHITE, PieceType.KING)  # lone king, cornered
-    place(game, (5, 0), Player.BLACK, PieceType.ROOK)  # covers rank 0 -> (1,0)
-    place(game, (0, 5), Player.BLACK, PieceType.ROOK)  # covers file 0 -> (0,1)
-    place(game, (3, 3), Player.BLACK, PieceType.BISHOP)  # covers the diagonal -> (1,1)
-    moves = all_moves(game.grid, game.turn, game.en_passant_target)
-    assert moves  # the king has escape squares...
-    assert all(hangs_own_king(game, m) for m in moves)  # ...but all of them hang
+def test_safe_moves_falls_back_when_every_move_loses():
+    # Black to move with a lone king on g8 and two squares to run to; the queen on c7
+    # covers the 7th rank and the rook on a3 swings to a8, so both f8 and h8 are mated
+    # next ply. Nothing is safe, so the guard must not hand back an empty list.
+    game = game_from("6k1/2Q5/8/8/2K5/R7/8/8 b - - 0 1")
+    moves = game.legal_moves()
+    assert moves  # Black still has moves...
+    assert all(walks_into_mate(game, m) for m in moves)  # ...all of them lose
     assert safe_moves(game, moves) == moves  # so we fall back to the full list
 
 
-def test_material_agent_grabs_the_bait_without_the_guard():
-    game = troll_pawn_game()
-    # The knight is the only capture available -> greedy material grabs it (blunder).
-    assert MaterialAgent(seed=0).select_move(game) == SUICIDE_MOVE
-
-
 def test_material_agent_refuses_the_bait_with_the_guard():
-    game = troll_pawn_game()
+    game = game_from(BAIT_FEN)
     move = MaterialAgent(seed=0, avoid_king_suicide=True).select_move(game)
-    assert move != SUICIDE_MOVE
-    assert not hangs_own_king(game, move)
+    assert move != GREEDY_MOVE
+    assert not walks_into_mate(game, move)
 
 
-def test_random_agent_never_plays_a_suicide_with_the_guard():
+def test_random_agent_never_walks_into_mate_with_the_guard():
     agent = RandomAgent(seed=0, avoid_king_suicide=True)
-    # Draw many moves; the guarded agent must never open the file.
-    assert all(agent.select_move(troll_pawn_game()) != SUICIDE_MOVE for _ in range(50))
+    # Draw many moves; the guarded agent must never allow the back-rank mate.
+    assert all(agent.select_move(game_from(BAIT_FEN)) != GREEDY_MOVE for _ in range(50))

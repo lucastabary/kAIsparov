@@ -2,15 +2,15 @@
 
 The bug this pins: against an AI the view followed the side to move, so the whole
 board turned over for the fraction of a second the AI spent thinking. The fix lives
-in :class:`~kaisparov.core.board.ChessGame`'s viewpoint helpers, which now take the
+in :class:`~kaisparov.core.game.ChessGame`'s viewpoint helpers, which now take the
 player to render for instead of always using the side to move — so that is what is
 tested here, with no pygame in sight.
 """
 
 from __future__ import annotations
 
-from kaisparov.core.board import ChessGame
-from kaisparov.core.pieces import BOARD_SIZE, Player
+from kaisparov.core.game import ChessGame
+from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
 W, B = Player.WHITE, Player.BLACK
 LAST = BOARD_SIZE - 1
@@ -37,12 +37,17 @@ def test_a_pinned_viewpoint_survives_a_change_of_turn():
 
 def test_the_grid_is_pinned_too_not_just_the_coordinates():
     game = ChessGame()
-    white_pawn = game.grid[4][1]
 
     game.play((4, 1), (4, 3))  # Black to move, but we render for White
-    assert game.get_pov_grid(W)[4][3] is white_pawn
-    assert game.get_pov_grid(B)[4][LAST - 3] is white_pawn
-    assert game.get_pov_grid()[4][LAST - 3] is white_pawn  # follows the turn: Black
+
+    def is_white_pawn(piece):
+        # grid rebuilds its Piece objects on demand, so this is about what stands on
+        # the square, not about object identity.
+        return piece is not None and (piece.player, piece.type) == (W, PieceType.PAWN)
+
+    assert is_white_pawn(game.get_pov_grid(W)[4][3])
+    assert is_white_pawn(game.get_pov_grid(B)[4][LAST - 3])
+    assert is_white_pawn(game.get_pov_grid()[4][LAST - 3])  # follows the turn: Black
 
 
 def test_the_viewpoint_transform_is_its_own_inverse():

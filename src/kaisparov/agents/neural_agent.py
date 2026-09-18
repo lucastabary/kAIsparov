@@ -62,9 +62,8 @@ class NeuralAgent:
         if not self.avoid_king_suicide or not hasattr(self.processor, "move_mask"):
             return None
         from kaisparov.agents.safety import safe_moves
-        from kaisparov.core.movegen import all_moves
 
-        moves = all_moves(game.grid, game.turn, game.en_passant_target)
+        moves = game.legal_moves()
         if not moves:
             return None
         safe = safe_moves(game, moves)

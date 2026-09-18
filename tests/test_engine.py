@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import BOARD_SIZE, all_squares
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import Piece, PieceType, Player
 
 
@@ -13,7 +13,7 @@ def empty_game(turn: Player = Player.WHITE) -> ChessGame:
 
 
 def place(game: ChessGame, coord, player: Player, piece_type: PieceType) -> None:
-    game.grid[coord[0]][coord[1]] = Piece(player, piece_type)
+    game.place(coord, Piece(player, piece_type))
 
 
 def serialize(game: ChessGame):
@@ -249,7 +249,7 @@ def test_attacked_squares_matches_is_in_check_on_king_square():
 def _is_in_check_reference(grid, player: Player) -> bool:
     """Brute-force oracle: the pre-optimization definition of ``is_in_check`` — the
     king is attacked iff some enemy piece's ``pseudo_legal_moves`` reaches it."""
-    from kaisparov.core.movegen import pseudo_legal_moves
+    from kaisparov.core.move import pseudo_legal_moves
     from kaisparov.core.rules import find_king
 
     king_pos = find_king(grid, player)

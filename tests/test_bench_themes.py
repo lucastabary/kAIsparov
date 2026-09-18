@@ -25,7 +25,6 @@ from kaisparov.bench.tasks import (
     WinMaterial,
 )
 from kaisparov.core.draw import REPETITION, STALEMATE
-from kaisparov.core.movegen import all_moves
 from kaisparov.core.pieces import PieceType, Player
 from kaisparov.insights import MoveInsight, PositionAnalysis
 
@@ -232,7 +231,7 @@ def test_draw_traps_forbid_exactly_the_drawing_moves(generated):
     oracle = Oracle()
     for name, reason in (("stalemate_trap", STALEMATE), ("repetition_trap", REPETITION)):
         for problem, game in _games(generated, name):
-            moves = all_moves(game.grid, game.turn, game.en_passant_target)
+            moves = game.legal_moves()
             drawing = {move_to_uci(m) for m in moves if oracle.draws_after(game, m) == reason}
             assert set(problem.task.forbidden) == drawing
 

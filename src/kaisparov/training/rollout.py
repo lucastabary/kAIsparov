@@ -15,9 +15,8 @@ from __future__ import annotations
 import torch
 from torch_geometric.data import Batch
 
-from kaisparov.core.board import ChessGame
 from kaisparov.core.draw import DEFAULT_RULES, STALEMATE, DrawRules
-from kaisparov.core.pieces import PieceType
+from kaisparov.core.game import ChessGame
 from kaisparov.training.curriculum import BaseCurriculum
 from kaisparov.training.ppo import PPOBuffer
 
@@ -77,7 +76,7 @@ def collect_data(
     active = [True] * num_episodes
 
     # How episodes ended, for live monitoring.
-    n_king = n_truncated = n_stalemate = n_draw = total_plies = 0
+    n_mate = n_truncated = n_stalemate = n_draw = total_plies = 0
 
     def flush(i: int) -> None:
         transitions = pending[i]
@@ -117,16 +116,16 @@ def collect_data(
                     deterministic=deterministic,
                     legal_mask=legal_mask,
                 )
-                captured = g.play(*action.move_coords)
+                undo = g.make(*action.move_coords)
                 if reward_fn is not None:
-                    reward = reward_fn(g, captured)
+                    reward = reward_fn(g, undo)
                 else:
-                    reward = module.compute_reward(g, captured)
-                king_captured = captured is not None and captured.type == PieceType.KING
-                drawn = None if king_captured else g.draw_reason(draw_rules)
+                    reward = module.compute_reward(g, undo)
+                mated = g.is_checkmate()
+                drawn = None if mated else g.draw_reason(draw_rules)
 
                 steps[i] += 1
-                done = king_captured or drawn is not None or steps[i] >= max_steps_per_episode
+                done = mated or drawn is not None or steps[i] >= max_steps_per_episode
                 pending[i].append(
                     {
                         "state": states[k],
@@ -139,8 +138,8 @@ def collect_data(
                     }
                 )
                 if done:
-                    if king_captured:
-                        n_king += 1
+                    if mated:
+                        n_mate += 1
                     elif drawn == STALEMATE:
                         n_stalemate += 1  # same bucket as "no move at all" above
                     elif drawn is not None:
@@ -152,7 +151,7 @@ def collect_data(
 
     n = max(num_episodes, 1)
     return {
-        "king_capture_rate": n_king / n,
+        "checkmate_rate": n_mate / n,
         "truncated_rate": n_truncated / n,
         "stalemate_rate": n_stalemate / n,
         "draw_rate": n_draw / n,

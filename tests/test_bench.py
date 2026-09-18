@@ -33,7 +33,7 @@ from kaisparov.bench import (
 from kaisparov.bench.generators import GenerationError
 from kaisparov.bench.position import START_FEN, mirror_move
 from kaisparov.bench.report import wilson_interval
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import PieceType, Player
 
 # ------------------------------------------------------------------ positions

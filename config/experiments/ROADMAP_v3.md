@@ -23,7 +23,7 @@ pressure to not blunder comes from the **opponent pool**, not from the reward.
 |---|---|---|---|
 | Board | 4 pieces/side, no pawns | 12 pieces/side + pawns | standard start (real game) |
 | Goal | capture + defend the king | material + pawns | full play |
-| Reward | `king_capture_only` | `king_capture_only` | `king_capture_only` |
+| Reward | `checkmate_only` | `checkmate_only` | `checkmate_only` |
 | LR | 5e-4 | 3e-4 | 1e-4 |
 | entropy_coef | 0.02 | 0.012 | 0.006 |
 | Pool tilt | teachers dominant (2:1) | teachers eased (1.5:1) | self-play dominant (1:1.5) |
@@ -36,8 +36,8 @@ run id (paste it into `resume_from_run`). Architecture and reward are inherited;
 stage overrides curriculum / pool / LR / entropy. North-star metric:
 `eval/winrate_vs_material` (best checkpoint is selected on `elo_vs_material`).
 
-Reward preset lives in `config/rewards.yaml` as `king_capture_only`
-(`material: 0.0`, `king_capture: 1.0`).
+Reward preset lives in `config/rewards.yaml` as `checkmate_only`
+(`material: 0.0`, `checkmate: 1.0`).
 
 ## Backlog — variants to try and compare
 

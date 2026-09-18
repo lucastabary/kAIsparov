@@ -25,8 +25,8 @@ from typing import Any, ClassVar
 from kaisparov.bench.oracle import Oracle
 from kaisparov.bench.position import Position, other, to_fen
 from kaisparov.bench.problem import Problem
-from kaisparov.core.board import ChessGame
 from kaisparov.core.coords import ALL_SQUARES, Coord
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 from kaisparov.core.rules import is_in_check
 

@@ -21,8 +21,8 @@ seed: 0
 device: auto            # -> CPU on this machine
 checkpoint_every: 20
 
-# Pure outcome. All shaping terms (king_safety, check, step_penalty) are OFF.
-reward: king_capture_only
+# Pure outcome. All shaping terms (check, step_penalty) are OFF.
+reward: checkmate_only
 
 curriculum:
   name: "4 pieces/side, no pawns"

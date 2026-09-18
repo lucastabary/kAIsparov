@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import torch
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 

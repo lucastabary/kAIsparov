@@ -5,7 +5,7 @@ Torch-free and pygame-free: everything here runs on the pure-Python engine.
 
 from __future__ import annotations
 
-from kaisparov.core.board import ChessGame
+from kaisparov.core.game import ChessGame
 from kaisparov.core.notation import MoveRow, move_to_san, numbered_moves
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 

@@ -9,8 +9,8 @@ from typing import Any, ClassVar
 from kaisparov.agents.base import Policy
 from kaisparov.bench.position import mirror_move, move_to_uci, uci_to_move
 from kaisparov.bench.tasks.base import Outcome, Task, TaskContext, ask_move, legal_uci
-from kaisparov.core.board import ChessGame
-from kaisparov.core.movegen import Move
+from kaisparov.core.game import ChessGame
+from kaisparov.core.move import Move
 
 
 def _flip(move: str) -> str:
