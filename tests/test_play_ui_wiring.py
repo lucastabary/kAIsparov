@@ -27,6 +27,7 @@ from kaisparov.insights import MoveQuality  # noqa: E402
 from kaisparov.play import (  # noqa: E402
     _board_orientation,
     _draw_color,
+    _game_over_message,
     _legend_entries,
     _setup_from_args,
     _sidebar_layout,
@@ -113,3 +114,21 @@ def test_a_new_move_brings_the_list_back_to_the_latest_row():
     ui._history_scroll = 5  # the reader had scrolled back
     ui.set_history(numbered_moves(["e4"]))
     assert ui._history_scroll == 0
+
+
+def test_a_mated_side_ends_the_game_instead_of_waiting_for_a_move():
+    # The game from the bug report: 7. Qxg6# leaves Black to move, and mated.
+    game = ChessGame()
+    for san in ["e4", "Nf6", "e5", "Ne4", "d3", "Nc5", "Qg4", "g6", "h4", "h5", "Qg5", "f6"]:
+        game.board.push_san(san)
+    assert _game_over_message(game) is None
+    game.board.push_san("Qxg6")
+    message = _game_over_message(game)
+    assert message is not None and "mat" in message and "Blancs gagnent" in message
+
+
+def test_a_stalemate_is_a_draw_on_the_game_over_panel():
+    game = ChessGame()
+    game.board.set_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
+    message = _game_over_message(game)
+    assert message is not None and message.startswith("Partie nulle")

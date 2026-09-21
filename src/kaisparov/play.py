@@ -63,7 +63,7 @@ from kaisparov.core.game_interface import (
     SidebarLayout,
 )
 from kaisparov.core.notation import move_to_san, numbered_moves
-from kaisparov.core.pieces import PieceType, Player
+from kaisparov.core.pieces import Player
 from kaisparov.insights import Analyzer, MoveQuality, MoveVerdict, PositionAnalysis
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 
@@ -579,6 +579,13 @@ def run_match(
         return "quit" if not ui.show_game_over(full, view_as=view_as) else "menu"
 
     while True:
+        # Checked before asking for a move, not only after one: a mated or stalemated
+        # side has no legal move, so the human seat would wait for a click forever.
+        over = _game_over_message(game)
+        if over is not None:
+            print(f"Game over — {over.splitlines()[0]}")
+            return finish(over)
+
         side = game.turn
         agent = controllers[side]
         analyzer = analyzers.get(side)
@@ -638,22 +645,27 @@ def run_match(
                 review_status = _review_lines(side, verdict)
         san = move_to_san(game, *move)
 
-        captured = game.play(*move)
+        game.play(*move)
         moves_played.append(san)
         ui.set_history(numbered_moves(moves_played, first=first_player))
         ui._draw_frame(view_as=view_as, badge=badge, status_lines=review_status)
         pygame.display.flip()
 
-        if captured is not None and captured.type == PieceType.KING:
-            # On a king capture the turn does not advance, so game.turn is the winner.
-            winner = game.turn
-            print(f"Game over — {winner.name} wins by capturing the king!")
-            return finish(f"Roi capture !  Les {_fr_color(winner)} gagnent.")
 
-        drawn = game.draw_reason()
-        if drawn is not None:
-            print(f"Game over — draw ({drawn}).")
-            return finish(f"Partie nulle : {_FR_DRAW_REASONS[drawn]}.")
+def _game_over_message(game: ChessGame) -> str | None:
+    """The game-over panel's text if the side to move can no longer play, else ``None``.
+
+    Checkmate first, then the draw rules, then a bare "no legal move" -- stalemate even
+    when the rule naming it is switched off, so the loop can never wait on a dead seat.
+    """
+    if game.is_checkmate():
+        return f"Echec et mat !  Les {_fr_color(_other(game.turn))} gagnent."
+    drawn = game.draw_reason()
+    if drawn is not None:
+        return f"Partie nulle : {_FR_DRAW_REASONS[drawn]}."
+    if not game.legal_moves():
+        return f"Partie nulle : {_FR_DRAW_REASONS[draw.STALEMATE]}."
+    return None
 
 
 def _fr_color(player: Player) -> str:
