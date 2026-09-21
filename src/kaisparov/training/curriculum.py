@@ -66,7 +66,29 @@ class PieceCountCurriculum(BaseCurriculum):
         self.phase = phase
         self._rng = random.Random(seed)
 
+    # Draws before giving up on a legal position. With ensure_kings_safe on, the first
+    # draw is legal essentially always; this only bounds the rare dense-board fallback
+    # and the ensure_kings_safe=False case.
+    MAX_DRAWS = 100
+
     def get_initial_board(self) -> Grid:
+        """A random position with White to move, never one chess cannot reach.
+
+        Specifically, Black is never left in check: with White to move that position
+        is illegal, and python-chess would happily generate the capture of the black
+        king — handing White a "move" worth the king's sentinel material value and a
+        game that then runs on without a king.
+        """
+        for _ in range(self.MAX_DRAWS):
+            grid = self._draw_board()
+            if not is_in_check(grid, Player.BLACK):
+                return grid
+        raise RuntimeError(
+            f"curriculum phase {self.phase.name!r}: no legal position in "
+            f"{self.MAX_DRAWS} draws; lower max_pieces_per_side or enable ensure_kings_safe"
+        )
+
+    def _draw_board(self) -> Grid:
         grid: Grid = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 
         white_rows = range(0, BOARD_SIZE // 2)  # 0..3

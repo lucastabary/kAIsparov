@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import find_king, is_in_check
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
@@ -59,3 +60,19 @@ def test_flag_off_preserves_raw_random_placement():
     grid = curriculum.get_initial_board()
     assert find_king(grid, Player.WHITE) is not None
     assert find_king(grid, Player.BLACK) is not None
+
+
+def test_curriculum_never_leaves_the_side_not_to_move_in_check():
+    """White moves first, so Black in check is a position chess cannot reach.
+
+    python-chess would generate the capture of the black king there, which the
+    material reward scores at the king's sentinel value — a silent exploit. The
+    sampler must redraw instead, even with ensure_kings_safe off (which on its own
+    leaves about a third of the draws illegal).
+    """
+    for safe in (True, False):
+        phase = PhaseConfig(name="t", max_pieces_per_side=6, ensure_kings_safe=safe)
+        curriculum = PieceCountCurriculum(phase, seed=0)
+        for _ in range(200):
+            game = ChessGame(initial_board=curriculum.get_initial_board())
+            assert not game.is_in_check(Player.BLACK)
