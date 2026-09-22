@@ -81,6 +81,11 @@ Pure Python, no torch, no pygame — fast and unit-tested.
   `to_pov_coord` (an involution — applying it twice is identity) all live here.
 - **`pieces.py`** — `PieceType`, `Player`, and `Piece` (with `__slots__` for speed;
   fields `player`, `type`, `has_moved`).
+- **`material.py`** — what pieces and moves are worth, in pawns: `WIN` (the score of a
+  mate), `promotion_gain`, `captured_value`, `move_gain` (what a played move won),
+  `gain_if_played` (the same before playing it) and `material_balance`. Everything that
+  counts material — the env, the reward shaping, the greedy baseline, the evaluators,
+  the judge, the benchmark oracle — goes through it.
 - **`move.py`** — `Move(source, dest, promotion)`, a `NamedTuple`, plus the
   conversions to and from `chess.Move`. `e7e8` is four moves, so the old bare pair
   grew a third field; `Move.coerce` normalises a pair coming in from outside.
@@ -97,6 +102,9 @@ Pure Python, no torch, no pygame — fast and unit-tested.
   - `grid` is a **cached snapshot**, rebuilt on demand and invalidated by every
     make/unmake. Writing into it does not move a piece — use `place(coord, piece)` to
     set a position up by hand. Hot paths should read `.board` and its bitboards.
+  - `captured_by(source, dest)` — the piece a move would take, en passant included,
+    without playing it; `passed()` — a copy with the other side to move (the null move),
+    for asking what the side *not* on move threatens.
   - `play(source, dest)` — validate then `make`; returns the captured piece or `None`.
   - `copy()` — a deep, independent clone.
   - `possible_moves`, `is_move_valid`, `to_pov_coord`/`get_pov_grid`, `is_in_check`.
@@ -107,6 +115,11 @@ Pure Python, no torch, no pygame — fast and unit-tested.
 **Correctness is locked by `tests/test_engine.py`**, including a *perft* count from
 the start position that matches standard chess (20 / 400 / 8902), plus a make/unmake
 round-trip invariant.
+
+**Repetition** is detected on python-chess's transposition key rather than on the
+Polyglot `zobrist` hash: hashing the whole board on every move was 45% of the cost of
+making one. `zobrist` is still there, computed on demand, for anything that has to
+name a position the way another program would.
 
 ---
 
@@ -151,6 +164,23 @@ So `model(data)` returns `(action_scores [E], state_value [B])`.
 4. Map the chosen edge back to `(source, dest)` coordinates.
 
 `process_output` accepts an optional precomputed `legal_mask` to avoid recomputing it.
+
+### Rebuilding a model (`architecture.py`, `factory.py`)
+
+A checkpoint is a bare `state_dict`: the weights do not say which network they belong
+to. `Architecture(model, hidden_dim, features)` is the rest of the answer, and every
+run records all three in its config.
+
+- `build_agent(architecture, device)` → a fresh `(model, processor)` pair, built for
+  the same architecture, which is what stops the two from drifting apart.
+- `load_agent(checkpoint, device)` → the same, with the weights loaded, rebuilt as the
+  checkpoint's *own* run recorded it. For a run older than the `features` key, the
+  feature set is read off the width of the input layer, which is exact.
+
+Everything that needs a network — the trainer, its opponent pool, the parallel
+workers, `play`, `eval`, `bench` — goes through these two. A new hyper-parameter that
+changes the shape of the network or its inputs belongs in `Architecture`, not in each
+caller.
 
 ### The backend contract (`backend_spec.py`, `factory.py`)
 
@@ -268,8 +298,37 @@ Everything is written through a `RunManager` (see §8).
   with `score_a` (win=1, draw=0.5) and a rough `elo_diff = −400·log10(1/score − 1)`.
 
 During training the neural agent is scored against `RandomAgent` and `MaterialAgent`,
-producing `winrate_vs_*` and `elo_vs_*` metrics logged over epochs — the Elo-vs-random
-curve is the headline learning signal.
+producing `winrate_vs_*` and `elo_vs_*` metrics logged over epochs.
+
+Since the move to standard chess these numbers discriminate much less: two weak players
+draw most of their games (`material vs random` scores ~62%, where the old
+capture-the-king variant gave ~98%), so a win-rate says little about *what* improved.
+Hence the benchmark below.
+
+### Skill benchmark (`bench/`)
+
+Torch-free, and built on the idea that a benchmark is only worth its answer key. A
+`ProblemGenerator` proposes a position; the `Oracle` — an exhaustive search that
+applies the same draw rules as the env — decides whether it is a problem at all and
+what its answer is. Ground truth never comes from a model.
+
+| Piece | What it is |
+|-------|------------|
+| `Position` | a FEN, plus the moves that set it up |
+| `Task` | how an answer is scored: find a move, play a position out, stay consistent, probe a head |
+| `Problem` | a position + a task + a theme |
+| `generators/` | how problems are proposed (`SamplingGenerator` proposes and verifies, and rejects positions the rules cannot reach) |
+| `Suite` | a YAML spec (`config/benchmarks/`) or a frozen JSONL, so a suite is reproducible |
+| `Contestant` | who is being measured: a baseline, `run:<id>@best`, or a raw checkpoint |
+| `BenchmarkRunner` → `BenchmarkReport` | runs it, writes `runs/benchmarks/<id>.json` |
+
+```bash
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best
+kaisparov bench show runs/benchmarks/*.json        # several reports side by side
+```
+
+Adding a test is a `ProblemGenerator` subclass plus, if no existing `Task` scores it,
+a `Task` subclass — see `CLAUDE.md`.
 
 ---
 
@@ -358,6 +417,11 @@ reproducibility.
 **Documenting a run.** `title` and `description` fields let you record the intent of
 each experiment; they're stored in `run.json` and shown by `kaisparov runs`.
 
+**Node features.** The `features` field names what the network reads off each square
+(`pieces`, the 12 piece-type one-hots, or `pieces_control`, which adds the two control
+flags). It is part of the architecture: a checkpoint only loads into a model built for
+the same set, and it is inherited on resume like `model` and `hidden_dim`.
+
 **Reward shaping.** The `reward` field configures the self-play reward (mover's point
 of view, per ply) — weighted terms `material`, `promotion`, `checkmate`, `check`, `step_penalty`.
 Reference a named preset from `config/rewards.yaml` (`reward: aggressive`) or write the
@@ -365,9 +429,9 @@ terms inline. The resolved reward is stored in `run.json`, so every experiment r
 its shaping. `training/reward.py` turns the settings into the function the rollout uses.
 
 **Resuming from a config.** Set `resume_from_run: <run_id>` in the YAML to continue an
-earlier run. You **don't redefine the architecture** — `model`/`hidden_dim` are
-inherited from the parent (they must match its weights), as is any other field you
-don't override. Only list what changes (e.g. more `epochs`, a new `learning_rate`, a
+earlier run. You **don't redefine the architecture** — `model`, `hidden_dim` and
+`features` are inherited from the parent (they must match its weights), as is any
+other field you don't override. Only list what changes (e.g. more `epochs`, a new `learning_rate`, a
 fresh `title`). This is equivalent to `--resume <run_id>` on the CLI, and restores the
 optimizer + RNG state (see §8).
 
@@ -387,6 +451,7 @@ One entry point, `kaisparov <command>` (or `python -m kaisparov.cli <command>`;
 | `kaisparov eval`  | Play matches between agents; win-rates + Elo. |
 | `kaisparov play`  | Pygame board: human vs human, or `--vs-ai` (newest run's latest checkpoint by default; `--best` for best-Elo, `--checkpoint` for a path). |
 | `kaisparov runs`  | `list` / `show` / `lineage` / `best` / `graph` (git-log-style HTML) over recorded runs. |
+| `kaisparov bench` | `run <suite.yaml> -a <contestant>` / `show <report.json>` — the skill benchmark (§7). |
 
 `tensorboard --logdir runs/` watches loss + Elo curves live.
 

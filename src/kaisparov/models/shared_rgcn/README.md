@@ -65,12 +65,15 @@ The heads are `rgcn`'s, unchanged:
 
 ## Sizes
 
+With the default `pieces` features (12 inputs):
+
 | `hidden_dim` | `shared_rgcn` | `rgcn` (same width) |
 |--------------|---------------|---------------------|
-| 8 (default)  | 955           | 2,467               |
-| 16           | 3,443         | 8,131               |
+| 8 (default)  | 939           | 2,355               |
+| 16           | 3,411         | 7,907               |
+| 64           | 50,499        | 108,419             |
 
-Parameter counts are **independent of `num_steps`** — 2 steps or 8 steps, same 955
+Parameter counts are **independent of `num_steps`** — 2 steps or 8 steps, same 939
 parameters at `hidden_dim=8`.
 
 ## Training

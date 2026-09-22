@@ -91,7 +91,8 @@ only the node features (and which edges are *legal*, applied later as a mask).
 
 `ChessRGCN` — the shared backbone:
 
-- 4 × `RGCNConv` layers (`in=14 → hidden → hidden → hidden → hidden`), each with
+- 4 × `RGCNConv` layers (`in=features → hidden → hidden → hidden → hidden`, so 12
+  inputs with the default `pieces` set, 14 with `pieces_control`), each with
   **6 relation-specific weight sets**.
 - ReLU + **residual connections** on the two middle layers.
 - Output: a `hidden`-dim embedding per node.
@@ -108,12 +109,17 @@ handled natively by PyG (`Batch`), which the rollout and PPO update rely on.
 
 ## From scores to a move (`process_output`)
 
-1. Build a boolean **legal mask** over the `E` edges (`get_legal_mask`) — which static
+1. Build a boolean **legal mask** over the `E` edges (`legal_mask`) — which static
    edges are legal moves in *this* position for the side to move.
-2. `masked_logits = action_scores.masked_fill(~legal_mask, -inf)`.
-3. `Categorical(logits=masked_logits)` → **sample** (training) or **argmax** (eval).
-4. Decode the chosen edge back to a `(source, dest)` move (a pawn reaching the last
-   rank queens — see the note on underpromotion above).
+2. **Combine the edges that mean the same move.** One `(source, dest)` pair can be
+   several edges: a one-square king step is also a rook or bishop edge, while a knight
+   jump is a single edge. `aggregate_edge_logits_to_moves` sums each move's probability
+   mass across its edges (a `logsumexp` over the group), giving one logit per *move*.
+   Without it a move spread over three edges has its probability split three ways, and
+   a greedy `argmax` is biased against king moves — exactly the moves that escape check.
+3. `Categorical(logits=move_logits)` → **sample** (training) or **argmax** (eval).
+4. Decode the chosen move key `src * 64 + dst` back to `(source, dest)` (a pawn reaching
+   the last rank queens — see the note on underpromotion above).
 
 The masking is what ties the fixed graph to the live position: the network proposes
 scores for all conceivable edges, and only the legal ones can be chosen.
@@ -136,10 +142,13 @@ plus what a promotion gains, with a flat bonus for checkmate.
 
 ## Sizes
 
+With the default `pieces` features (12 inputs; `pieces_control` adds ~100):
+
 | `hidden_dim` | parameters |
 |--------------|------------|
 | 8 (default) | 2,355 |
 | 16 | 7,907 |
+| 64 | 108,419 |
 
 Deliberately tiny — this is a research testbed, and a small model is easier to probe
 for **interpretability** (the project's main goal): node embeddings, per-relation

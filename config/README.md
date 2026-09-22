@@ -9,6 +9,9 @@ document lists **every parameter**, its type, default, and what it does.
   and `run.json`, so every run is fully reproducible.
 - Start from [`default.yaml`](default.yaml); keep one file per experiment under
   [`experiments/`](experiments/).
+- Benchmark suites are a different kind of config and live in
+  [`benchmarks/`](benchmarks/) (`kaisparov bench run config/benchmarks/smoke.yaml`);
+  reward presets are in [`rewards.yaml`](rewards.yaml).
 
 ```bash
 kaisparov train --config config/default.yaml

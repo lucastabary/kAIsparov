@@ -73,6 +73,7 @@ kaisparov train --config config/default.yaml   # or: python -m kaisparov.cli tra
 kaisparov eval  --games 60
 kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best  # skill profile
 kaisparov runs  list | show <id> | lineage <id> | best | graph  # graph = HTML lineage view
+kaisparov bench show runs/benchmarks/<report>.json              # compare saved reports
 kaisparov play  --vs-ai
 
 ruff check . && ruff format --check .           # lint + format
@@ -89,6 +90,12 @@ pytest                                          # tests (torch-free where possib
 - **Branches**: do the work on a short-lived branch off `main` (`fix/…`, `feat/…`), then
   merge back — fast-forward to keep history linear (no merge commit unless a real branch
   topology needs one). `main` is the integration branch and stays green.
+- **Docs are part of the change.** A change that makes a README, `docs.md`,
+  `config/README.md`, a model's `README.md` or `CLAUDE.md` wrong is not finished: fix
+  them in the same commit. They are the showcase — a stale claim on the front page
+  ("from-scratch engine", a parameter count, a sample output, a CLI that gained a
+  command) costs more than the code it describes. `CHANGELOG.md` records *what it
+  means*, not every commit: add an entry for a change someone would need explained.
 - **Before committing / merging**: `ruff check . && ruff format --check .`, `mypy
   src/kaisparov` and `pytest` must pass — all four are CI steps (`.github/workflows/ci.yml`),
   and mypy is the easy one to forget. After code changes, also run `graphify update .`

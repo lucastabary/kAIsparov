@@ -17,8 +17,9 @@ footing — same engine, same evaluation, same experiment tracking.
 
 The first backend (`rgcn`) is a relational GCN actor–critic trained with
 **PPO self-play**; `shared_rgcn` is its weight-tied twin (one relational conv reused
-at every message-passing step). It ships with a custom, dependency-free chess engine
-and a pygame interface to play against a trained agent.
+at every message-passing step). It plays standard chess — the rules come from
+[python-chess](https://python-chess.readthedocs.io/), behind a thin facade — and ships
+with a pygame interface to play against a trained agent.
 
 > 🔬 **The deeper goal is interpretability** — not just to train a strong player,
 > but to understand *what a GNN learns about chess*: what its node embeddings
@@ -39,11 +40,19 @@ and a pygame interface to play against a trained agent.
 - **Actor–critic over edges** — the policy scores *edges* (moves) rather than
   squares, so the action space is the set of piece moves; the critic pools the
   graph into a scalar state value.
-- **From-scratch chess engine** — no `python-chess` dependency; fast `make`/`unmake`,
-  precomputed attack tables, perft-tested, all in plain `core/` Python.
+- **A thin engine facade** — python-chess provides the rules; `core/game.py` wraps it
+  in this project's own vocabulary (`(col, row)` coordinates, `Piece`, `make`/`unmake`
+  with an `Undo`), so nothing above `core/` knows it is there. Perft-tested.
+- **Named, frozen node features** — what the network reads off each square is a named
+  set (`features: pieces`), recorded in every run, so a checkpoint is always rebuilt
+  on the encoding it was trained with, and comparing encodings is a config change.
 - **Built-in evaluation & tracking** — every run is benchmarked against baselines
   (random / material) and recorded under `runs/` with full metadata, queryable via
   `kaisparov runs`.
+- **A skill benchmark** — beyond win-rates: generated problems with an exactly known
+  answer (mate in one, avoid mate, free capture, fork, conversion, mirror consistency…)
+  scored per theme, so two models can be compared on *what* they can do (`kaisparov
+  bench`).
 - **Move review in the UI** — an optional, chess.com-style grade on every move
   played (`!!` brilliant ... `??` blunder) plus per-side accuracy at the end of the
   game, graded either by a handcrafted evaluator or by the model's own critic.
@@ -99,7 +108,7 @@ The seams that keep it extensible:
 
 ## 🚀 Getting started
 
-Requires **Python 3.10+**. PyTorch here targets **CUDA 11.8** (CPU works too).
+Requires **Python 3.10+**. PyTorch here targets **CUDA 12.1** (CPU works too).
 
 ```bash
 # 1. Clone
@@ -109,8 +118,8 @@ cd kAIsparov
 # 2. Create an environment
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-# 3. Install (GPU / CUDA 11.8)
-pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+# 3. Install (GPU / CUDA 12.1)
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
 # ...or CPU-only:
 pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
@@ -118,7 +127,7 @@ pip install -r requirements.txt --extra-index-url https://download.pytorch.org/w
 pip install -e .
 ```
 
-Everything runs through one command — `kaisparov <train|eval|play|runs>`
+Everything runs through one command — `kaisparov <train|eval|play|runs|bench>`
 (equivalently `python -m kaisparov.cli <...>`). It runs comfortably on CPU.
 
 ### Train
@@ -140,8 +149,8 @@ redefine `model`/`hidden_dim`, just list what changes. Set `title` / `descriptio
 the config to document each experiment (shown by `kaisparov runs`).
 
 Reward shaping is config-driven too: `reward: aggressive` picks a preset from
-[config/rewards.yaml](config/rewards.yaml), or write the terms (`material`, `check`,
-`checkmate`, `step_penalty`) inline. The resolved shaping is saved in `run.json`.
+[config/rewards.yaml](config/rewards.yaml), or write the terms (`material`,
+`promotion`, `check`, `checkmate`, `step_penalty`) inline. The resolved shaping is saved in `run.json`.
 
 Each run creates a self-contained directory under `runs/<run_id>/` with the
 resolved config, per-epoch metrics, TensorBoard logs, and checkpoints — plus a
@@ -181,14 +190,36 @@ kaisparov eval --games 40 --model rgcn \
     --checkpoint runs/<run_id>/checkpoints/best.pth          # include the neural agent
 ```
 
-The greedy material baseline crushes the random one, which sanity-checks the
-engine and arena:
+The greedy material baseline beats the random one, which sanity-checks the engine
+and arena:
 
 ```
-material vs random | 59W 1L 0D | score=98.3% | elo_diff=+708
+material vs random |  7W  0L 23D | score=61.7% | elo_diff=+83
 ```
+
+Most games are draws: under standard rules two weak players shuffle until the
+fifty-move rule or the ply cap ends it, where the old capture-the-king variant ended
+almost every game decisively (it used to read `59W 1L 0D`, `+708`). So `elo_vs_random`
+discriminates much less than it did — the skill benchmark below is the sharper tool.
 
 (The neural agent needs real training before it beats the baselines.)
+
+### Benchmark a skill profile
+
+The arena says *who wins*; the benchmark says *what a model can do*. It generates
+positions whose answer an exhaustive search knows exactly, groups them by theme, and
+scores any contestant on each:
+
+```bash
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best
+kaisparov bench show runs/benchmarks/<report>.json        # or several, to compare
+```
+
+Themes range from one-move sight (mate in one, free capture, fork, avoid mate) to
+play-outs (convert an endgame against a real defence) and consistency probes (the same
+position mirrored must get the mirrored answer). Suites are YAML under
+[config/benchmarks/](config/benchmarks/); reports land in `runs/benchmarks/`.
+Ground truth always comes from the exact `Oracle` search, never from a model.
 
 ### Play
 
@@ -200,7 +231,9 @@ kaisparov play --vs-ai --review   # ...with every move graded, chess.com style
 kaisparov play --ai-vs-ai --dev   # watch two models, with the analysis overlay
 ```
 
-Opens a pygame window; `--curriculum` starts from a training-style position.
+Opens a pygame window; `--curriculum` starts from a training-style position. Click a
+piece then its destination; a pawn reaching the last rank opens a picker for the piece
+it becomes.
 
 Two independent overlays, both toggleable from the start menu (no restart needed):
 
@@ -226,18 +259,19 @@ and what earns it.
 ```
 kAIsparov/
 ├─ src/kaisparov/
-│  ├─ core/        # chess engine: coords, board, movegen, rules, pieces, UI
+│  ├─ core/        # chess engine: coords, move, material, game (facade), rules, draw, UI
 │  ├─ envs/        # ChessEnv — Gym-like reset/step/reward/terminal
-│  ├─ models/      # neural backends (base classes + rgcn, shared_rgcn) and factory
+│  ├─ models/      # neural backends (rgcn, shared_rgcn), node features, factory
 │  ├─ agents/      # policies: RandomAgent, MaterialAgent, NeuralAgent
 │  ├─ analysis/    # move review: evaluators + chess.com-style move grading
 │  ├─ eval/        # arena: play matches, win-rates, Elo
+│  ├─ bench/       # skill benchmark: generators, oracle, tasks, suites, reports
 │  ├─ training/    # config, Trainer, PPO, rollout buffer (GAE), curriculum
 │  ├─ tracking/    # RunManager + Registry (run artifacts)
-│  ├─ cli.py       # unified entry point: kaisparov <train|eval|play|runs>
+│  ├─ cli.py       # unified entry point: kaisparov <train|eval|play|runs|bench>
 │  ├─ train.py     # training logic
 │  └─ play.py      # pygame play (human vs human / vs AI)
-├─ config/         # training configs: default.yaml + experiments/
+├─ config/         # training configs: default.yaml + experiments/ + benchmarks/
 ├─ notebooks/      # data-science & interpretability workspace (analyze.ipynb)
 ├─ runs/           # per-run artifacts (git-ignored): checkpoints, metrics, TensorBoard
 ├─ tests/          # smoke + unit + engine tests
@@ -253,8 +287,9 @@ kAIsparov/
    edges encode every piece's movement geometry (6 relations).
 2. **Reason** — `ChessRGCN` runs 4 relational graph-conv layers with residuals,
    producing per-node embeddings.
-3. **Act** — an edge is scored from its endpoints' embeddings; illegal moves are
-   masked, and a move is sampled from the resulting distribution. A critic head
+3. **Act** — an edge is scored from its endpoints' embeddings; illegal edges are
+   masked, the edges that denote the same move are combined, and a move is sampled
+   from the resulting distribution over *moves*. A critic head
    pools the graph via attention into a state value.
 4. **Learn** — self-play trajectories feed a PPO buffer with GAE advantages, and
    `train_one_epoch` runs clipped policy + value + entropy updates.
@@ -303,11 +338,14 @@ running, which is what makes architecture-vs-architecture comparison clean.
 
 - [x] **Phase 0** — working PPO self-play loop (buffer, rollout, curriculum, trainer)
 - [x] **Phase 1** — packaging, pinned deps, README, linting, CI
-- [x] **Phase 2** — pure/fast engine core: `make`/`unmake`, precomputed attack tables, perft tests
+- [x] **Phase 2** — engine core: `make`/`unmake`, perft tests (hand-written then, a python-chess facade since)
 - [x] **Phase 3** — `ChessEnv` (Gym-like) + baseline agents (random / material) + evaluation arena
 - [x] **Phase 4** — config-driven `Trainer`, TensorBoard, negamax self-play credit, periodic Elo eval, run tracking + registry
 - [x] **Phase 5** — unified `kaisparov` CLI (`train` / `eval` / `play` / `runs`), Elo evaluation vs baselines
-- [ ] **Next** — longer training runs to actually beat the baselines; a second GNN backend (e.g. `gat`)
+- [x] **Phase 6** — standard chess on python-chess; a skill benchmark (`bench/`); named node
+  feature sets, and every run rebuildable from what it recorded
+- [ ] **Next** — longer training runs to actually beat the baselines; a third GNN backend
+  (e.g. `gat`); underpromotion and castling in the action space (see [todo.md](todo.md))
 
 ---
 

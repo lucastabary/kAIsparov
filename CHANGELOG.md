@@ -10,6 +10,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 Recent additions:
 
+- **Standard chess, on python-chess** (tag `pre-python-chess` marks the last commit
+  before it): the hand-written engine — pseudo-legal move generation, capture the king
+  to win, no promotion — is gone. `core/game.py` is now a facade over `chess.Board`
+  that keeps the project's own vocabulary (`(col, row)`, `Piece`, `make`/`unmake` with
+  an `Undo`), and python-chess never leaks above it. Checkmate, stalemate, castling, en
+  passant, promotion and the draw rules are the real ones. The reward's win term is a
+  flat `checkmate` bonus instead of the value of a captured king. **Runs from before
+  the tag are not comparable**, and the baselines stopped discriminating: `material vs
+  random` fell from ~98% to ~62%, most games being draws.
+- **Skill benchmark** (`bench/`, `kaisparov bench`): generated problems whose answer an
+  exhaustive `Oracle` knows exactly, grouped by theme — mate in one, avoid mate, free
+  capture, fork, parry a threat, convert an endgame, mirror consistency, value-sign and
+  policy-rank probes. Where the arena says who wins, this says *what* a model can do.
+  Suites are YAML (`config/benchmarks/`), reports JSON under `runs/benchmarks/`.
+- **Node feature sets are named and frozen** (`models/features.py`): `pieces` (the 12
+  piece-type one-hots) is the default for new runs; `pieces_control` adds the two
+  blocking-aware control flags. A run records the *name*, `tests/test_features.py` pins
+  each set's output, and a new encoding gets a new name rather than editing an old one.
+- **A run is rebuildable from what it recorded**: `Architecture(model, hidden_dim,
+  features)` plus `factory.build_agent` / `factory.load_agent`, the only way to build or
+  load a network. A checkpoint older than the `features` key has its feature set read
+  off the width of its input layer, so the 12-dim runs of early September load again.
+- **Promotion picker in the UI**: a pawn reaching the last rank asks which piece it
+  becomes, instead of always queening. The policy still queens — its action space is
+  `(source, dest)` (see `todo.md`).
+- **Faster where it was silly**: the repetition history keeps a cheap transposition key
+  instead of a full Polyglot hash per move (make/unmake 2.1× faster), and the legal mask
+  is a lookup instead of `torch.isin` (2.9×).
+
 - **Second model backend — `shared_rgcn`**: `rgcn` with its message-passing steps
   unified. Instead of 4 distinct `RGCNConv` layers (one per-relation weight set per
   step), a single relational conv is applied `num_steps` times residually, on top of

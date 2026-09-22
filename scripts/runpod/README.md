@@ -7,11 +7,17 @@ so each session is just *start pod → pull → train → download artifacts →
 ## Is an RTX 4090 the right pick?
 
 Yes — it works and it's the best price/perf card RunPod offers (24 GB VRAM, far more than
-this tiny `hidden_dim=32` RGCN needs). One honest caveat: **this workload is CPU-bound, not
-GPU-bound.** The chess engine (movegen, rollouts, depth-1 minimax opponents) is pure Python
-on CPU; the GNN forward/backward is a rounding error next to it. So:
+this tiny `hidden_dim=32` RGCN needs). One honest caveat: **this workload is largely
+CPU-bound.** The chess engine (move generation via python-chess, rollouts, depth-1 minimax
+opponents) is pure Python on CPU, and the games are played move by move.
 
-- Don't expect a 10× speedup over a fast CPU — the GPU sits mostly idle between moves.
+How much of a rollout ply is the network depends entirely on the width. Measured on CPU,
+per game in a batch of 16: at `hidden_dim=64` the forward pass is ~98% of the ply (~17 ms
+against ~0.35 ms for features and the legal mask); at the small widths used for quick runs
+it is a much smaller share, and the Python engine dominates. So:
+
+- Don't expect a 10× speedup over a fast CPU at small widths — the GPU waits on the engine
+  between moves. The wider the model, the more the GPU earns its keep.
 - When choosing a pod, favour **high per-core CPU clock and enough vCPUs** over the biggest
   GPU. A 4090 with a decent CPU allocation is a fine, cheap choice; a pricier A100 would be
   wasted money here.
