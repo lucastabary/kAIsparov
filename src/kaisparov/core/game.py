@@ -389,12 +389,6 @@ class ChessGame:
     def fen(self) -> str:
         return self.board.fen()
 
-    def print_grid(self) -> None:
-        """Print the board from White's side, ranks 8 down to 1."""
-        grid = self.grid
-        for y in range(BOARD_SIZE - 1, -1, -1):
-            print(" ".join(str(grid[x][y]) if grid[x][y] else "." for x in range(BOARD_SIZE)))
-
     def __repr__(self) -> str:
         return f"ChessGame({self.board.fen()!r})"
 

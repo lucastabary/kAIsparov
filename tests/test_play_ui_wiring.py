@@ -172,10 +172,10 @@ def test_a_human_promotion_plays_the_piece_picked(monkeypatch):
         # The pawn on b7 to b8: the picker opens with the queen on b8 and the rook,
         # bishop and knight below it.
         _clicks(monkeypatch, ui, [(1, 6), (1, 7), (1, 4)])
-        assert ui._get_single_move(view_as=W) == Move((1, 6), (1, 7), PieceType.KNIGHT)
+        assert ui.request_move(view_as=W) == Move((1, 6), (1, 7), PieceType.KNIGHT)
 
         # A click off the picker takes the move back instead of queening.
         _clicks(monkeypatch, ui, [(1, 6), (1, 7), (6, 2), (4, 0), (4, 1)])
-        assert ui._get_single_move(view_as=W) == Move((4, 0), (4, 1))
+        assert ui.request_move(view_as=W) == Move((4, 0), (4, 1))
     finally:
         pygame.quit()

@@ -103,11 +103,6 @@ class PPOBuffer:
             self.returns[t] = gae + self.values[t]
 
 
-def _masked_categorical(logits: Tensor, legal_mask: Tensor) -> torch.distributions.Categorical:
-    masked = logits.masked_fill(~legal_mask, float("-inf"))
-    return torch.distributions.Categorical(logits=masked)
-
-
 def train_one_epoch(
     agent: torch.nn.Module,
     buffer: PPOBuffer,

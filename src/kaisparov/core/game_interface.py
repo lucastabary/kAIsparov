@@ -1247,7 +1247,7 @@ class GameInterface:
             pygame.display.flip()
             self._clock.tick(fps)
 
-    def _get_single_move(
+    def request_move(
         self,
         view_as: Player | None = None,
         fps: int = 60,
@@ -1339,29 +1339,6 @@ class GameInterface:
             pygame.display.flip()
             self._clock.tick(fps)
 
-    def request_move(
-        self, view_as: Player | None = None, fps: int = 60
-    ) -> tuple[tuple[int, int], tuple[int, int]] | None:
-        """Lets the user pick a source and destination square with mouse clicks.
-
-        Returns:
-                (source, destination) in engine coordinates, or None if the window is closed.
-        """
-        if self.game is None:
-            raise ValueError("No ChessGame assigned. Use set_game(...) first.")
-
-        self._ensure_initialized()
-        assert self._screen is not None
-        assert self._clock is not None
-
-        move = self._get_single_move(view_as=view_as, fps=fps)
-
-        if move is None:
-            pygame.quit()
-            self._initialized = False
-
-        return move
-
     def play_game(self, view_as: Player | None = None, fps: int = 60) -> None:
         """Launch a complete interactive game loop in a persistent window.
 
@@ -1380,7 +1357,7 @@ class GameInterface:
         assert self._clock is not None
 
         while True:
-            move = self._get_single_move(view_as=view_as, fps=fps)
+            move = self.request_move(view_as=view_as, fps=fps)
             if move is None:
                 # Window closed
                 break

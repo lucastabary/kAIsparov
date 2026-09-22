@@ -64,7 +64,7 @@ from kaisparov.core.game_interface import (
 )
 from kaisparov.core.notation import move_to_san, numbered_moves
 from kaisparov.core.pieces import Player
-from kaisparov.insights import Analyzer, MoveQuality, MoveVerdict, PositionAnalysis
+from kaisparov.insights import Analyzer, Judge, MoveQuality, MoveVerdict, PositionAnalysis
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 
 # Grades worth naming in the end-of-game recap; the rest is ordinary play.
@@ -353,7 +353,7 @@ def _try_build_analyzer(args, device):
     return NeuralAnalyzer(model, processor)
 
 
-def _build_judge(args, analyzer: Analyzer | None, enabled: bool) -> MoveJudge | None:
+def _build_judge(args, analyzer: Analyzer | None, enabled: bool) -> Judge | None:
     """The move grader for this match, or ``None`` when the review is off.
 
     ``--judge-eval critic`` reuses the model already loaded for the AI seat (or the
@@ -503,7 +503,7 @@ def run_match(
     analyzers: dict[Player, Analyzer | None],
     dev_mode: bool,
     *,
-    judge: MoveJudge | None = None,
+    judge: Judge | None = None,
     view_as: Player | None = None,
     step_mode: bool = False,
     ai_delay_ms: int = 500,
@@ -559,7 +559,7 @@ def run_match(
         status = status + review_status
 
         if agent is None:  # human seat
-            move = ui._get_single_move(
+            move = ui.request_move(
                 view_as=view_as,
                 analysis_arrows=arrows,
                 status_lines=status,

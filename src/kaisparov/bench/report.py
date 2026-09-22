@@ -125,9 +125,6 @@ class ContestantResult:
     def by_theme(self) -> dict[str, Tally]:
         return self.group(lambda result: result.theme)
 
-    def by_difficulty(self) -> dict[int, Tally]:
-        return self.group(lambda result: result.difficulty)
-
     def metrics(self, prefix: str = "bench") -> dict[str, float]:
         """Flat scalars, shaped for :meth:`RunManager.log_eval` / TensorBoard."""
         flat = {f"{prefix}_solve_rate": self.overall().solve_rate}
