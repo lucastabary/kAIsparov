@@ -65,7 +65,7 @@ def collect_data(
     non-capturing move, exactly as it would mid-game. Pass ``None`` to disable.
     """
     module = _resolve_module(model_module, model_name)
-    processor = module.PROCESSOR_CLASS()
+    processor = module.PROCESSOR_CLASS(features=agent.features)
     device = _model_device(agent)
     edge_index = processor.static_graph_edges[0].to(device)
     agent.eval()
@@ -90,9 +90,8 @@ def collect_data(
     with torch.no_grad():
         while any(active):
             idxs = [i for i in range(num_episodes) if active[i]]
-            # Graphify every still-running game at once: the RGCN processor computes
-            # the blocking-aware control features for the whole batch with vectorised
-            # bitboards instead of two attacked_squares() calls per game.
+            # Graphify every still-running game at once: the feature set encodes
+            # the whole batch from python-chess bitboards in one vectorised pass.
             states = processor.graphify_batch([games[i] for i in idxs])
             batch = Batch.from_data_list(states).to(device)
             action_scores, values = agent(batch)

@@ -93,7 +93,7 @@ def collect_vs_opponent(
     if (opponent is None) == (sample_opponent is None):
         raise ValueError("Pass exactly one of `opponent` or `sample_opponent`.")
 
-    processor = model_module.PROCESSOR_CLASS()
+    processor = model_module.PROCESSOR_CLASS(features=agent.features)
     device = next(agent.parameters()).device
     edge_index = processor.static_graph_edges[0].to(device)
     agent.eval()

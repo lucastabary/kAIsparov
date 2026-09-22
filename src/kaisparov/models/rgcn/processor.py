@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
 import torch
 from torch_geometric.data import Data
 
-from kaisparov.core import bitboard_batch as bbb
 from kaisparov.core.game import ChessGame, Undo
-from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
-from kaisparov.core.rules import attacked_squares
+from kaisparov.core.pieces import BOARD_SIZE, PieceType
 from kaisparov.core.utils import coord_to_index, get_piece_value, index_to_coord
 from kaisparov.models.base_processor import (
     BaseProcessor,
@@ -15,32 +12,8 @@ from kaisparov.models.base_processor import (
     aggregate_edge_logits_to_moves,
     create_static_full_chess_graph,
 )
+from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
 from kaisparov.training.ppo import PPOBuffer, train_one_epoch
-
-# Ally/enemy one-hot slot per piece type (features 0-5 ally, 6-11 enemy).
-_PIECE_ORDER = (
-    PieceType.KING,
-    PieceType.QUEEN,
-    PieceType.BISHOP,
-    PieceType.ROOK,
-    PieceType.KNIGHT,
-    PieceType.PAWN,
-)
-_PIECE_IDX = {pt: i for i, pt in enumerate(_PIECE_ORDER)}
-# Which packed bitboard rows (orth, diag, knights, kings, pawns) a type contributes
-# to; the queen is both an orthogonal and a diagonal slider.
-_BB_ROWS = {
-    PieceType.QUEEN: (bbb.ORTH, bbb.DIAG),
-    PieceType.ROOK: (bbb.ORTH,),
-    PieceType.BISHOP: (bbb.DIAG,),
-    PieceType.KNIGHT: (bbb.KNIGHTS,),
-    PieceType.KING: (bbb.KINGS,),
-    PieceType.PAWN: (bbb.PAWNS,),
-}
-_SQUARES = np.arange(BOARD_SIZE * BOARD_SIZE, dtype=np.uint64)
-# chess.Board bitboard attributes, in the same order as _PIECE_ORDER above, so the
-# one-hot feature index of a type is its index here.
-_CHESS_BITBOARDS = ("kings", "queens", "bishops", "rooks", "knights", "pawns")
 
 
 def compute_reward(game: ChessGame, undo: Undo) -> float:
@@ -59,108 +32,38 @@ def compute_reward(game: ChessGame, undo: Undo) -> float:
 
 
 class RGCNProcessor(BaseProcessor):
-    def __init__(self):
+    """Board <-> graph for the RGCN backends.
+
+    The graph is this backend's: the static edge set (one relation per movement
+    type) and the edge-to-move decoding below. What sits on the nodes is not — it is
+    a named :mod:`~kaisparov.models.features` set, which must be the one the model
+    was built for (``model.features``).
+    """
+
+    def __init__(self, features: str = DEFAULT_FEATURES):
+        self.features = get_feature_set(features)
         self.static_graph_edges = create_static_full_chess_graph()
 
     def graphify(self, game: ChessGame) -> Data:
-        piece_order = [
-            PieceType.KING,
-            PieceType.QUEEN,
-            PieceType.BISHOP,
-            PieceType.ROOK,
-            PieceType.KNIGHT,
-            PieceType.PAWN,
-        ]
-        piece_to_idx = {pt: i for i, pt in enumerate(piece_order)}
-
-        current_player = game.turn
-        enemy_player = Player.BLACK if current_player == Player.WHITE else Player.WHITE
-
-        # 14 features/node: 6 ally piece-type one-hot, 6 enemy piece-type one-hot,
-        # then two position-aware, blocking-aware control flags (see below). Without
-        # the control flags a static geometric graph cannot tell a real attack from a
-        # blocked line, so "my king is in check" is not perceivable and the policy
-        # learns to attack but never to defend the king. These flags hand that
-        # blocking-aware reasoning to the engine, which already knows it.
-        x = torch.zeros((BOARD_SIZE * BOARD_SIZE, 14), dtype=torch.float32)
-
-        for col in range(BOARD_SIZE):
-            for row in range(BOARD_SIZE):
-                piece = game.grid[col][row]
-                if piece is None:
-                    continue
-
-                node_idx = coord_to_index((col, row))
-                piece_idx = piece_to_idx[piece.type]
-                if piece.player == current_player:
-                    x[node_idx, piece_idx] = 1.0
-                else:
-                    x[node_idx, 6 + piece_idx] = 1.0
-
-        # Feature 12: attacked by the opponent (side NOT to move) — set on the ally
-        # king's square exactly when it is in check, and on empty squares that are
-        # unsafe to move onto. Feature 13: defended by the side to move.
-        for cx, cy in attacked_squares(game, enemy_player):
-            x[coord_to_index((cx, cy)), 12] = 1.0
-        for cx, cy in attacked_squares(game, current_player):
-            x[coord_to_index((cx, cy)), 13] = 1.0
-
-        static_edge_index, static_edge_type = self.static_graph_edges
-        return Data(x=x, edge_index=static_edge_index, edge_type=static_edge_type)
+        edge_index, edge_type = self.static_graph_edges
+        x = torch.from_numpy(self.features.encode(game))
+        return Data(x=x, edge_index=edge_index, edge_type=edge_type)
 
     def graphify_batch(self, games: list[ChessGame]) -> list[Data]:
         """Vectorised :meth:`graphify` for several games — identical output, faster.
 
-        Nothing here walks the board. python-chess already holds each position as one
-        bitboard per piece type plus a per-colour occupancy, in this project's own
-        ``sq = row * 8 + col`` convention, so the twelve one-hot piece planes unpack
-        straight out of those masks with numpy shifts, and the two blocking-aware
-        control flags come from the vectorised Kogge-Stone maps in
-        :mod:`kaisparov.core.bitboard_batch` for the whole batch at once.
-
         This is the training hot path: the rollout calls it once per ply for every
-        game still running.
+        game still running, and the feature set encodes the whole batch at once.
         """
-        n = len(games)
-        if n == 0:
+        if not games:
             return []
-
-        num_nodes = BOARD_SIZE * BOARD_SIZE
-        boards = [game.board for game in games]
-        white_to_move = np.fromiter((b.turn for b in boards), dtype=bool, count=n)
-
-        # (6, n) masks for the side to move and for its opponent, in _PIECE_ORDER.
-        own = np.zeros((6, n), dtype=np.uint64)
-        enemy = np.zeros((6, n), dtype=np.uint64)
-        for i, board in enumerate(boards):
-            mine = board.occupied_co[board.turn]
-            theirs = board.occupied_co[not board.turn]
-            for k, attribute in enumerate(_CHESS_BITBOARDS):
-                bb = getattr(board, attribute)
-                own[k, i] = bb & mine
-                enemy[k, i] = bb & theirs
-
-        one = np.uint64(1)
-        x = torch.zeros((n, num_nodes, 14), dtype=torch.float32)
-        for k in range(6):
-            # Features 0-5: the side to move's pieces. 6-11: the opponent's.
-            x[:, :, k] = torch.from_numpy(((own[k][:, None] >> _SQUARES) & one).astype(np.float32))
-            x[:, :, 6 + k] = torch.from_numpy(
-                ((enemy[k][:, None] >> _SQUARES) & one).astype(np.float32)
-            )
-
-        atk_white = bbb.attacked_by_packed(bbb.pack_boards(boards, bbb.WHITE), bbb.WHITE)
-        atk_black = bbb.attacked_by_packed(bbb.pack_boards(boards, bbb.BLACK), bbb.BLACK)
-        # Feature 12 = attacked by the opponent (side not to move); 13 = by the side to move.
-        atk_enemy = np.where(white_to_move, atk_black, atk_white)
-        atk_current = np.where(white_to_move, atk_white, atk_black)
-        x[:, :, 12] = torch.from_numpy(((atk_enemy[:, None] >> _SQUARES) & one).astype(np.float32))
-        x[:, :, 13] = torch.from_numpy(
-            ((atk_current[:, None] >> _SQUARES) & one).astype(np.float32)
-        )
-
+        x = torch.from_numpy(self.features.encode_batch(games))
         edge_index, edge_type = self.static_graph_edges
-        return [Data(x=x[i].clone(), edge_index=edge_index, edge_type=edge_type) for i in range(n)]
+        # Clone each row so a stored state does not keep the whole batch alive.
+        return [
+            Data(x=x[i].clone(), edge_index=edge_index, edge_type=edge_type)
+            for i in range(len(games))
+        ]
 
     def process_output(
         self,

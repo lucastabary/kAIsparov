@@ -3,6 +3,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import AttentionalAggregation, RGCNConv
 
 from kaisparov.models.base_model import BaseModel
+from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
 
 
 class ChessRGCN(torch.nn.Module):
@@ -30,18 +31,16 @@ class ChessRGCN(torch.nn.Module):
 class RGCNModel(BaseModel):
     """GNN actor-critic model for chess graph states."""
 
-    # 6 ally piece-type one-hot + 6 enemy piece-type one-hot + 2 control flags
-    # (attacked-by-enemy, defended-by-ally). The two control flags are what let the
-    # net perceive its own king in check / a hanging piece on a blocking-blind static
-    # graph; see RGCNProcessor.graphify.
-    INPUT_DIM = 14
     MODEL_NAME = "rgcn"
 
-    def __init__(self, hidden_dim=8):
+    def __init__(self, hidden_dim=8, features=DEFAULT_FEATURES):
         super().__init__()
         self.hidden_dim = int(hidden_dim)
+        # The node feature set this model reads; its width is the input layer's, so a
+        # processor built on any other set would not fit (see models/features.py).
+        self.features = features
         self.chess_rgcn = ChessRGCN(
-            in_channels=self.INPUT_DIM,
+            in_channels=get_feature_set(features).dim,
             hidden_channels=self.hidden_dim,
             out_channels=self.hidden_dim,
             num_relations=6,

@@ -3,6 +3,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import AttentionalAggregation, RGCNConv
 
 from kaisparov.models.base_model import BaseModel
+from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
 
 
 class SharedChessRGCN(torch.nn.Module):
@@ -40,18 +41,16 @@ class SharedChessRGCN(torch.nn.Module):
 class SharedRGCNModel(BaseModel):
     """``rgcn``'s actor-critic with its message-passing steps tied to one weight set."""
 
-    # Same 14-dim node features as `rgcn` (6 ally + 6 enemy piece-type one-hots and
-    # the two control flags); this backend reuses RGCNProcessor.graphify verbatim and
-    # only changes the network.
-    INPUT_DIM = 14
     MODEL_NAME = "shared_rgcn"
     NUM_STEPS = 4  # message-passing steps; depth is free (weights are shared)
 
-    def __init__(self, hidden_dim=8, num_steps=NUM_STEPS):
+    def __init__(self, hidden_dim=8, num_steps=NUM_STEPS, features=DEFAULT_FEATURES):
         super().__init__()
         self.hidden_dim = int(hidden_dim)
+        # The node feature set this model reads (see RGCNModel.features).
+        self.features = features
         self.chess_rgcn = SharedChessRGCN(
-            in_channels=self.INPUT_DIM,
+            in_channels=get_feature_set(features).dim,
             hidden_channels=self.hidden_dim,
             out_channels=self.hidden_dim,
             num_relations=6,  # 6 edge types
