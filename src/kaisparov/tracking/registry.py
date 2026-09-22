@@ -35,17 +35,6 @@ class Registry:
         runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
         return runs
 
-    def best_run(self, metric: str, mode: str = "max") -> tuple[dict[str, Any], float] | None:
-        best: tuple[dict[str, Any], float] | None = None
-        for run in self.list_runs():
-            for entry in run.get("eval_history", []):
-                if metric not in entry:
-                    continue
-                value = entry[metric]
-                if best is None or (mode == "max") == (value > best[1]):
-                    best = (run, value)
-        return best
-
     def lineage(self, run_id: str) -> list[dict[str, Any]]:
         """Return the resume chain from the root ancestor down to ``run_id``."""
         chain: list[dict[str, Any]] = []
@@ -62,18 +51,24 @@ class Registry:
         return list(reversed(chain))
 
     def resolve_checkpoint(self, run_id: str, which: int | str = "latest") -> Path:
-        """Path to a checkpoint. ``which`` is "latest" (default), "best", or an epoch."""
+        """Path to a checkpoint. ``which`` is "latest" (the default) or an epoch number.
+
+        There is no "best": which checkpoint is best is a research question this
+        project refuses to answer with one number (the Elo against the baselines,
+        which used to pick it, barely discriminates now that draws dominate). A run
+        is represented by where it got to.
+        """
         run = self.get(run_id)
         ckpt_dir = self.root / run_id / "checkpoints"
         if which == "best":
-            best = run.get("best_checkpoint")
-            return ckpt_dir / (best["file"] if best else "best.pth")
+            raise ValueError(
+                f"Run {run_id}: there is no 'best' checkpoint - pick 'latest' or an epoch number."
+            )
         if which == "latest":
             checkpoints = run.get("checkpoints", [])
-            if checkpoints:
-                latest = max(checkpoints, key=lambda c: c["epoch"])
-                return ckpt_dir / latest["file"]
-            return ckpt_dir / "best.pth"  # fallback if nothing recorded
+            if not checkpoints:
+                raise FileNotFoundError(f"Run {run_id} has no checkpoint recorded.")
+            return ckpt_dir / max(checkpoints, key=lambda c: c["epoch"])["file"]
         return ckpt_dir / f"epoch{int(which)}.pth"
 
 
@@ -132,18 +127,6 @@ def _cmd_graph(reg: Registry, args: argparse.Namespace) -> None:
         webbrowser.open(out.resolve().as_uri())
 
 
-def _cmd_best(reg: Registry, args: argparse.Namespace) -> None:
-    result = reg.best_run(args.metric, mode=args.mode)
-    if result is None:
-        print(f"No run has eval metric '{args.metric}'.")
-        return
-    run, value = result
-    ckpt = reg.resolve_checkpoint(run["run_id"], "best")
-    print(f"Best by {args.metric} ({args.mode}): {value:.2f}")
-    print(f"  run_id     : {run['run_id']}")
-    print(f"  checkpoint : {ckpt}")
-
-
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="kaisparov runs", description="Inspect training runs.")
     parser.add_argument("--runs-dir", default="runs")
@@ -157,10 +140,6 @@ def main(argv: list[str] | None = None) -> None:
     lineage = sub.add_parser("lineage", help="Show a run's resume chain")
     lineage.add_argument("run_id")
 
-    best = sub.add_parser("best", help="Find the best run by an eval metric")
-    best.add_argument("--metric", default="elo_vs_random")
-    best.add_argument("--mode", default="max", choices=["max", "min"])
-
     graph = sub.add_parser("graph", help="Render the lineage as a git-log-style HTML page")
     graph.add_argument("-o", "--output", default="runs/lineage.html", help="Output HTML file")
     graph.add_argument("--no-open", action="store_true", help="Do not open a browser")
@@ -171,7 +150,6 @@ def main(argv: list[str] | None = None) -> None:
         "list": _cmd_list,
         "show": _cmd_show,
         "lineage": _cmd_lineage,
-        "best": _cmd_best,
         "graph": _cmd_graph,
     }
     commands[args.command](reg, args)

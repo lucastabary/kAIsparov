@@ -15,7 +15,7 @@ The pieces, each an extension point:
 - :class:`ProblemGenerator` — produces problems of one theme, usually as a
   propose-and-verify :class:`SamplingGenerator` checked by the :class:`Oracle`;
 - :class:`Suite` — a reproducible problem set, specced in YAML or frozen as JSONL;
-- :class:`Contestant` — a player named by a spec (``material``, ``run:<id>@best``);
+- :class:`Contestant` — a player named by a spec (``material``, ``run:<id>@latest``);
 - :class:`BenchmarkRunner` → :class:`BenchmarkReport` — outcomes and summaries.
 
 Torch-free: only building a neural contestant imports torch.

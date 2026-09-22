@@ -18,11 +18,6 @@ from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 from kaisparov.training.reward import make_reward_fn
 
-# vs_random saturates at 100% (elo capped) once the model beats a random mover, so
-# it carries no gradient for "best checkpoint" selection. vs_material is the metric
-# that actually discriminates skill here.
-BEST_METRIC = "elo_vs_material"
-
 
 def _resolve_device(spec: str) -> torch.device:
     if spec == "cpu":
@@ -281,8 +276,6 @@ class Trainer:
                         self.agent,
                         epoch,
                         {**metrics, **last_eval},
-                        best_metric=BEST_METRIC,
-                        best_mode="max",
                         trainer_state=self._trainer_state(epoch),
                     )
 
@@ -343,8 +336,9 @@ class Trainer:
         if skips:
             line += f" | SKIPPED (non-finite loss ×{skips:.0f})"
         if last_eval and self.config.eval.runs and epoch % self.config.eval.every == 0:
-            # vs_material is the discriminating eval (vs_random saturates at 100%); show
-            # both, and it's what BEST_METRIC selects checkpoints on.
+            # Both, for what they are worth: since the move to standard chess two weak
+            # players draw most of their games, so neither number separates much. They
+            # are a sanity check, not a score — nothing selects a checkpoint on them.
             line += (
                 f" | vs_random={last_eval['winrate_vs_random']:.0%} "
                 f"vs_material={last_eval['winrate_vs_material']:.0%} "

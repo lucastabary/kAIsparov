@@ -83,7 +83,7 @@ Same stack as `rgcn` via `BACKEND_SPEC`: PPO self-play with negamax advantage
 
 ```bash
 kaisparov train --config config/default.yaml --model shared_rgcn   # or `model: shared_rgcn` in the YAML
-kaisparov eval  --model shared_rgcn --checkpoint runs/<id>/checkpoints/best.pth
+kaisparov eval  --model shared_rgcn --checkpoint runs/<id>/checkpoints/epoch40.pth
 ```
 
 ## Strengths & limitations

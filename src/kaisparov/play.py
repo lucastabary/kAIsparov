@@ -6,8 +6,7 @@ Run with no mode flag to open the in-window menu (solo / vs AI / AI vs AI):
 
 Or pick a mode straight from the command line (skips the menu for the first game):
 
-    python -m kaisparov.play --vs-ai --checkpoint runs/<id>/checkpoints/best.pth
-    python -m kaisparov.play --vs-ai --best        # best tracked checkpoint
+    python -m kaisparov.play --vs-ai --checkpoint runs/<id>/checkpoints/epoch40.pth
     python -m kaisparov.play --ai-vs-ai --dev       # watch two models, with analysis
     python -m kaisparov.play --solo                 # two humans, one keyboard
 
@@ -117,18 +116,13 @@ def _initial_board(from_curriculum: bool, seed: int | None):
     return PieceCountCurriculum(phase, seed=seed).get_initial_board()
 
 
-def _resolve_checkpoint(checkpoint: str | None, runs_dir: str, use_best: bool = False) -> str:
+def _resolve_checkpoint(checkpoint: str | None, runs_dir: str) -> str:
+    """An explicit path, or the newest run's latest checkpoint."""
     if checkpoint is not None:
         return checkpoint
     from kaisparov.tracking.registry import Registry
 
     reg = Registry(runs_dir)
-    if use_best:
-        best = reg.best_run("elo_vs_material")  # the metric that actually discriminates skill
-        if best is None:
-            raise SystemExit("No tracked run has an eval metric. Pass --checkpoint <path>.")
-        return str(reg.resolve_checkpoint(best[0]["run_id"], "best"))
-
     runs = reg.list_runs()
     if not runs:
         raise SystemExit("No tracked runs found. Train first, or pass --checkpoint <path>.")
@@ -160,7 +154,7 @@ def _build_ai(args, device, *, deterministic: bool, allow_fallback: bool):
     the window still works instead of raising.
     """
     try:
-        checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
+        checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir)
         model, processor, path = _load_model(checkpoint, args.hidden_dim, device, args.model)
     except SystemExit:
         if not allow_fallback:
@@ -225,7 +219,7 @@ def _make_baseline(key: str):
 def _controller_from_key(key, args, device, *, deterministic: bool, model_cache: dict):
     """Build ``(policy, analyzer)`` for a model chosen in the menu.
 
-    ``key`` is a baseline name or a tracked ``run_id`` (its best checkpoint is used).
+    ``key`` is a baseline name or a tracked ``run_id`` (its latest checkpoint is used).
     Loaded backends are memoised in ``model_cache`` so the two AI-vs-AI seats sharing
     a run only pay for one load. Baselines have no analyzer.
     """
@@ -236,7 +230,7 @@ def _controller_from_key(key, args, device, *, deterministic: bool, model_cache:
         from kaisparov.tracking.registry import Registry
 
         try:
-            checkpoint = str(Registry(args.runs_dir).resolve_checkpoint(key, "best"))
+            checkpoint = str(Registry(args.runs_dir).resolve_checkpoint(key, "latest"))
             model_cache[key] = _load_model(checkpoint, args.hidden_dim, device, args.model)
         except (FileNotFoundError, KeyError, RuntimeError) as exc:
             print(f"Could not load run '{key}' ({exc}); using the material baseline.")
@@ -307,7 +301,7 @@ def _prepare_match(setup: MatchSetup, args, device):
         else:
             # CLI shortcut: share one loaded model across both seats, sampling moves.
             try:
-                checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
+                checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir)
                 model, processor, path = _load_model(
                     checkpoint, args.hidden_dim, device, args.model
                 )
@@ -342,7 +336,7 @@ def _prepare_match(setup: MatchSetup, args, device):
 def _try_build_analyzer(args, device):
     """Best-effort analyzer for developer mode in solo play; ``None`` if no model."""
     try:
-        checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir, use_best=args.best)
+        checkpoint = _resolve_checkpoint(args.checkpoint, args.runs_dir)
         model, processor, path = _load_model(checkpoint, args.hidden_dim, device, args.model)
     except SystemExit:
         print("Developer mode: no checkpoint found, analysis overlay disabled.")
@@ -701,7 +695,6 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--checkpoint", default=None, help="AI weights (default: newest run's latest checkpoint)."
     )
-    parser.add_argument("--best", action="store_true", help="Use the best-Elo checkpoint instead.")
     parser.add_argument(
         "--color",
         choices=list(_CLI_COLORS),

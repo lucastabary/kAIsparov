@@ -60,6 +60,11 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
   processor on the same `Architecture`, and read an older run's features off its
   weights. A new shape-changing hyper-parameter goes into `Architecture`, not into
   each loader.
+- **There is no "best" checkpoint.** A run is represented by its **latest** one
+  (`resolve_checkpoint` takes `"latest"` or an epoch number, and nothing else). Which
+  checkpoint is best is a research question, and the Elo against the baselines barely
+  discriminates now that draws dominate — so the project does not answer it with one
+  number. Do not reintroduce a metric that silently picks a checkpoint.
 - **Experiment tracking** is the `runs/` registry. Do **not** reintroduce the old
   per-package `model_info.json` / `weights/` system — it was removed on purpose.
 
@@ -71,8 +76,8 @@ pip install -e .
 
 kaisparov train --config config/default.yaml   # or: python -m kaisparov.cli train
 kaisparov eval  --games 60
-kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best  # skill profile
-kaisparov runs  list | show <id> | lineage <id> | best | graph  # graph = HTML lineage view
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>  # skill profile
+kaisparov runs  list | show <id> | lineage <id> | graph  # graph = HTML lineage view
 kaisparov bench show runs/benchmarks/<report>.json              # compare saved reports
 kaisparov play  --vs-ai
 

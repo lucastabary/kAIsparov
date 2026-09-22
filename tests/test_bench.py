@@ -353,7 +353,7 @@ def test_run_spec_resolves_through_the_registry(tmp_path):
     (run_dir / "checkpoints").mkdir(parents=True)
     (run_dir / "run.json").write_text(
         '{"run_id": "20260101-000000_rgcn", "model": "rgcn", "config": {"hidden_dim": 16},'
-        ' "checkpoints": [{"epoch": 10, "file": "epoch10.pth"}], "best_checkpoint": null}',
+        ' "checkpoints": [{"epoch": 10, "file": "epoch10.pth"}]}',
         encoding="utf-8",
     )
     contestant = Contestant.parse("run:20260101-000000_rgcn+minimax2", runs_dir=tmp_path)

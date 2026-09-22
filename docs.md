@@ -320,11 +320,11 @@ what its answer is. Ground truth never comes from a model.
 | `Problem` | a position + a task + a theme |
 | `generators/` | how problems are proposed (`SamplingGenerator` proposes and verifies, and rejects positions the rules cannot reach) |
 | `Suite` | a YAML spec (`config/benchmarks/`) or a frozen JSONL, so a suite is reproducible |
-| `Contestant` | who is being measured: a baseline, `run:<id>@best`, or a raw checkpoint |
+| `Contestant` | who is being measured: a baseline, `run:<id>` (its latest checkpoint) or `run:<id>@40`, or a raw checkpoint |
 | `BenchmarkRunner` → `BenchmarkReport` | runs it, writes `runs/benchmarks/<id>.json` |
 
 ```bash
-kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>
 kaisparov bench show runs/benchmarks/*.json        # several reports side by side
 ```
 
@@ -349,12 +349,11 @@ tensorboard/             # TensorBoard scalars
 checkpoints/
     epoch10.pth          # model weights only (inference-friendly)
     epoch10.state.pth    # optimizer + RNG state (for exact resume)
-    best.pth             # copy of the best model checkpoint by elo_vs_random
 ```
 
 `run.json` captures: status, timestamps, **git commit + dirty flag**, device, seed,
 `num_params`, notes, the full config, `epochs_completed`, every checkpoint, the
-`eval_history`, the `best_checkpoint`, and lineage (`parent_run_id`, `resumed_from`).
+`eval_history`, and lineage (`parent_run_id`, `resumed_from`).
 
 ### Logged metrics (`metrics.jsonl` + TensorBoard)
 
@@ -372,9 +371,12 @@ The per-epoch console line also shows the two losses, entropy, `checkmate`, and
 ### Querying (`Registry`, torch-free)
 
 `Registry` reads runs back without importing torch. CLI: `kaisparov runs list |
-show <id> | lineage <id> | best --metric elo_vs_random | graph`. `resolve_checkpoint(run_id,
+show <id> | lineage <id> | graph`. `resolve_checkpoint(run_id,
 which)` returns a checkpoint path where `which` defaults to **`"latest"`** (the most
-recent epoch), or `"best"`, or an epoch number.
+recent epoch) or an epoch number. **There is no `"best"`**: which checkpoint is best is
+a research question, and the Elo against the baselines — what used to pick it — barely
+discriminates now that most games are drawn. A run is its latest checkpoint; compare
+checkpoints with the benchmark when you actually need to choose.
 
 `kaisparov runs graph` (module `tracking/lineage_view.py`, also torch-free) turns the
 registry into a self-contained HTML page laid out like `git log --graph`: newest run
@@ -450,8 +452,8 @@ One entry point, `kaisparov <command>` (or `python -m kaisparov.cli <command>`;
 |---------|--------------|
 | `kaisparov train` | Train (config-driven; `--resume <id>` to continue a run). |
 | `kaisparov eval`  | Play matches between agents; win-rates + Elo. |
-| `kaisparov play`  | Pygame board: human vs human, or `--vs-ai` (newest run's latest checkpoint by default; `--best` for best-Elo, `--checkpoint` for a path). |
-| `kaisparov runs`  | `list` / `show` / `lineage` / `best` / `graph` (git-log-style HTML) over recorded runs. |
+| `kaisparov play`  | Pygame board: human vs human, or `--vs-ai` (newest run's latest checkpoint by default; `--checkpoint` for a path). |
+| `kaisparov runs`  | `list` / `show` / `lineage` / `graph` (git-log-style HTML) over recorded runs. |
 | `kaisparov bench` | `run <suite.yaml> -a <contestant>` / `show <report.json>` — the skill benchmark (§7). |
 
 `tensorboard --logdir runs/` watches loss + Elo curves live.
@@ -470,7 +472,7 @@ To try a new architecture (e.g. GAT, a graph transformer) or a new learner:
 
 ```bash
 kaisparov train --model <name>
-kaisparov eval  --model <name> --checkpoint runs/<id>/checkpoints/best.pth
+kaisparov eval  --model <name> --checkpoint runs/<id>/checkpoints/epoch40.pth
 ```
 
 The engine, env, agents, and tracker never learn which model is running, which is

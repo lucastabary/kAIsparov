@@ -3,7 +3,7 @@
     kaisparov bench generators                         # list the problem families
     kaisparov bench generate config/benchmarks/smoke.yaml -o data/bench/smoke.jsonl
     kaisparov bench run config/benchmarks/smoke.yaml -a random -a material \\
-        -a run:20260903-155710_rgcn@best -a "v2+search=run:<id>@best+minimax2"
+        -a run:20260903-155710_rgcn -a "v2+search=run:<id>@40+minimax2"
     kaisparov bench show runs/benchmarks/<report>.json
 
 ``run`` accepts a spec (``.yaml``, built on the fly) or a frozen suite (``.jsonl``),
@@ -63,7 +63,10 @@ def _cmd_run(args: argparse.Namespace) -> None:
     suite = Suite.load(args.suite).select(themes=args.themes, limit=args.limit)
     if not len(suite):
         raise SystemExit("No problem left after filtering.")
-    contestants = [Contestant.parse(spec, runs_dir=args.runs_dir) for spec in args.agent]
+    try:
+        contestants = [Contestant.parse(spec, runs_dir=args.runs_dir) for spec in args.agent]
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        raise SystemExit(f"Bad contestant: {exc}") from None
     print(_describe(suite))
 
     runner = BenchmarkRunner(suite, seed=args.seed, progress=None if args.quiet else _progress)

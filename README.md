@@ -155,8 +155,11 @@ Reward shaping is config-driven too: `reward: aggressive` picks a preset from
 Each run creates a self-contained directory under `runs/<run_id>/` with the
 resolved config, per-epoch metrics, TensorBoard logs, and checkpoints — plus a
 `run.json` capturing git commit, seed, device, parameter count, the full metric
-history, and the best checkpoint. During training the agent is periodically
-evaluated against the baselines, so the Elo-vs-random curve is logged over time.
+history. During training the agent is periodically
+evaluated against the baselines and the curve is logged over time — as a sanity check,
+not as a score: nothing selects a checkpoint from it. A run is represented by its
+**latest** checkpoint, because "best" is a research question this project would rather
+ask properly (with the benchmark) than settle with one number.
 
 ```bash
 tensorboard --logdir runs/          # watch loss + Elo curves live
@@ -170,7 +173,6 @@ Query every run you've trained, with all their metadata:
 kaisparov runs list                       # all runs, newest first
 kaisparov runs show <run_id>              # full metadata for one run
 kaisparov runs lineage <run_id>          # the resume chain a run belongs to
-kaisparov runs best --metric elo_vs_random
 kaisparov runs graph                      # git-log-style HTML of the run lineage
 ```
 
@@ -187,7 +189,7 @@ Pit agents against each other and print win-rates and a rough Elo gap:
 ```bash
 kaisparov eval --games 60                                    # baselines only
 kaisparov eval --games 40 --model rgcn \
-    --checkpoint runs/<run_id>/checkpoints/best.pth          # include the neural agent
+    --checkpoint runs/<run_id>/checkpoints/epoch40.pth       # include the neural agent
 ```
 
 The greedy material baseline beats the random one, which sanity-checks the engine
@@ -211,7 +213,7 @@ positions whose answer an exhaustive search knows exactly, groups them by theme,
 scores any contestant on each:
 
 ```bash
-kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>@best
+kaisparov bench run config/benchmarks/smoke.yaml -a material -a run:<id>
 kaisparov bench show runs/benchmarks/<report>.json        # or several, to compare
 ```
 
@@ -226,7 +228,7 @@ Ground truth always comes from the exact `Oracle` search, never from a model.
 ```bash
 kaisparov play                    # human vs human
 kaisparov play --vs-ai            # vs the newest run's latest checkpoint
-kaisparov play --vs-ai --best     # ...or the best-Elo checkpoint (or --checkpoint <path>)
+kaisparov play --vs-ai --checkpoint runs/<id>/checkpoints/epoch40.pth   # ...or a given one
 kaisparov play --vs-ai --review   # ...with every move graded, chess.com style
 kaisparov play --ai-vs-ai --dev   # watch two models, with the analysis overlay
 ```
@@ -326,7 +328,7 @@ run tracking — works unchanged:
 
 ```bash
 kaisparov train --model gat
-kaisparov eval  --model gat --checkpoint runs/<id>/checkpoints/best.pth
+kaisparov eval  --model gat --checkpoint runs/<id>/checkpoints/epoch40.pth
 ```
 
 The engine, environment, agents, and tracker never need to know which model is

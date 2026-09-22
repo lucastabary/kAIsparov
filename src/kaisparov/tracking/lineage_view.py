@@ -211,13 +211,7 @@ def _render_detail(run: dict[str, Any], parent: dict[str, Any] | None) -> str:
     git = run.get("git") or {}
     commit = git.get("commit") or "?"
     dirty = " (dirty)" if git.get("dirty") else ""
-    best = run.get("best_checkpoint")
-    best_line = (
-        f"<div class='meta'><span>best</span> epoch {best['epoch']} "
-        f"({_esc(best.get('metric'))}={best['value']:.2f})</div>"
-        if best
-        else ""
-    )
+
     parent_line = ""
     if run.get("parent_run_id"):
         parent_line = (
@@ -240,7 +234,6 @@ def _render_detail(run: dict[str, Any], parent: dict[str, Any] | None) -> str:
     <div class="meta"><span>commit</span> <code>{_esc(commit)}{dirty}</code></div>
     <div class="meta"><span>created</span> {_esc((run.get("created_at") or "")[:19])}</div>
     {parent_line}
-    {best_line}
   </div>
   <h4>Parameters</h4>
   {_render_params(run, parent)}

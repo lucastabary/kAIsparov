@@ -8,10 +8,10 @@ command line and a play-out's ``opponent`` name one::
     random                          the baselines ...
     material+safe                   ... here refusing moves that walk into mate in one
     run:20260903-155710_rgcn        a tracked run, latest checkpoint
-    run:20260903-155710_rgcn@best   ... its best checkpoint (or @latest, @40 for epoch 40)
+    run:20260903-155710_rgcn@40     ... its epoch-40 checkpoint (or @latest, the default)
     ckpt:path/to/weights.pth        a raw checkpoint (backend rgcn, width inferred)
-    run:<id>@best+minimax2          any neural source wrapped in a depth-2 search
-    v2=run:<id>@best                ``label=`` renames it in the reports
+    run:<id>+minimax2               any neural source wrapped in a depth-2 search
+    v2=run:<id>@40                  ``label=`` renames it in the reports
 
 Modifiers after ``+``: ``safe`` (avoid king suicide), ``sample`` (sample the policy
 instead of taking its argmax), ``minimax<N>`` (search ``N`` plies with the critic).

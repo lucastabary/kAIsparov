@@ -6,7 +6,7 @@ Commands (each has its own ``-h``):
     kaisparov eval  [--games N] [--model rgcn --checkpoint ...] ...
     kaisparov bench generators | generate <suite> | run <suite> -a <agent> ... | show <report>
     kaisparov play  [--vs-ai --checkpoint ...] ...
-    kaisparov runs  list | show <id> | lineage <id> | best [--metric ...] | graph
+    kaisparov runs  list | show <id> | lineage <id> | graph
 
 Sub-commands are imported lazily, so ``kaisparov runs`` stays fast and never
 loads torch or pygame.

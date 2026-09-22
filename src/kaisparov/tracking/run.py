@@ -3,12 +3,11 @@
 Each run gets its own directory under ``runs/<run_id>/``::
 
     config.yaml          # the exact resolved config
-    run.json             # metadata + summary (status, git, params, best, history)
+    run.json             # metadata + summary (status, git, params, history)
     metrics.jsonl        # one JSON line per logged step (append-only)
     tensorboard/         # TensorBoard event files
     checkpoints/
         epoch10.pth
-        best.pth         # copy of the best checkpoint by the tracked metric
 
 The paired :class:`~kaisparov.tracking.registry.Registry` reads these back without
 needing torch.
@@ -17,7 +16,6 @@ needing torch.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -108,7 +106,6 @@ class RunManager:
             "epochs_completed": 0,
             "checkpoints": [],
             "eval_history": [],
-            "best_checkpoint": None,
             "final_metrics": None,
         }
         with (self.dir / "config.yaml").open("w", encoding="utf-8") as stream:
@@ -166,8 +163,6 @@ class RunManager:
         epoch: int,
         metrics: dict[str, float] | None = None,
         *,
-        best_metric: str | None = None,
-        best_mode: str = "max",
         trainer_state: dict[str, Any] | None = None,
     ) -> Path:
         path = self.dir / "checkpoints" / f"epoch{epoch}.pth"
@@ -186,30 +181,8 @@ class RunManager:
             _retry_io(lambda: torch.save(trainer_state, state_path))
             record["state_file"] = state_path.name
         self._meta["checkpoints"].append(record)
-
-        if best_metric is not None and metrics is not None and best_metric in metrics:
-            self._maybe_update_best(record, best_metric, best_mode, metrics[best_metric])
-
         self._save_meta()
         return path
-
-    def _maybe_update_best(self, record, metric, mode, value) -> None:
-        current = self._meta["best_checkpoint"]
-        better = (
-            current is None
-            or (mode == "max" and value > current["value"])
-            or (mode == "min" and value < current["value"])
-        )
-        if better:
-            best_path = self.dir / "checkpoints" / "best.pth"
-            src = self.dir / "checkpoints" / record["file"]
-            _retry_io(lambda: shutil.copyfile(src, best_path))
-            self._meta["best_checkpoint"] = {
-                "epoch": record["epoch"],
-                "file": record["file"],
-                "metric": metric,
-                "value": value,
-            }
 
     # -------------------------------------------------------------------- finish
     def finish(

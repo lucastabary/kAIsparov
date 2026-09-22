@@ -35,6 +35,12 @@ Recent additions:
 - **Promotion picker in the UI**: a pawn reaching the last rank asks which piece it
   becomes, instead of always queening. The policy still queens — its action space is
   `(source, dest)` (see `todo.md`).
+- **No "best" checkpoint any more**: `best.pth`, `runs best`, `play --vs-ai --best`
+  and `run:<id>@best` are gone, and `resolve_checkpoint` takes `"latest"` or an epoch.
+  Selecting on Elo against the baselines stopped meaning anything once draws started
+  dominating, and picking a "best" model on a number nobody trusts is worse than not
+  picking one. A run is represented by where it got to; use the benchmark when a
+  comparison has to be made.
 - **Faster where it was silly**: the repetition history keeps a cheap transposition key
   instead of a full Polyglot hash per move (make/unmake 2.1× faster), and the legal mask
   is a lookup instead of `torch.isin` (2.9×).
