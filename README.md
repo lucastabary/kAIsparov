@@ -345,7 +345,8 @@ running, which is what makes architecture-vs-architecture comparison clean.
 - [x] **Phase 6** — standard chess on python-chess; a skill benchmark (`bench/`); named node
   feature sets, and every run rebuildable from what it recorded
 - [ ] **Next** — longer training runs to actually beat the baselines; a third GNN backend
-  (e.g. `gat`); underpromotion and castling in the action space (see [todo.md](todo.md))
+  (e.g. `gat`); underpromotion in the action space, and a relation of its own for
+  castling (see [todo.md](todo.md))
 
 ---
 

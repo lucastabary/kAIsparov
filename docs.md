@@ -140,8 +140,9 @@ name a position the way another program would.
 - **Edges**: a **static** graph (same every position) built by
   `create_static_full_chess_graph()` (`rgcn/graph.py`). Each edge is one piece's possible movement, and
   carries a **relation type** (`edge_type`): `0` knight, `1` rook, `2` bishop, `3`
-  king, `4` white pawn, `5` black pawn — 6 relations. (Castling is *not* an edge, so
-  `rgcn` cannot emit castling moves; a documented limitation.)
+  king, `4` white pawn, `5` black pawn — 6 relations. (There is no castling relation,
+  but castling *is* playable: `e1 -> g1` is two squares along the rank, which the rook
+  relation already carries as an edge, so the mask keeps it and playing it castles.)
 
 ### Network (`rgcn/model.py`)
 

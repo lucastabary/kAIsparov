@@ -77,9 +77,12 @@ only the node features (and which edges are *legal*, applied later as a mask).
 
 > **Representable moves.** Because pawn-capture edges point to the diagonal squares
 > regardless of occupancy, **en passant is representable** (it's a legal diagonal
-> pawn move). **Castling is *not*** — the king only has 1-step edges, so `rgcn`
-> cannot emit a castling move even though the engine supports it. A future backend
-> could add castling edges.
+> pawn move). **Castling is too**, though by accident rather than by design: a king
+> castles from `e1` to `g1` or `c1`, two squares along the rank, which the *rook*
+> relation already has as an edge. The move is legal, so the mask keeps it, and
+> playing it castles. There is no king-relation or castling-relation edge for it,
+> so the network has to learn the move through the rook edge that carries it —
+> a dedicated relation would be a reasonable thing to try.
 >
 > **Underpromotion is not either.** The action space is `(source, dest)`, and the four
 > promotions of one pawn push share that pair, so playing the edge queens. Adding it
@@ -159,7 +162,8 @@ message flow, and edge scores are all small enough to inspect directly (see
 
 - ✅ Relational bias matched to chess; White/Black weight sharing; native edge actions.
 - ✅ Small and interpretable.
-- ⚠️ **Cannot castle** (no castling edges).
+- ⚠️ Castling rides on the rook relation's 2-square edge rather than a relation of
+  its own (see above) — reachable, but not typed as what it is.
 - ⚠️ Compact features (piece type + side, optionally the control flags) — no
   positional/rank features, no move history.
 - ⚠️ The static full-move graph is dense (`E = 2536`); most edges are illegal in any

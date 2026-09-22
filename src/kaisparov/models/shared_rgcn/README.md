@@ -92,8 +92,8 @@ kaisparov eval  --model shared_rgcn --checkpoint runs/<id>/checkpoints/best.pth
 - ✅ One relational operator to interpret, applied iteratively.
 - ✅ Drop-in comparison against `rgcn` — only the network differs.
 - ⚠️ Less capacity: no step-specific specialisation.
-- ⚠️ Inherits every `rgcn` representation limitation — **no castling moves** (the king
-  has only 1-step edges), compact features, dense static graph.
+- ⚠️ Inherits every `rgcn` representation limitation — castling typed as a rook edge,
+  no underpromotion, compact features, dense static graph.
 
 ## Files
 

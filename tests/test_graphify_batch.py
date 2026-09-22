@@ -60,3 +60,29 @@ def test_a_model_reads_the_feature_set_it_was_built_for(backend, features):
 def test_an_unknown_feature_set_is_refused():
     with pytest.raises(ValueError, match="Unknown node feature set"):
         RGCNProcessor(features="does_not_exist")
+
+
+def test_the_policy_can_castle_and_promote():
+    """Both are reachable in the action space; castling rides on the rook relation.
+
+    A king castles two squares along its rank, which the rook relation already has as
+    an edge, so the mask keeps it. Underpromotion does not: the four promotions share
+    one (source, dest) pair, and playing it queens.
+    """
+    import chess
+
+    from kaisparov.core.utils import coord_to_index
+
+    processor = RGCNProcessor()
+
+    def is_reachable(fen, source, dest):
+        game = ChessGame(board=chess.Board(fen))
+        edge_index = processor.static_graph_edges[0]
+        legal = processor.legal_mask(game).nonzero().flatten().tolist()
+        keys = {int(edge_index[0, k]) * 64 + int(edge_index[1, k]) for k in legal}
+        return coord_to_index(source) * 64 + coord_to_index(dest) in keys
+
+    castle = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1"
+    assert is_reachable(castle, (4, 0), (6, 0))  # O-O
+    assert is_reachable(castle, (4, 0), (2, 0))  # O-O-O
+    assert is_reachable("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", (0, 6), (0, 7))  # promotion

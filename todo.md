@@ -17,6 +17,16 @@ options are a C/Rust-backed engine behind the same facade, or caching move lists
 across a search. Profile first (`cProfile` on a rollout) — today the bottleneck is
 the GNN forward/backward on CPU.
 
+## A relation of its own for castling
+
+Castling is playable today, but only because `e1 -> g1` happens to be a rook-relation
+edge (two squares along the rank); nothing tells the network that this edge means
+"castle" when the king sits on it. Giving it a relation — or at least a king-relation
+2-step edge — would let the model learn king safety as its own pattern rather than as
+a special case of a rook ray. Cheap to try: `num_relations` would go 6 -> 7, which
+changes the shape of `RGCNConv.weight`, so it needs the same checkpoint migration as
+the underpromotion work below, and the two are best done together.
+
 ## Underpromotion in the action space
 
 The engine generates all four promotions, but the policy is a distribution over
