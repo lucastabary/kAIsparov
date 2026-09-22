@@ -3,9 +3,9 @@ from __future__ import annotations
 import torch
 from torch_geometric.data import Data
 
-from kaisparov.core.game import ChessGame, Undo
-from kaisparov.core.pieces import BOARD_SIZE, PieceType
-from kaisparov.core.utils import coord_to_index, get_piece_value, index_to_coord
+from kaisparov.core.game import ChessGame
+from kaisparov.core.pieces import BOARD_SIZE
+from kaisparov.core.utils import coord_to_index, index_to_coord
 from kaisparov.models.base_processor import (
     BaseProcessor,
     ModelAction,
@@ -14,21 +14,6 @@ from kaisparov.models.base_processor import (
 )
 from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
 from kaisparov.training.ppo import PPOBuffer, train_one_epoch
-
-
-def compute_reward(game: ChessGame, undo: Undo) -> float:
-    """Fallback reward when the trainer supplies none: material only.
-
-    Mirrors :class:`~kaisparov.envs.chess_env.ChessEnv` — the captured piece, plus
-    what a promotion gained. Shaping (checkmate bonus, check, step penalty) lives in
-    :mod:`kaisparov.training.reward`.
-    """
-    reward = 0.0
-    if undo.captured is not None:
-        reward += get_piece_value(undo.captured.type)
-    if undo.move.promotion is not None:
-        reward += get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
-    return reward
 
 
 class RGCNProcessor(BaseProcessor):
@@ -170,5 +155,4 @@ __all__ = [
     "index_to_coord",
     "get_legal_mask",
     "train_one_epoch",
-    "compute_reward",
 ]

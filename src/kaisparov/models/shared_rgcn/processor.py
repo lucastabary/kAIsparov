@@ -11,7 +11,6 @@ from __future__ import annotations
 from kaisparov.models.base_processor import ModelAction
 from kaisparov.models.rgcn.processor import (
     RGCNProcessor,
-    compute_reward,
     get_legal_mask,
 )
 from kaisparov.training.ppo import PPOBuffer, train_one_epoch
@@ -27,5 +26,4 @@ __all__ = [
     "ModelAction",
     "get_legal_mask",
     "train_one_epoch",
-    "compute_reward",
 ]

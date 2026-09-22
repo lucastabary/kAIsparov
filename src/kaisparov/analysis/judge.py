@@ -30,12 +30,11 @@ from dataclasses import dataclass, field
 
 from kaisparov.analysis.evaluators import Evaluator
 from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
+from kaisparov.core.material import WIN, material_balance
+from kaisparov.core.pieces import PieceType, Player
 from kaisparov.core.rules import attacked_squares
-from kaisparov.core.utils import get_piece_value
 from kaisparov.insights import Move, MoveQuality, MoveVerdict
 
-WIN = 1e6  # sentinel score for "this move captures the king", i.e. wins outright
 EPS = 1e-6  # scores closer than this count as tied
 
 
@@ -135,17 +134,6 @@ class MoveJudge:
 
     # ------------------------------------------------------------- sacrifices
 
-    def _material(self, game: ChessGame, player: Player) -> float:
-        score = 0.0
-        for col in range(BOARD_SIZE):
-            for row in range(BOARD_SIZE):
-                piece = game.grid[col][row]
-                if piece is None or piece.type == PieceType.KING:
-                    continue
-                value = get_piece_value(piece.type)
-                score += value if piece.player == player else -value
-        return score
-
     def _material_greed(self, game: ChessGame, player: Player, plies: int) -> float:
         """``player``'s material after ``plies`` of both sides grabbing greedily.
 
@@ -156,7 +144,7 @@ class MoveJudge:
         """
         moves = game.legal_moves() if plies > 0 else []
         if not moves:
-            return self._material(game, player)
+            return material_balance(game, player)
 
         maximising = game.turn == player
         best = -WIN if maximising else WIN
@@ -183,7 +171,7 @@ class MoveJudge:
         the quiet moves that make up most of a game.
         """
         mover = game.turn
-        before = self._material(game, mover)
+        before = material_balance(game, mover)
         undo = game.make(*move)
         try:
             if game.is_checkmate():

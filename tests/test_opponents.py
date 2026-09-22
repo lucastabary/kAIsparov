@@ -14,7 +14,8 @@ from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 from kaisparov.training.opponents import OpponentPool
-from kaisparov.training.rollout_vs import _gain, collect_vs_opponent
+from kaisparov.training.reward import weighted_gain
+from kaisparov.training.rollout_vs import collect_vs_opponent
 
 ARCH = Architecture(model="rgcn", hidden_dim=8)
 
@@ -31,22 +32,22 @@ def test_gain_counts_captures_and_promotions():
     from kaisparov.core.game import ChessGame
 
     r = RewardSettings(material=1.0, promotion=1.0, checkmate=4.0)
-    assert _gain(r, None) == 0.0
+    assert weighted_gain(r, None) == 0.0
 
     # Rook takes the queen on a6.
     game = ChessGame(board=chess.Board("7k/8/q7/8/8/8/8/R3K3 w - - 0 1"))
-    assert _gain(r, game.make((0, 0), (0, 5))) == 9.0
+    assert weighted_gain(r, game.make((0, 0), (0, 5))) == 9.0
 
     # Queening: the pawn leaves, a queen arrives.
     game = ChessGame(board=chess.Board("8/P7/8/8/8/8/8/4K1k1 w - - 0 1"))
-    assert _gain(r, game.make((0, 6), (0, 7))) == 8.0
+    assert weighted_gain(r, game.make((0, 6), (0, 7))) == 8.0
 
-    # The win bonus is not part of _gain: mate is a property of the position, and
+    # The win bonus is not part of weighted_gain: mate is a property of the position, and
     # the caller adds it.
     game = ChessGame(board=chess.Board("7k/6pp/8/8/8/8/8/R3K3 w - - 0 1"))
     undo = game.make((0, 0), (0, 7))
     assert game.is_checkmate()
-    assert _gain(r, undo) == 0.0
+    assert weighted_gain(r, undo) == 0.0
 
 
 def test_pool_snapshot_sample_and_cap():

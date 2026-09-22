@@ -10,28 +10,31 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from kaisparov.core.game import ChessGame, Undo
-from kaisparov.core.pieces import PieceType
-from kaisparov.core.utils import get_piece_value
+from kaisparov.core.material import captured_value, promotion_gain
 from kaisparov.training.config import RewardSettings
 
 RewardFn = Callable[[ChessGame, "Undo"], float]
 
 
+def weighted_gain(settings: RewardSettings, undo: Undo | None) -> float:
+    """The material part of the reward: what the move took, and what it promoted to.
+
+    Promotion is a material event with no capture: the pawn is gone and something far
+    better stands in its place. Without its term the agent has no local signal at all
+    for pushing a pawn home — the gain would only reach it through the value function,
+    several plies later. ``None`` (no move was played) gains nothing.
+    """
+    if undo is None:
+        return 0.0
+    gain = settings.material * captured_value(undo)
+    if undo.move.promotion is not None:
+        gain += settings.promotion * promotion_gain(undo.move.promotion)
+    return gain
+
+
 def make_reward_fn(settings: RewardSettings) -> RewardFn:
     def reward_fn(game: ChessGame, undo: Undo) -> float:
-        reward = 0.0
-        captured = undo.captured
-
-        if captured is not None:
-            reward += settings.material * get_piece_value(captured.type)
-
-        # Promotion is a material event with no capture: the pawn is gone and
-        # something far better stands in its place. Without this term the agent has
-        # no local signal at all for pushing a pawn home — the gain would only ever
-        # reach it through the value function, several plies later.
-        if undo.move.promotion is not None:
-            gained = get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
-            reward += settings.promotion * gained
+        reward = weighted_gain(settings, undo)
 
         # Checkmate is the win. It is a flat bonus, decoupled from material, so the
         # scale of a win stays controllable on its own.
@@ -48,4 +51,4 @@ def make_reward_fn(settings: RewardSettings) -> RewardFn:
     return reward_fn
 
 
-__all__ = ["RewardFn", "make_reward_fn"]
+__all__ = ["RewardFn", "make_reward_fn", "weighted_gain"]

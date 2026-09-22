@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from kaisparov.core.game import ChessGame
+from kaisparov.core.material import material_balance
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.utils import get_piece_value
 
@@ -58,16 +59,7 @@ class MaterialEvaluator:
     default_lookahead = 1
 
     def evaluate(self, game: ChessGame) -> float:
-        mover = game.turn
-        score = 0.0
-        for col in range(BOARD_SIZE):
-            for row in range(BOARD_SIZE):
-                piece = game.grid[col][row]
-                if piece is None or piece.type == PieceType.KING:
-                    continue
-                value = get_piece_value(piece.type)
-                score += value if piece.player == mover else -value
-        return score
+        return material_balance(game, game.turn)
 
 
 def _centrality(col: int, row: int) -> float:

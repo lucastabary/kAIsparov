@@ -30,14 +30,13 @@ Torch-free, and it leaves the game exactly as it found it.
 from __future__ import annotations
 
 from kaisparov.bench.position import other
-from kaisparov.core.coords import ALL_SQUARES
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules, draw_reason
 from kaisparov.core.game import ChessGame
+from kaisparov.core.material import WIN, material_balance
 from kaisparov.core.move import Move
-from kaisparov.core.pieces import PieceType, Player
+from kaisparov.core.pieces import Player
 from kaisparov.core.utils import get_piece_value
 
-WIN = 1e6  # checkmate, in pawns
 _INF = float("inf")
 
 
@@ -130,19 +129,6 @@ class Oracle:
             game.unmake(undo)
 
     # --------------------------------------------------------------- material
-    @staticmethod
-    def material(game: ChessGame, player: Player) -> float:
-        """``player``'s material minus the opponent's, in pawns, kings excluded."""
-        score = 0.0
-        grid = game.grid
-        for col, row in ALL_SQUARES:
-            piece = grid[col][row]
-            if piece is None or piece.type == PieceType.KING:
-                continue
-            value = get_piece_value(piece.type)
-            score += value if piece.player == player else -value
-        return score
-
     def material_value(self, game: ChessGame, move: Move, plies: int) -> float:
         """The mover's material after ``move`` and ``plies`` replies of best play."""
         return self._material_search(game, move, plies, -_INF, _INF)
@@ -152,7 +138,7 @@ class Oracle:
         value = self.material_value(game, move, plies)
         if abs(value) >= WIN:
             return value
-        return value - self.material(game, game.turn)
+        return value - material_balance(game, game.turn)
 
     def material_gains(self, game: ChessGame, plies: int) -> dict[Move, float]:
         """:meth:`material_gain` for every move, exactly (no pruning across moves)."""
@@ -213,7 +199,7 @@ class Oracle:
             if plies <= 0:
                 # is_checkmate() short-circuits on is_check(), so the common quiet
                 # leaf never generates a move list.
-                return WIN if game.is_checkmate() else self.material(game, mover)
+                return WIN if game.is_checkmate() else material_balance(game, mover)
             replies = self._ordered_moves(game)
             if not replies:
                 # Mate wins outright; a stalemate is equal, whatever is on the board.

@@ -15,9 +15,9 @@ from dataclasses import dataclass
 
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules, draw_reason
 from kaisparov.core.game import ChessGame, Undo
+from kaisparov.core.material import move_gain
 from kaisparov.core.move import Move
-from kaisparov.core.pieces import Piece, PieceType, Player
-from kaisparov.core.utils import get_piece_value
+from kaisparov.core.pieces import Piece, Player
 
 Grid = list[list["Piece | None"]]
 
@@ -92,11 +92,7 @@ class ChessEnv:
         # itself, or the agent would learn to chase (or flee) draws. Checkmate is the
         # exception the trainer adds on top (see kaisparov.training.reward); here the
         # env stays a pure material ledger.
-        reward = get_piece_value(captured.type) if captured is not None else 0.0
-        if undo.move.promotion is not None:
-            # A promotion is a material event with no capture: the pawn is gone and
-            # something far better stands in its place.
-            reward += get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
+        reward = move_gain(undo)  # what it took, plus what a promotion gained
 
         self.plies += 1
         info: dict = {"captured": captured, "mover": mover, "promotion": undo.move.promotion}

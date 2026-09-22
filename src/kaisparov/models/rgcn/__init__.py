@@ -3,7 +3,6 @@ from kaisparov.models.rgcn.model import RGCNModel
 from kaisparov.models.rgcn.processor import (
     PPOBuffer,
     RGCNProcessor,
-    compute_reward,
     get_legal_mask,
     train_one_epoch,
 )
@@ -29,6 +28,5 @@ __all__ = [
     "collect_data",
     "train_one_epoch",
     "get_legal_mask",
-    "compute_reward",
     "BACKEND_SPEC",
 ]

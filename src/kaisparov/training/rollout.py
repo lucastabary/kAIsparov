@@ -17,8 +17,10 @@ from torch_geometric.data import Batch
 
 from kaisparov.core.draw import DEFAULT_RULES, STALEMATE, DrawRules
 from kaisparov.core.game import ChessGame
+from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import BaseCurriculum
 from kaisparov.training.ppo import PPOBuffer
+from kaisparov.training.reward import make_reward_fn
 
 
 def _model_device(agent: torch.nn.Module) -> torch.device:
@@ -63,7 +65,12 @@ def collect_data(
     which stops a shuffling loop from burning the whole ply budget. A draw is terminal
     but *not* a reward event: the drawing move scores whatever ``reward_fn`` gives a
     non-capturing move, exactly as it would mid-game. Pass ``None`` to disable.
+
+    ``reward_fn=None`` scores with the default :class:`RewardSettings` (material and
+    promotion, weight 1).
     """
+    if reward_fn is None:
+        reward_fn = make_reward_fn(RewardSettings())
     module = _resolve_module(model_module, model_name)
     processor = module.PROCESSOR_CLASS(features=agent.features)
     device = _model_device(agent)
@@ -116,10 +123,7 @@ def collect_data(
                     legal_mask=legal_mask,
                 )
                 undo = g.make(*action.move_coords)
-                if reward_fn is not None:
-                    reward = reward_fn(g, undo)
-                else:
-                    reward = module.compute_reward(g, undo)
+                reward = reward_fn(g, undo)
                 mated = g.is_checkmate()
                 drawn = None if mated else g.draw_reason(draw_rules)
 

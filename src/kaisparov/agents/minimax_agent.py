@@ -18,9 +18,8 @@ from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
 from kaisparov.core.draw import is_stalemate
 from kaisparov.core.game import ChessGame
+from kaisparov.core.material import WIN
 from kaisparov.core.utils import coord_to_index
-
-WIN = 1e6  # value of delivering mate (dominates any critic value)
 
 
 class MinimaxAgent:

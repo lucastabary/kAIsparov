@@ -3,7 +3,6 @@ from kaisparov.models.shared_rgcn.model import SharedRGCNModel
 from kaisparov.models.shared_rgcn.processor import (
     PPOBuffer,
     SharedRGCNProcessor,
-    compute_reward,
     get_legal_mask,
     train_one_epoch,
 )
@@ -29,6 +28,5 @@ __all__ = [
     "collect_data",
     "train_one_epoch",
     "get_legal_mask",
-    "compute_reward",
     "BACKEND_SPEC",
 ]

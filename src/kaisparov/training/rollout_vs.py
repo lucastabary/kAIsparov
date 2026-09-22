@@ -24,28 +24,10 @@ from torch_geometric.data import Batch
 
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.core.game import ChessGame, Undo
-from kaisparov.core.pieces import PieceType, Player
-from kaisparov.core.utils import get_piece_value
+from kaisparov.core.pieces import Player
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import BaseCurriculum
-
-
-def _gain(settings: RewardSettings, undo: Undo | None) -> float:
-    """Material a move won, weighted (mirrors kaisparov.training.reward.make_reward_fn).
-
-    The win bonus is *not* here: mate is a property of the position after the move,
-    not of what the move captured, so the caller adds it.
-    """
-    if undo is None:
-        return 0.0
-    gain = 0.0
-    if undo.captured is not None:
-        gain += settings.material * get_piece_value(undo.captured.type)
-    if undo.move.promotion is not None:
-        gain += settings.promotion * (
-            get_piece_value(undo.move.promotion) - get_piece_value(PieceType.PAWN)
-        )
-    return gain
+from kaisparov.training.reward import weighted_gain
 
 
 def _new_game(curriculum: BaseCurriculum | None) -> ChessGame:
@@ -173,7 +155,7 @@ def collect_vs_opponent(
                 )
                 undo_l = game.make(*action.move_coords)
                 steps[i] += 1
-                reward = _gain(reward_settings, undo_l) - reward_settings.step_penalty
+                reward = weighted_gain(reward_settings, undo_l) - reward_settings.step_penalty
                 done = False
                 result = "draw"
 
@@ -192,7 +174,7 @@ def collect_vs_opponent(
                             done = True  # opponent stuck -> draw
                         else:
                             steps[i] += 1
-                            reward -= _gain(reward_settings, undo_o)
+                            reward -= weighted_gain(reward_settings, undo_o)
                             if game.is_checkmate():
                                 reward -= reward_settings.checkmate
                                 result, done = "loss", True
