@@ -216,3 +216,34 @@ def test_collect_vs_opponent_standard_start():
     )
     assert "avg_plies" in stats
     assert isinstance(ChessGame(), ChessGame)  # sanity
+
+
+def test_pool_mode_scores_the_learner_like_self_play(monkeypatch):
+    # Every shaping term (check included) reaches the learner through make_reward_fn;
+    # pool mode used to rebuild part of it by hand and silently drop the check bonus.
+    import kaisparov.training.rollout_vs as rollout_vs
+    from kaisparov.core.pieces import Piece, PieceType, Player
+
+    monkeypatch.setattr(rollout_vs, "make_reward_fn", lambda settings: lambda game, undo: 7.0)
+
+    class BareKings:  # the learner's first move leaves a dead draw: one transition
+        def get_initial_board(self):
+            grid = [[None] * 8 for _ in range(8)]
+            grid[0][0] = Piece(Player.WHITE, PieceType.KING)
+            grid[7][7] = Piece(Player.BLACK, PieceType.KING)
+            return grid
+
+    spec, agent = _spec_and_agent()
+    buffer = spec.buffer_class(gamma=0.99, gae_lambda=0.95, self_play=False)
+    collect_vs_opponent(
+        agent,
+        buffer,
+        num_episodes=1,
+        max_steps_per_episode=4,
+        model_module=load_backend("rgcn"),
+        curriculum=BareKings(),
+        reward_settings=RewardSettings(),
+        opponent=RandomAgent(seed=0),
+        seed=0,
+    )
+    assert buffer.rewards == [7.0]

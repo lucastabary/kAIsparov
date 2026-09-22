@@ -2,9 +2,10 @@
 
 Unlike self-play (both sides are the learner, negamax GAE), here the opponent is part
 of the environment. So only the learner's transitions are stored, with a per-step
-reward = (what the learner captured) - (what the opponent captured in reply) - step
-cost, and terminal win/loss on king capture. The PPO buffer must use ``self_play=False``
-(standard GAE) for this data.
+reward = the learner's move scored as in self-play (``make_reward_fn``: material,
+promotion, check, step cost, the mate bonus) minus what the opponent's reply won
+(its material, and the mate bonus if it mates). The PPO buffer must use
+``self_play=False`` (standard GAE) for this data.
 
 Episodes are played *batched*: at each ply every still-running game is graphified and
 the learner's model runs a single batched forward pass (instead of one tiny forward per
@@ -27,7 +28,7 @@ from kaisparov.core.game import ChessGame, Undo
 from kaisparov.core.pieces import Player
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import BaseCurriculum
-from kaisparov.training.reward import weighted_gain
+from kaisparov.training.reward import make_reward_fn, weighted_gain
 
 
 def _new_game(curriculum: BaseCurriculum | None) -> ChessGame:
@@ -80,6 +81,7 @@ def collect_vs_opponent(
     edge_index = processor.static_graph_edges[0].to(device)
     agent.eval()
     rng = random.Random(seed)
+    learner_reward = make_reward_fn(reward_settings)
 
     def pick_opponent():
         return opponent if sample_opponent is None else sample_opponent()
@@ -155,12 +157,11 @@ def collect_vs_opponent(
                 )
                 undo_l = game.make(*action.move_coords)
                 steps[i] += 1
-                reward = weighted_gain(reward_settings, undo_l) - reward_settings.step_penalty
+                reward = learner_reward(game, undo_l)
                 done = False
                 result = "draw"
 
                 if game.is_checkmate():
-                    reward += reward_settings.checkmate
                     result, done = "win", True
                 else:
                     # The learner's own move can draw — above all by stalemating the
@@ -199,9 +200,9 @@ def collect_vs_opponent(
 
     n = max(num_episodes, 1)
     return {
-        # A decisive game here ends with a king capture by either side (win + loss);
-        # named to match the self-play rollout's key so the trainer can log/print it
-        # uniformly. ``winrate`` is the learner's own king-capture rate.
+        # A decisive game here ends in mate by either side (win + loss); named to
+        # match the self-play rollout's key so the trainer can log/print it
+        # uniformly. ``winrate`` is the rate at which the learner mates.
         "checkmate_rate": (wins + losses) / n,
         "winrate": wins / n,
         "lossrate": losses / n,
