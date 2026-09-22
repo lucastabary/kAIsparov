@@ -270,7 +270,7 @@ class Trainer:
                 if rollout_stats:
                     self.run.log_metrics(epoch, rollout_stats, section="rollout")
 
-                if cfg.eval.enabled and epoch % cfg.eval.every == 0:
+                if cfg.eval.runs and epoch % cfg.eval.every == 0:
                     last_eval = self.evaluate()
                     self.run.log_eval(epoch, last_eval)
 
@@ -342,7 +342,7 @@ class Trainer:
         skips = metrics.get("nonfinite_skips", 0)
         if skips:
             line += f" | SKIPPED (non-finite loss ×{skips:.0f})"
-        if last_eval and self.config.eval.every and epoch % self.config.eval.every == 0:
+        if last_eval and self.config.eval.runs and epoch % self.config.eval.every == 0:
             # vs_material is the discriminating eval (vs_random saturates at 100%); show
             # both, and it's what BEST_METRIC selects checkpoints on.
             line += (

@@ -106,9 +106,14 @@ class CurriculumSettings:
 @dataclass
 class EvalSettings:
     enabled: bool = True
-    every: int = 5  # epochs
+    every: int = 5  # epochs; <= 0 switches the periodic evaluation off
     games: int = 20
     max_plies: int = 200
+
+    @property
+    def runs(self) -> bool:
+        """Whether to evaluate at all — ``every: 0`` reads as "never", not as a crash."""
+        return self.enabled and self.every > 0
 
 
 @dataclass

@@ -46,3 +46,12 @@ def test_yaml_roundtrip(tmp_path):
     c.to_yaml(path)
     reloaded = TrainConfig.from_yaml(path)
     assert reloaded.to_dict() == c.to_dict()
+
+
+def test_evaluation_every_zero_reads_as_off():
+    """`every: 0` used to divide by zero mid-training instead of meaning "never"."""
+    from kaisparov.training.config import TrainConfig
+
+    assert TrainConfig.from_dict({"eval": {"every": 0}}).eval.runs is False
+    assert TrainConfig.from_dict({"eval": {"enabled": False}}).eval.runs is False
+    assert TrainConfig().eval.runs is True
