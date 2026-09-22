@@ -110,12 +110,8 @@ class RGCNProcessor(BaseProcessor):
         num_nodes = BOARD_SIZE * BOARD_SIZE
         if not moves:
             return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
-        keys = torch.tensor(
-            [coord_to_index(m[0]) * num_nodes + coord_to_index(m[1]) for m in moves],
-            dtype=edge_index.dtype,
-            device=edge_index.device,
-        )
-        return torch.isin(_packed_edges(edge_index, num_nodes), keys)
+        keys = [coord_to_index(m[0]) * num_nodes + coord_to_index(m[1]) for m in moves]
+        return _mask_from_keys(keys, edge_index, num_nodes)
 
 
 # edge_index -> its packed (src * 64 + dst) keys. The static graph is built once per
@@ -134,6 +130,26 @@ def _packed_edges(edge_index: torch.Tensor, num_nodes: int) -> torch.Tensor:
     return cached[1]
 
 
+# One row per possible (src, dst) pair, reused across calls: writing the wanted keys
+# into it and reading it back at the edges is a couple of gathers, where torch.isin
+# sorts both sides and cost more than generating the move list in the first place.
+_KEY_TABLE: dict[tuple[int, torch.device], torch.Tensor] = {}
+
+
+def _mask_from_keys(keys: list[int], edge_index: torch.Tensor, num_nodes: int) -> torch.Tensor:
+    """Which edges carry one of these packed ``src * 64 + dst`` keys."""
+    device = edge_index.device
+    if not keys:
+        return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=device)
+    table = _KEY_TABLE.get((num_nodes, device))
+    if table is None:
+        table = torch.zeros(num_nodes * num_nodes, dtype=torch.bool, device=device)
+        _KEY_TABLE[(num_nodes, device)] = table
+    table.zero_()
+    table[torch.tensor(keys, dtype=torch.long, device=device)] = True
+    return table[_packed_edges(edge_index, num_nodes)]
+
+
 def get_legal_mask(game: ChessGame, edge_index: torch.Tensor) -> torch.Tensor:
     """Boolean mask over graph edges: which ``(source, dest)`` pairs are legal now.
 
@@ -145,12 +161,9 @@ def get_legal_mask(game: ChessGame, edge_index: torch.Tensor) -> torch.Tensor:
     The four promotions of one pawn push share a ``(source, dest)`` pair and so a
     single edge; playing it queens. Underpromotion is not in the action space.
     """
-    num_nodes = BOARD_SIZE * BOARD_SIZE
+    num_nodes = NUM_NODES
     keys = {move.from_square * num_nodes + move.to_square for move in game.board.legal_moves}
-    if not keys:
-        return torch.zeros(edge_index.shape[1], dtype=torch.bool, device=edge_index.device)
-    key_tensor = torch.tensor(sorted(keys), dtype=edge_index.dtype, device=edge_index.device)
-    return torch.isin(_packed_edges(edge_index, num_nodes), key_tensor)
+    return _mask_from_keys(list(keys), edge_index, num_nodes)
 
 
 __all__ = ["RGCNProcessor", "get_legal_mask"]
