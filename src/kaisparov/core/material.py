@@ -16,6 +16,7 @@ from kaisparov.core.utils import get_piece_value
 
 if TYPE_CHECKING:
     from kaisparov.core.game import ChessGame, Undo
+    from kaisparov.core.move import Move
 
 # The score of a won position, in pawns: far above any material count, so a search
 # prefers any mate to any material, and still a plain float.
@@ -40,6 +41,18 @@ def move_gain(undo: Undo) -> float:
     return gain
 
 
+def gain_if_played(game: ChessGame, move: Move) -> float:
+    """What :func:`move_gain` would say of ``move``, without playing it.
+
+    Much cheaper than a make/unmake, for a baseline scoring every legal move each ply.
+    """
+    captured = game.captured_by(move[0], move[1])
+    gain = get_piece_value(captured.type) if captured is not None else 0.0
+    if move[2] is not None:
+        gain += promotion_gain(move[2])
+    return gain
+
+
 def material_balance(game: ChessGame, player: Player) -> float:
     """``player``'s material minus the opponent's, kings excluded."""
     grid = game.grid
@@ -53,4 +66,11 @@ def material_balance(game: ChessGame, player: Player) -> float:
     return score
 
 
-__all__ = ["WIN", "captured_value", "material_balance", "move_gain", "promotion_gain"]
+__all__ = [
+    "WIN",
+    "captured_value",
+    "gain_if_played",
+    "material_balance",
+    "move_gain",
+    "promotion_gain",
+]

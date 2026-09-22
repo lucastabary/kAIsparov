@@ -16,8 +16,7 @@ import random
 from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
 from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import PieceType
-from kaisparov.core.utils import get_piece_value
+from kaisparov.core.material import gain_if_played
 
 
 class MaterialAgent:
@@ -36,18 +35,13 @@ class MaterialAgent:
         if self.avoid_king_suicide:
             moves = safe_moves(game, moves)
 
-        grid = game.grid
         best_score = -1.0
         best: list[Move] = []
         for move in moves:
-            dest = move[1]
-            target = grid[dest[0]][dest[1]]
-            score = get_piece_value(target.type) if target is not None else 0.0
-            if move[2] is not None:
-                # A promotion is material won without a capture: the pawn leaves and
-                # something far better arrives. Underpromotions score below a queen,
-                # so the greedy pick queens unless a capture beats it.
-                score += get_piece_value(move[2]) - get_piece_value(PieceType.PAWN)
+            # Asked of the engine rather than read off the destination square, which
+            # is empty on an en passant capture. Underpromotions gain less than a
+            # queen, so the greedy pick queens unless a capture beats it.
+            score = gain_if_played(game, move)
             if score > best_score:
                 best_score = score
                 best = [move]

@@ -63,3 +63,15 @@ def test_material_agent_queens_a_pawn_over_taking_a_knight():
     move = MaterialAgent(seed=0).select_move(game)
     # Taking the knight and promoting is worth 3 + 8; pushing straight is worth 8.
     assert move[2] is PieceType.QUEEN
+
+
+def test_material_agent_counts_an_en_passant_capture():
+    # exd6 e.p. is the only capture, and it lands on an empty square.
+    import chess
+
+    from kaisparov.core.game import ChessGame
+    from kaisparov.core.move import Move
+
+    game = ChessGame(board=chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"))
+    en_passant = Move((4, 4), (3, 5))
+    assert all(MaterialAgent(seed=s).select_move(game) == en_passant for s in range(20))

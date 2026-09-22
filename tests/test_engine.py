@@ -333,3 +333,17 @@ def test_is_in_check_agrees_with_the_control_map_on_random_positions():
             enemy = Player.BLACK if player == Player.WHITE else Player.WHITE
             king = find_king(game.grid, player)
             assert is_in_check(game, player) == (king in attacked_squares(game, enemy))
+
+
+def test_captured_by_sees_en_passant_without_playing_the_move():
+    import chess
+
+    game = ChessGame(board=chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"))
+    before = game.fen()
+    taken = game.captured_by((4, 4), (3, 5))  # exd6
+    assert taken is not None and (taken.player, taken.type) == (Player.BLACK, PieceType.PAWN)
+    assert game.captured_by((4, 4), (4, 5)) is None  # e5-e6
+    assert game.fen() == before
+    undo = game.make((4, 4), (3, 5))
+    assert undo.captured is not None and undo.captured.type == PieceType.PAWN
+    assert undo.captured_square == (3, 4)  # the pawn stood on d5, not d6

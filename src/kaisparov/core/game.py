@@ -224,6 +224,13 @@ class ChessGame:
                 seen[square_to_coord(move.to_square)] = None
         return list(seen)
 
+    def captured_by(self, source: Coord, dest: Coord) -> Piece | None:
+        """The piece ``source -> dest`` would take, en passant included, without playing it.
+
+        ``None`` for a quiet move. The move is assumed legal.
+        """
+        return _capture(self.board, chess.Move(coord_to_square(source), coord_to_square(dest)))[0]
+
     def promotion_choices(self, source: Coord, dest: Coord) -> list[PieceType]:
         """The pieces a pawn may become by playing ``source -> dest``, queen first.
 
@@ -277,15 +284,8 @@ class ChessGame:
         assert moving is not None, f"no piece to move on {source}"
         piece = _piece_from_chess(moving, board, move.from_square)
 
-        captured: Piece | None
         is_en_passant = board.is_en_passant(move)
-        if is_en_passant:
-            captured_square: Coord | None = (dest[0], source[1])
-            captured = Piece(_other(piece.player), PieceType.PAWN)
-        else:
-            taken = board.piece_at(move.to_square)
-            captured = None if taken is None else _piece_from_chess(taken, board, move.to_square)
-            captured_square = dest if captured is not None else None
+        captured, captured_square = _capture(board, move)
 
         undo = Undo(
             move=Move(source, dest, FROM_CHESS_PIECE[move.promotion] if move.promotion else None),
@@ -387,6 +387,23 @@ class ChessGame:
 # --------------------------------------------------------------------- helpers
 def _other(player: Player) -> Player:
     return Player.BLACK if player == Player.WHITE else Player.WHITE
+
+
+def _capture(board: chess.Board, move: chess.Move) -> tuple[Piece | None, Coord | None]:
+    """``(captured piece, its square)`` for a move about to be played, or ``(None, None)``.
+
+    The square differs from the destination on en passant, where it is empty.
+    """
+    if board.is_en_passant(move):
+        square = chess.square(
+            chess.square_file(move.to_square), chess.square_rank(move.from_square)
+        )
+        colour = Player.BLACK if board.turn == chess.WHITE else Player.WHITE
+        return Piece(colour, PieceType.PAWN), square_to_coord(square)
+    taken = board.piece_at(move.to_square)
+    if taken is None:
+        return None, None
+    return _piece_from_chess(taken, board, move.to_square), square_to_coord(move.to_square)
 
 
 def _needs_promotion(board: chess.Board, move: chess.Move) -> bool:
