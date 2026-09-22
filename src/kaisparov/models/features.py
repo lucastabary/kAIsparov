@@ -10,8 +10,9 @@ chosen per run by the ``features:`` key of the training config.
 **A name, once runs use it, never changes meaning.** A run records the name it was
 trained with; to try different inputs, add a new set under a new name rather than
 editing an existing one — or every checkpoint trained on the old meaning stops
-loading, or worse, loads and reads garbage. Refactors that leave the output
-bit-identical (a faster ``encode_batch``) are fine.
+loading, or worse, loads and reads garbage. ``tests/test_features.py`` pins the
+output of each set on fixed positions so a change cannot slip through by accident.
+Refactors that leave the output bit-identical (a faster ``encode_batch``) are fine.
 
 Every set is laid out from the point of view of the side to move: "own" pieces are
 the mover's. Each has two implementations that must agree exactly — :meth:`encode`,
@@ -165,8 +166,10 @@ class PiecesControl(Pieces):
 
 FEATURE_SETS: dict[str, FeatureSet] = {cls.name: cls() for cls in (Pieces, PiecesControl)}
 
-# What a model or processor built without naming its features gets.
-DEFAULT_FEATURES = "pieces_control"
+# What a new run trains on unless its config names a set. Runs recorded before the
+# key existed are *not* read as this: their set comes off their weights (see
+# models.factory.resolve_architecture), so changing the default never relabels them.
+DEFAULT_FEATURES = "pieces"
 
 
 def get_feature_set(name: str) -> FeatureSet:

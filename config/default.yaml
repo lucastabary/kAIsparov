@@ -4,6 +4,7 @@
 
 model: rgcn
 hidden_dim: 8
+features: pieces        # node features: pieces | pieces_control (models/features.py)
 epochs: 50
 seed: 0
 device: auto            # auto | cpu | cuda

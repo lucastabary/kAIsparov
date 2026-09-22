@@ -16,7 +16,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 |---------|----------------|
 | `core/` | Chess engine — a facade over **python-chess**, no torch. `coords` (single source of truth), `move` (`Move` with its promotion), `game` (`ChessGame`: `make`/`unmake`, `legal_moves`, `grid` snapshot), `rules`, `draw`, `pieces`, `bitboard_batch` (vectorised control maps), `game_interface` (pygame). |
 | `envs/` | `ChessEnv` — Gym-like `reset`/`step`/reward/terminal. The only place reward & game-over logic live. |
-| `models/` | Neural backends. Each `models/<name>/` exposes a `BACKEND_SPEC` (`backend_spec.py`); `factory.py` loads by name. |
+| `models/` | Neural backends. Each `models/<name>/` exposes a `BACKEND_SPEC` (`backend_spec.py`). `features` — the named node feature sets, shared by every backend; `architecture` — `Architecture(model, hidden_dim, features)`, what a run records; `factory` — `build_agent` / `load_agent`, the only way to build or load a network. |
 | `agents/` | Policies with `select_move(game)`: `RandomAgent`, `MaterialAgent`, `NeuralAgent`. |
 | `analysis/` | Move review — `evaluators` (score a position), `judge` (grade a played move, chess.com-style labels + accuracy), `critic` (torch-backed evaluator). Vocabulary lives in `insights.py`. |
 | `training/` | `config` (typed), `trainer`, `ppo` (buffer + negamax GAE), `rollout`, `curriculum`. |
@@ -52,6 +52,14 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
   node with no legal move as mate (-WIN) or stalemate (0) — reading it off the
   material on the board hands the win to whoever is up a queen.
 - **Style**: snake_case, English identifiers, ruff-formatted (line length 100).
+- **Node features are named and frozen.** A run records the *name* of its feature set
+  (`features:`), so a name never changes meaning once runs use it: to try other
+  inputs, add a set under a new name in `models/features.py`, and pin it in
+  `tests/test_features.py`. Build or load a network only through
+  `factory.build_agent` / `factory.load_agent` — they keep the model and its
+  processor on the same `Architecture`, and read an older run's features off its
+  weights. A new shape-changing hyper-parameter goes into `Architecture`, not into
+  each loader.
 - **Experiment tracking** is the `runs/` registry. Do **not** reintroduce the old
   per-package `model_info.json` / `weights/` system — it was removed on purpose.
 

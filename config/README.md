@@ -35,6 +35,7 @@ kaisparov train --config config/default.yaml
 |-----------|------|---------|--------------|
 | `model` | str | `rgcn` | Which model backend to train (a folder under `src/kaisparov/models/`, loaded by name): `rgcn` or `shared_rgcn`. |
 | `hidden_dim` | int | `8` | Hidden size of the network — the main architecture knob. Must match the checkpoint when resuming. |
+| `features` | str | `pieces` | Node feature set (`models/features.py`): `pieces` — the 12 piece-type one-hots, own then opponent; `pieces_control` — the same plus *attacked by the opponent* and *controlled by the mover* (14). Part of the architecture: locked on resume. |
 | `epochs` | int | `50` | Number of training epochs. One epoch = collect self-play data, then run the PPO update. |
 | `seed` | int | `0` | Random seed for torch / numpy / python (reproducibility). |
 | `device` | str | `auto` | `auto` (CUDA if available, else CPU), `cpu`, or `cuda`. On this project, `auto` → CPU. |
@@ -164,8 +165,9 @@ ppo:
   learning_rate: 0.0005
 ```
 
-- **The architecture is inherited** — you do *not* repeat `model` / `hidden_dim`
-  (they must match the checkpoint). Any field you omit is inherited from the parent;
+- **The architecture is inherited** — you do *not* repeat `model` / `hidden_dim` /
+  `features` (they must match the checkpoint). A parent recorded before `features`
+  existed keeps the set its weights were trained on, not today's default. Any field you omit is inherited from the parent;
   list only what changes.
 - It reloads the parent's **latest** checkpoint plus its **optimizer + RNG state**, so
   training continues exactly where it stopped.
@@ -234,6 +236,7 @@ kaisparov train --config config/default.yaml --epochs 100 --seed 1 --cpu
 | `--cpu` | forces `device: cpu` |
 | `--model NAME` | `model` (fresh runs only — locked on resume) |
 | `--hidden-dim N` | `hidden_dim` (fresh runs only — locked on resume) |
+| `--features NAME` | `features` (fresh runs only — locked on resume) |
 | `--resume <run_id>` | same as `resume_from_run` |
 | `--runs-dir DIR` | `runs_dir` (also where `--resume` looks) |
 

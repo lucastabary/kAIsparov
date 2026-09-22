@@ -116,10 +116,14 @@ round-trip invariant.
 
 `RGCNProcessor.graphify(game)` builds a PyG `Data`:
 
-- **Nodes**: the 64 squares. Node features are **12-dim, relative to the side to
-  move**: indices 0–5 mark an *ally* piece of a given type on that square, 6–11 an
-  *enemy* piece. (Relative encoding means the network always "sees" from the mover's
-  perspective, so no separate side-to-move plane is needed.)
+- **Nodes**: the 64 squares. Node features are a named set from `models/features.py`,
+  **relative to the side to move**, chosen per run by `features:`. The default,
+  `pieces`, is 12-dim: indices 0–5 mark an *ally* piece of a given type on that
+  square, 6–11 an *enemy* piece. `pieces_control` adds two blocking-aware flags:
+  attacked by the opponent, controlled by the mover. (Relative encoding means the
+  network always "sees" from the mover's perspective, so no separate side-to-move
+  plane is needed.) A set's name never changes meaning once runs use it — add a new
+  one instead; `tests/test_features.py` pins each.
 - **Edges**: a **static** graph (same every position) built by
   `create_static_full_chess_graph()`. Each edge is one piece's possible movement, and
   carries a **relation type** (`edge_type`): `0` knight, `1` rook, `2` bishop, `3`

@@ -28,17 +28,26 @@ position (the value), sharing the same node embeddings.
 
 **Nodes** — the 64 squares (node index = `row * 8 + col`, see `core/coords.py`).
 
-**Node features** — a 14-dim vector per square, **relative to the side to move**:
+**Node features** — a named set from `models/features.py`, chosen per run by the
+`features:` config key and shared with every backend. Each is a vector per square,
+**relative to the side to move**:
 
 | index | 0 | 1 | 2 | 3 | 4 | 5 | 6–11 | 12 | 13 |
 |-------|---|---|---|---|---|---|------|----|----|
 | means | ally king | ally queen | ally bishop | ally rook | ally knight | ally pawn | same six, but **enemy** | attacked by enemy | defended by ally |
 
+- `pieces` (12 dims, indices 0–11) — the default for new runs.
+- `pieces_control` (14 dims) — adds the two control flags, 12 and 13. Runs from
+  2026-09-04 to the switch to `pieces` trained on it.
+
+The model sizes its input layer from the set (`RGCNModel(features=...)`), and the
+processor encodes with the same one, so the two cannot disagree.
+
 Encoding pieces as *ally/enemy* rather than *white/black* means the network always
 sees the position from the mover's perspective — no separate side-to-move plane, and
 White and Black share weights.
 
-Indices 12–13 are a **blocking-aware control map**: the batched path computes them
+With `pieces_control`, indices 12–13 are a **blocking-aware control map**: the batched path computes them
 for every position at once with the vectorised Kogge-Stone fills in
 `core/bitboard_batch.py`, packed straight from python-chess's own bitboards
 (`core/rules.attacked_squares` is the single-position reference the tests compare
@@ -142,8 +151,8 @@ message flow, and edge scores are all small enough to inspect directly (see
 - ✅ Relational bias matched to chess; White/Black weight sharing; native edge actions.
 - ✅ Small and interpretable.
 - ⚠️ **Cannot castle** (no castling edges).
-- ⚠️ Compact 14-dim features (piece type + side + attacked/defended control flags) —
-  no positional/rank features, no move history.
+- ⚠️ Compact features (piece type + side, optionally the control flags) — no
+  positional/rank features, no move history.
 - ⚠️ The static full-move graph is dense (`E = 2536`); most edges are illegal in any
   given position and get masked out.
 

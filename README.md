@@ -249,7 +249,7 @@ kAIsparov/
 ## 🧠 How it works
 
 1. **Encode** — `RGCNProcessor.graphify` turns the board into a PyG `Data`:
-   12-dim node features (6 ally piece types + 6 enemy) over a *static* graph whose
+   node features (by default 6 ally piece types + 6 enemy) over a *static* graph whose
    edges encode every piece's movement geometry (6 relations).
 2. **Reason** — `ChessRGCN` runs 4 relational graph-conv layers with residuals,
    producing per-node embeddings.

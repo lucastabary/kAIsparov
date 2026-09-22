@@ -36,8 +36,8 @@ attacks, then at defenders" across steps the way distinct layers can.
 ## Board → graph (`processor.py`)
 
 Unchanged from `rgcn`: `SharedRGCNProcessor` **is** `RGCNProcessor` (subclassed for a
-backend-specific name). Same 64 square-nodes, same 14-dim ally/enemy + control-flag
-node features, same static 2536-edge graph with 6 relation types, same legal masking
+backend-specific name). Same 64 square-nodes, same node feature sets (`pieces` or
+`pieces_control`, per run), same static 2536-edge graph with 6 relation types, same legal masking
 and edge→move decoding. See [`models/rgcn/README.md`](../rgcn/README.md) for the full
 description — reusing the encoding rather than copying it is what keeps an
 `rgcn` vs `shared_rgcn` comparison a comparison *of the network only*.
@@ -46,7 +46,7 @@ description — reusing the encoding rather than copying it is what keeps an
 
 `SharedChessRGCN` — the weight-tied backbone:
 
-1. **Encoder** — `Linear(14 → hidden)` + ReLU. Lifts node features to the working
+1. **Encoder** — `Linear(features → hidden)` + ReLU (12 or 14 inputs). Lifts node features to the working
    width so the shared conv is always a `hidden → hidden` map (this is what makes
    tying possible at all — `rgcn`'s first layer has a different shape from the rest).
 2. **Shared step** — one `RGCNConv(hidden → hidden, 6 relations)` applied `num_steps`
@@ -90,7 +90,7 @@ kaisparov eval  --model shared_rgcn --checkpoint runs/<id>/checkpoints/best.pth
 - ✅ Drop-in comparison against `rgcn` — only the network differs.
 - ⚠️ Less capacity: no step-specific specialisation.
 - ⚠️ Inherits every `rgcn` representation limitation — **no castling moves** (the king
-  has only 1-step edges), compact 14-dim features, dense static graph.
+  has only 1-step edges), compact features, dense static graph.
 
 ## Files
 
