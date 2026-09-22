@@ -21,6 +21,7 @@ convention this project uses — see :mod:`kaisparov.models.rgcn.processor`.
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from dataclasses import dataclass
 
 import chess
@@ -39,6 +40,8 @@ from kaisparov.core.move import (
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
 
 Grid = list[list["Piece | None"]]
+# Opaque identity of a position, only ever compared against another of its kind.
+PositionKey = Hashable
 
 # Castling rights, as (colour, king square, rook square, right) — used both to read
 # rights off a hand-built grid and to derive a piece's ``has_moved`` flag from them.
@@ -67,7 +70,6 @@ class Undo:
     is_en_passant: bool
     prev_turn: Player
     prev_last_move: tuple[Coord, Coord] | None
-    prev_zobrist: int
 
 
 class ChessGame:
@@ -97,7 +99,7 @@ class ChessGame:
         self.last_move: tuple[Coord, Coord] | None = None
         self._grid: Grid | None = None
         self._zobrist: int | None = None
-        self.position_history: list[int] = [self.zobrist]
+        self.position_history: list[PositionKey] = [_position_key(self.board)]
 
     # ------------------------------------------------------------------ setup
     @staticmethod
@@ -157,7 +159,7 @@ class ChessGame:
     def _reset_derived(self) -> None:
         self._grid = None
         self._zobrist = None
-        self.position_history = [self.zobrist]
+        self.position_history = [_position_key(self.board)]
 
     def _invalidate(self) -> None:
         self._grid = None
@@ -200,7 +202,13 @@ class ChessGame:
 
     @property
     def zobrist(self) -> int:
-        """A fingerprint of the position (pieces, side to move, castling, en passant)."""
+        """A fingerprint of the position (pieces, side to move, castling, en passant).
+
+        The standard Polyglot hash, for anything that has to name a position the same
+        way another program would — an opening book, a log, a test. Computed on demand
+        and cached: repetition counting uses the cheaper :func:`_position_key` instead,
+        because hashing the whole board on every make was half the cost of a move.
+        """
         if self._zobrist is None:
             self._zobrist = chess.polyglot.zobrist_hash(self.board)
         return self._zobrist
@@ -296,14 +304,13 @@ class ChessGame:
             is_en_passant=is_en_passant,
             prev_turn=self.turn,
             prev_last_move=self.last_move,
-            prev_zobrist=self.zobrist,
         )
 
         board.push(move)
         self.count += 1
         self.last_move = (source, dest)
         self._invalidate()
-        self.position_history.append(self.zobrist)
+        self.position_history.append(_position_key(board))
         return undo
 
     def unmake(self, undo: Undo) -> None:
@@ -314,8 +321,7 @@ class ChessGame:
         # make/unmake are perfectly nested (searches included), so the history always
         # comes back to what it was.
         self.position_history.pop()
-        self._grid = None
-        self._zobrist = undo.prev_zobrist
+        self._invalidate()
 
     def play(self, source: Coord, dest: Coord, promotion: PieceType | None = None) -> Piece | None:
         """Validate then apply a move. Returns the captured piece, or ``None``.
@@ -394,6 +400,19 @@ class ChessGame:
 
 
 # --------------------------------------------------------------------- helpers
+
+
+def _position_key(board: chess.Board) -> PositionKey:
+    """What makes two positions "the same" for the repetition rule.
+
+    Piece placement, side to move, castling rights and a *usable* en passant square —
+    python-chess's own transposition key, which is a tuple of the bitboards it already
+    keeps. Cheap enough to take on every move, unlike the Polyglot hash it replaced
+    here (see :attr:`ChessGame.zobrist`), which cost as much as making the move.
+    '''_transposition_key''' is private to python-chess, hence the pinned version in
+    requirements.txt; a rename would fail loudly in the tests, not silently.
+    """
+    return board._transposition_key()
 
 
 def _capture(board: chess.Board, move: chess.Move) -> tuple[Piece | None, Coord | None]:
