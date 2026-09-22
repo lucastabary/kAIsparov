@@ -109,7 +109,7 @@ def collect_data(
 
             for k, i in enumerate(idxs):
                 g = games[i]
-                legal_mask = module.get_legal_mask(g, edge_index)
+                legal_mask = processor.legal_mask(g, edge_index)
                 if not legal_mask.any():
                     n_stalemate += 1
                     total_plies += steps[i]

@@ -142,7 +142,7 @@ def collect_vs_opponent(
                 learner = learners[i]
                 opp = opponents[i]
 
-                legal_mask = model_module.get_legal_mask(game, edge_index)
+                legal_mask = processor.legal_mask(game, edge_index)
                 if not legal_mask.any():
                     finish(i, "draw")  # learner has no move
                     continue

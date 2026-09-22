@@ -64,7 +64,7 @@ legal mask already does this blocking-aware work for the mover's own moves, but
 nothing exposed the *opponent's* threats until these two features.
 
 **Edges** — a **static** graph (identical for every position), built once by
-`create_static_full_chess_graph()`. Every geometrically possible piece motion on an
+`create_static_full_chess_graph()` (`graph.py`). Every geometrically possible piece motion on an
 empty board is an edge, tagged with a **relation type** (`edge_type`):
 
 | relation | 0 | 1 | 2 | 3 | 4 | 5 |
@@ -159,6 +159,8 @@ message flow, and edge scores are all small enough to inspect directly (see
 ## Files
 
 - `model.py` — `ChessRGCN` backbone + `RGCNModel` (heads, `forward`).
-- `processor.py` — `RGCNProcessor` (`graphify`, `process_output`), `get_legal_mask`,
-  `compute_reward`.
+- `graph.py` — the static edge set, `create_static_full_chess_graph()`, and its 6
+  relations.
+- `processor.py` — `RGCNProcessor` (`graphify`, `legal_mask`, `process_output`) and
+  `get_legal_mask`. Node features come from `models/features.py`.
 - `__init__.py` — assembles `BACKEND_SPEC`.

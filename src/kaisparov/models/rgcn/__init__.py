@@ -1,11 +1,7 @@
 from kaisparov.models.backend_spec import BackendSpec
 from kaisparov.models.rgcn.model import RGCNModel
-from kaisparov.models.rgcn.processor import (
-    PPOBuffer,
-    RGCNProcessor,
-    get_legal_mask,
-    train_one_epoch,
-)
+from kaisparov.models.rgcn.processor import RGCNProcessor
+from kaisparov.training.ppo import PPOBuffer, train_one_epoch
 from kaisparov.training.rollout import collect_data
 
 # Module-level hooks used by the rollout (looked up as attributes of this module).
@@ -27,6 +23,5 @@ __all__ = [
     "PPOBuffer",
     "collect_data",
     "train_one_epoch",
-    "get_legal_mask",
     "BACKEND_SPEC",
 ]

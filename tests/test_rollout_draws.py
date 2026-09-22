@@ -52,9 +52,7 @@ class ScriptedProcessor(rgcn.RGCNProcessor):
         return dataclasses.replace(action, move_coords=STALEMATING_MOVE)
 
 
-SCRIPTED = types.SimpleNamespace(
-    PROCESSOR_CLASS=ScriptedProcessor, get_legal_mask=rgcn.get_legal_mask
-)
+SCRIPTED = types.SimpleNamespace(PROCESSOR_CLASS=ScriptedProcessor)
 
 
 def _agent_and_buffer(self_play: bool):

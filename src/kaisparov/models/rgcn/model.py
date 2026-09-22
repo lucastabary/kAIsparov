@@ -4,6 +4,7 @@ from torch_geometric.nn import AttentionalAggregation, RGCNConv
 
 from kaisparov.models.base_model import BaseModel
 from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
+from kaisparov.models.rgcn.graph import NUM_RELATIONS
 
 
 class ChessRGCN(torch.nn.Module):
@@ -43,8 +44,8 @@ class RGCNModel(BaseModel):
             in_channels=get_feature_set(features).dim,
             hidden_channels=self.hidden_dim,
             out_channels=self.hidden_dim,
-            num_relations=6,
-        )  # 6 edge types
+            num_relations=NUM_RELATIONS,
+        )
 
         self.aggregation = AttentionalAggregation(
             gate_nn=torch.nn.Sequential(

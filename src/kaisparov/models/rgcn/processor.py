@@ -10,10 +10,11 @@ from kaisparov.models.base_processor import (
     BaseProcessor,
     ModelAction,
     aggregate_edge_logits_to_moves,
-    create_static_full_chess_graph,
 )
 from kaisparov.models.features import DEFAULT_FEATURES, get_feature_set
-from kaisparov.training.ppo import PPOBuffer, train_one_epoch
+from kaisparov.models.rgcn.graph import create_static_full_chess_graph
+
+NUM_NODES = BOARD_SIZE * BOARD_SIZE
 
 
 class RGCNProcessor(BaseProcessor):
@@ -61,7 +62,7 @@ class RGCNProcessor(BaseProcessor):
         edge_index = self.static_graph_edges[0].to(action_scores.device)
 
         if legal_mask is None:
-            legal_mask = get_legal_mask(game, edge_index)
+            legal_mask = self.legal_mask(game, edge_index)
         if not legal_mask.any():
             raise RuntimeError("No legal action available for current game state.")
 
@@ -69,7 +70,7 @@ class RGCNProcessor(BaseProcessor):
         # (src, dst) move, and a per-edge argmax fragments a move's probability across
         # its edges (a king step spans king+rook/bishop+queen edges, a knight jump is
         # one), biasing greedy play against king moves. Aggregate first.
-        num_nodes = len(game.grid) ** 2
+        num_nodes = NUM_NODES
         move_keys, move_logits = aggregate_edge_logits_to_moves(
             action_scores, edge_index, legal_mask, num_nodes
         )
@@ -86,6 +87,16 @@ class RGCNProcessor(BaseProcessor):
             log_prob=dist.log_prob(move_pos),
             value=value.squeeze(),
             entropy=dist.entropy(),
+        )
+
+    def legal_mask(self, game: ChessGame, edge_index: torch.Tensor | None = None) -> torch.Tensor:
+        """Which edges are legal moves right now (see :func:`get_legal_mask`).
+
+        ``edge_index`` is this processor's static graph, already moved to the model's
+        device by a caller that runs the mask once per ply; ``None`` uses it as built.
+        """
+        return get_legal_mask(
+            game, self.static_graph_edges[0] if edge_index is None else edge_index
         )
 
     def move_mask(self, game: ChessGame, moves) -> torch.Tensor:
@@ -105,11 +116,6 @@ class RGCNProcessor(BaseProcessor):
             device=edge_index.device,
         )
         return torch.isin(_packed_edges(edge_index, num_nodes), keys)
-
-
-def _coord_to_index_adapter(coord: tuple[int, int], board_size: int) -> int:
-    _ = board_size
-    return coord_to_index(coord)
 
 
 # edge_index -> its packed (src * 64 + dst) keys. The static graph is built once per
@@ -147,12 +153,4 @@ def get_legal_mask(game: ChessGame, edge_index: torch.Tensor) -> torch.Tensor:
     return torch.isin(_packed_edges(edge_index, num_nodes), key_tensor)
 
 
-__all__ = [
-    "RGCNProcessor",
-    "PPOBuffer",
-    "ModelAction",
-    "coord_to_index",
-    "index_to_coord",
-    "get_legal_mask",
-    "train_one_epoch",
-]
+__all__ = ["RGCNProcessor", "get_legal_mask"]

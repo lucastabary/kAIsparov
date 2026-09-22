@@ -8,22 +8,11 @@ the comparison between them honest: any change to the representation applies to 
 
 from __future__ import annotations
 
-from kaisparov.models.base_processor import ModelAction
-from kaisparov.models.rgcn.processor import (
-    RGCNProcessor,
-    get_legal_mask,
-)
-from kaisparov.training.ppo import PPOBuffer, train_one_epoch
+from kaisparov.models.rgcn.processor import RGCNProcessor
 
 
 class SharedRGCNProcessor(RGCNProcessor):
     """``RGCNProcessor`` under this backend's name — identical behaviour."""
 
 
-__all__ = [
-    "SharedRGCNProcessor",
-    "PPOBuffer",
-    "ModelAction",
-    "get_legal_mask",
-    "train_one_epoch",
-]
+__all__ = ["SharedRGCNProcessor"]

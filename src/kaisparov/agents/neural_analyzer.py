@@ -15,9 +15,12 @@ from __future__ import annotations
 import torch
 
 from kaisparov.core.move import Move
+from kaisparov.core.pieces import BOARD_SIZE
 from kaisparov.core.utils import index_to_coord
 from kaisparov.insights import MoveInsight, PositionAnalysis
-from kaisparov.models.base_processor import default_coord_to_index, get_legal_mask
+from kaisparov.models.base_processor import aggregate_edge_logits_to_moves
+
+NUM_NODES = BOARD_SIZE * BOARD_SIZE
 
 
 class NeuralAnalyzer:
@@ -41,23 +44,23 @@ class NeuralAnalyzer:
             action_scores, value = self.model(data)
 
             edge_index = self.processor.static_graph_edges[0].to(action_scores.device)
-            legal_mask = get_legal_mask(game, edge_index, default_coord_to_index)
+            legal_mask = self.processor.legal_mask(game, edge_index)
             if not legal_mask.any():
                 return None
 
-            masked = action_scores.masked_fill(~legal_mask, float("-inf"))
-            probs = torch.softmax(masked, dim=0)
-
-            # The static graph carries several typed edges for one (src, dst) square
-            # pair (e.g. a rook step, a king step and a pawn push coincide), so sum
-            # each move's probability mass across its edges to rank distinct moves.
+            # Several typed edges can carry one (src, dst) move; the policy's
+            # distribution is over moves, as in process_output, so rank moves by it.
+            move_keys, move_logits = aggregate_edge_logits_to_moves(
+                action_scores, edge_index, legal_mask, NUM_NODES
+            )
+            probs = torch.softmax(move_logits, dim=0)
             move_prob: dict[Move, float] = {}
-            legal_idx = legal_mask.nonzero(as_tuple=False).flatten().tolist()
-            for idx in legal_idx:
-                source = index_to_coord(int(edge_index[0, idx]))
-                dest = index_to_coord(int(edge_index[1, idx]))
-                move = Move((int(source[0]), int(source[1])), (int(dest[0]), int(dest[1])))
-                move_prob[move] = move_prob.get(move, 0.0) + float(probs[idx])
+            for key, prob in zip(move_keys.tolist(), probs.tolist(), strict=True):
+                source = index_to_coord(key // NUM_NODES)
+                dest = index_to_coord(key % NUM_NODES)
+                move_prob[Move((int(source[0]), int(source[1])), (int(dest[0]), int(dest[1])))] = (
+                    prob
+                )
 
             ranked = sorted(move_prob.items(), key=lambda kv: kv[1], reverse=True)[: self.top_k]
             best = ranked[0][1] or 1.0  # guard against an all-zero degenerate softmax

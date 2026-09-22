@@ -112,7 +112,7 @@ round-trip invariant.
 
 ## 4. Board → graph, and the model (`models/`)
 
-### Encoding (`rgcn/processor.py`, `base_processor.py`)
+### Encoding (`rgcn/processor.py`, `rgcn/graph.py`, `features.py`)
 
 `RGCNProcessor.graphify(game)` builds a PyG `Data`:
 
@@ -125,7 +125,7 @@ round-trip invariant.
   plane is needed.) A set's name never changes meaning once runs use it — add a new
   one instead; `tests/test_features.py` pins each.
 - **Edges**: a **static** graph (same every position) built by
-  `create_static_full_chess_graph()`. Each edge is one piece's possible movement, and
+  `create_static_full_chess_graph()` (`rgcn/graph.py`). Each edge is one piece's possible movement, and
   carries a **relation type** (`edge_type`): `0` knight, `1` rook, `2` bishop, `3`
   king, `4` white pawn, `5` black pawn — 6 relations. (Castling is *not* an edge, so
   `rgcn` cannot emit castling moves; a documented limitation.)
