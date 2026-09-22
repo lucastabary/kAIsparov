@@ -106,10 +106,6 @@ def _legend_entries() -> list[LegendEntry]:
     ]
 
 
-def _other(player: Player) -> Player:
-    return Player.BLACK if player == Player.WHITE else Player.WHITE
-
-
 def _algebraic(coord: Coord) -> str:
     return f"{chr(ord('a') + coord[0])}{coord[1] + 1}"
 
@@ -285,7 +281,7 @@ def _prepare_match(setup: MatchSetup, args, device):
 
     if setup.mode == "vs_ai":
         assert setup.human_color is not None, "draw the random colour first (_draw_color)"
-        ai_color = _other(setup.human_color)
+        ai_color = setup.human_color.opponent
         if setup.ai_model is not None:
             agent, analyzer = _controller_from_key(
                 setup.ai_model, args, device, deterministic=True, model_cache=model_cache
@@ -595,7 +591,7 @@ def run_match(
                     return "quit"
             move = agent.select_move(game)
             if move is None:
-                winner = _other(side)
+                winner = side.opponent
                 print(f"{side.name} (AI) has no legal move — {winner.name} wins.")
                 return finish(
                     f"Les {_fr_color(side)} n'ont aucun coup.\nLes {_fr_color(winner)} gagnent !"
@@ -626,7 +622,7 @@ def _game_over_message(game: ChessGame) -> str | None:
     when the rule naming it is switched off, so the loop can never wait on a dead seat.
     """
     if game.is_checkmate():
-        return f"Echec et mat !  Les {_fr_color(_other(game.turn))} gagnent."
+        return f"Echec et mat !  Les {_fr_color(game.turn.opponent)} gagnent."
     drawn = game.draw_reason()
     if drawn is not None:
         return f"Partie nulle : {_FR_DRAW_REASONS[drawn]}."

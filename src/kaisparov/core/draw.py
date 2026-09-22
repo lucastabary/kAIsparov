@@ -71,11 +71,6 @@ def is_insufficient_material(position) -> bool:
     return as_board(position).is_insufficient_material()
 
 
-def is_stalemate(game: ChessGame) -> bool:
-    """True if the side to move is not in check and has no legal move."""
-    return game.board.is_stalemate()
-
-
 def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str | None:
     """Name the rule that makes ``game`` a draw right now, or ``None``.
 
@@ -90,7 +85,7 @@ def draw_reason(game: ChessGame, rules: DrawRules | None = DEFAULT_RULES) -> str
         return NO_PROGRESS
     if rules.insufficient_material and game.board.is_insufficient_material():
         return INSUFFICIENT_MATERIAL
-    if rules.stalemate and game.board.is_stalemate():
+    if rules.stalemate and game.is_stalemate():
         return STALEMATE
     return None
 
@@ -110,7 +105,6 @@ __all__ = [
     "REPETITION_LIMIT",
     "NO_PROGRESS_PLIES",
     "is_insufficient_material",
-    "is_stalemate",
     "draw_reason",
     "is_draw",
 ]

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import chess
 import chess.polyglot
 
-from kaisparov.core import coords, draw
+from kaisparov.core import coords, draw, rules
 from kaisparov.core.coords import Coord
 from kaisparov.core.move import (
     FROM_CHESS_PIECE,
@@ -327,6 +327,18 @@ class ChessGame:
             return None
         return self.make(source, dest, promotion).captured
 
+    def passed(self) -> ChessGame:
+        """A copy with the other side to move, as if the mover had passed (a null move).
+
+        For the questions chess asks of the side *not* on move — what would it threaten,
+        what could it play? The en passant right goes: only the side that just moved
+        could have granted it, and passing forfeits it.
+        """
+        board = self.board.copy(stack=False)
+        board.turn = not board.turn
+        board.ep_square = None
+        return ChessGame(board=board)
+
     # -------------------------------------------------------------------- pov
     def to_pov_coord(self, coord: Coord, player: Player | None = None) -> Coord:
         return coords.to_pov_coord(coord, player if player is not None else self.turn)
@@ -347,10 +359,7 @@ class ChessGame:
     # ----------------------------------------------------------- game outcome
     def is_in_check(self, player: Player) -> bool:
         """True if ``player``'s king is attacked."""
-        king = self.board.king(player == Player.WHITE)
-        if king is None:
-            return False
-        return self.board.is_attacked_by(player != Player.WHITE, king)
+        return rules.is_in_check(self, player)
 
     def is_checkmate(self) -> bool:
         return self.board.is_checkmate()
@@ -385,8 +394,6 @@ class ChessGame:
 
 
 # --------------------------------------------------------------------- helpers
-def _other(player: Player) -> Player:
-    return Player.BLACK if player == Player.WHITE else Player.WHITE
 
 
 def _capture(board: chess.Board, move: chess.Move) -> tuple[Piece | None, Coord | None]:

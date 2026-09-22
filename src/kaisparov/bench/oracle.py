@@ -29,12 +29,10 @@ Torch-free, and it leaves the game exactly as it found it.
 
 from __future__ import annotations
 
-from kaisparov.bench.position import other
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules, draw_reason
 from kaisparov.core.game import ChessGame
 from kaisparov.core.material import WIN, material_balance
 from kaisparov.core.move import Move
-from kaisparov.core.pieces import Player
 from kaisparov.core.utils import get_piece_value
 
 _INF = float("inf")
@@ -108,13 +106,9 @@ class Oracle:
     def threatens(self, game: ChessGame, depth: int = 2) -> bool:
         """Would the opponent force mate within ``depth`` if the side to move passed?
 
-        The *null-move* test: the same board with the other side to move, and no
-        en-passant target (only the side that just moved could have granted one).
+        The *null-move* test, on :meth:`ChessGame.passed`.
         """
-        board = game.board.copy(stack=False)
-        board.turn = other(game.turn) == Player.WHITE
-        board.ep_square = None
-        return self._attacker_wins(ChessGame(board=board), depth)
+        return self._attacker_wins(game.passed(), depth)
 
     def draws_after(self, game: ChessGame, move: Move) -> str | None:
         """Why the game would end drawn right after ``move``, or ``None``."""

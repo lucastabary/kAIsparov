@@ -32,7 +32,7 @@ import numpy as np
 from kaisparov.core import bitboard_batch as bbb
 from kaisparov.core.coords import ALL_SQUARES
 from kaisparov.core.game import ChessGame
-from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
+from kaisparov.core.pieces import BOARD_SIZE, PieceType
 from kaisparov.core.rules import attacked_squares
 from kaisparov.core.utils import coord_to_index
 
@@ -57,10 +57,6 @@ _ONE = np.uint64(1)
 def _unpack(masks: np.ndarray) -> np.ndarray:
     """``(n,)`` uint64 bitboards -> ``(n, 64)`` float32 planes, square ``row*8+col``."""
     return ((masks[:, None] >> _SQUARES) & _ONE).astype(np.float32)
-
-
-def _other(player: Player) -> Player:
-    return Player.BLACK if player == Player.WHITE else Player.WHITE
 
 
 class FeatureSet(ABC):
@@ -144,7 +140,7 @@ class PiecesControl(Pieces):
         x = np.zeros((NUM_NODES, self.dim), dtype=np.float32)
         x[:, : Pieces.dim] = super().encode(game)
         mover = game.turn
-        for square in attacked_squares(game, _other(mover)):
+        for square in attacked_squares(game, mover.opponent):
             x[coord_to_index(square), 12] = 1.0
         for square in attacked_squares(game, mover):
             x[coord_to_index(square), 13] = 1.0

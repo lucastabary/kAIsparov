@@ -46,10 +46,6 @@ class MatchStats:
         return -400.0 * math.log10(1.0 / score - 1.0)
 
 
-def _other(player: Player) -> Player:
-    return Player.BLACK if player == Player.WHITE else Player.WHITE
-
-
 def play_game(
     white: Policy,
     black: Policy,
@@ -69,7 +65,7 @@ def play_game(
         if move is None:
             # The mover produced no move. If legal moves existed, it forfeits.
             if env.legal_moves():
-                env.done, env.winner, reason = True, _other(mover), "forfeit"
+                env.done, env.winner, reason = True, mover.opponent, "forfeit"
             else:
                 env.done, env.winner, reason = True, None, "stalemate"
             break

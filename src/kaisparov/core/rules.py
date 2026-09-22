@@ -48,6 +48,18 @@ def is_in_check(position, player: Player) -> bool:
     return board.is_attacked_by(player != Player.WHITE, king)
 
 
+def is_legal_position(position, to_move: Player) -> bool:
+    """Whether chess can reach this position with ``to_move`` on move.
+
+    Specifically, that the side *not* to move is not in check. python-chess happily
+    generates the capture of a king left in check, so such a position hands the side
+    to move a free "win" — in a benchmark, a free solution; in training, a reward
+    worth a hundred pawns. Anything that builds positions at random (the curriculum,
+    the benchmark generators) must filter through this.
+    """
+    return not is_in_check(position, to_move.opponent)
+
+
 def attacked_squares(position, by_player: Player) -> set[Coord]:
     """Every square ``by_player`` controls in this position.
 
@@ -75,4 +87,11 @@ def pawn_attacks(square: Coord, player: Player) -> tuple[Coord, ...]:
     return tuple(square_to_coord(s) for s in chess.scan_forward(mask))
 
 
-__all__ = ["as_board", "find_king", "is_in_check", "attacked_squares", "pawn_attacks"]
+__all__ = [
+    "as_board",
+    "find_king",
+    "is_in_check",
+    "is_legal_position",
+    "attacked_squares",
+    "pawn_attacks",
+]

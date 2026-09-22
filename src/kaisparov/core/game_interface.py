@@ -1391,7 +1391,7 @@ class GameInterface:
 
             if self.game.is_checkmate():
                 # game.turn is the side that has just been mated.
-                winner = Player.BLACK if self.game.turn == Player.WHITE else Player.WHITE
+                winner = self.game.turn.opponent
                 print(f"Partie terminee: echec et mat. {winner.name} gagne!")
                 break
 

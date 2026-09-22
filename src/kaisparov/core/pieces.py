@@ -18,6 +18,10 @@ class Player(Enum):
     WHITE = "W"
     BLACK = "B"
 
+    @property
+    def opponent(self) -> Player:
+        return Player.BLACK if self is Player.WHITE else Player.WHITE
+
 
 # Unicode glyphs indexed by (player, piece type), used for the text board.
 _GLYPHS: dict[tuple[Player, PieceType], str] = {

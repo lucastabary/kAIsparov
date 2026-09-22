@@ -347,3 +347,13 @@ def test_captured_by_sees_en_passant_without_playing_the_move():
     undo = game.make((4, 4), (3, 5))
     assert undo.captured is not None and undo.captured.type == PieceType.PAWN
     assert undo.captured_square == (3, 4)  # the pawn stood on d5, not d6
+
+
+def test_passing_hands_the_move_over_and_forfeits_en_passant():
+    import chess
+
+    game = ChessGame(board=chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"))
+    passed = game.passed()
+    assert (passed.turn, passed.en_passant_target) == (Player.BLACK, None)
+    assert (game.turn, game.en_passant_target) == (Player.WHITE, (3, 5))  # untouched
+    assert Player.WHITE.opponent is Player.BLACK and Player.BLACK.opponent is Player.WHITE

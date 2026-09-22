@@ -16,7 +16,6 @@ import torch
 
 from kaisparov.agents.base import Move
 from kaisparov.agents.safety import safe_moves
-from kaisparov.core.draw import is_stalemate
 from kaisparov.core.game import ChessGame
 from kaisparov.core.material import WIN
 from kaisparov.core.utils import coord_to_index
@@ -67,7 +66,7 @@ class MinimaxAgent:
         # would look like a win. The tests are µs, the forward is ms.
         if game.is_checkmate():
             return -WIN  # the side to move has been mated
-        if is_stalemate(game):
+        if game.is_stalemate():
             return 0.0
         action_scores, value = self._forward(game)
         if depth == 0:

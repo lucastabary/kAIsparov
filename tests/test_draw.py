@@ -315,12 +315,12 @@ def stalemated_black():
 def test_only_king_hanging_moves_and_no_check_is_stalemate():
     game = stalemated_black()
     assert not game.is_in_check(B)
-    assert draw.is_stalemate(game)
+    assert game.is_stalemate()
     assert game.draw_reason() == draw.STALEMATE
 
 
 def test_in_check_with_no_safe_move_is_mate_not_stalemate():
-    """Mate is not a draw in capture-the-king: the game plays on to the capture."""
+    """In check with no move is mate, not stalemate — and mate is not a draw."""
     grid = empty_grid()
     place(grid, (0, 7), B, PieceType.KING)
     place(grid, (1, 6), W, PieceType.QUEEN)  # gives check
@@ -328,20 +328,20 @@ def test_in_check_with_no_safe_move_is_mate_not_stalemate():
     game = ChessGame(initial_board=grid, turn=B)
 
     assert game.is_in_check(B)
-    assert not draw.is_stalemate(game)
+    assert not game.is_stalemate()
     assert game.draw_reason() is None
 
 
 def test_one_safe_move_is_enough_to_avoid_stalemate():
     game = stalemated_black()
     game.place((7, 5), Piece(B, PieceType.PAWN))  # a pawn push leaves the king alone
-    assert not draw.is_stalemate(game)
+    assert not game.is_stalemate()
 
 
 def test_stalemate_test_leaves_no_trace():
     game = stalemated_black()
     before = (game.zobrist, list(game.position_history), game.halfmove_clock)
-    draw.is_stalemate(game)
+    game.is_stalemate()
     assert (game.zobrist, game.position_history, game.halfmove_clock) == before
 
 

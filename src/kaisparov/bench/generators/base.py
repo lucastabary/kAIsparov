@@ -23,12 +23,12 @@ from dataclasses import replace
 from typing import Any, ClassVar
 
 from kaisparov.bench.oracle import Oracle
-from kaisparov.bench.position import Position, other, to_fen
+from kaisparov.bench.position import Position, to_fen
 from kaisparov.bench.problem import Problem
 from kaisparov.core.coords import ALL_SQUARES, Coord
 from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
-from kaisparov.core.rules import is_in_check
+from kaisparov.core.rules import is_in_check, is_legal_position
 
 Grid = list[list["Piece | None"]]
 
@@ -133,16 +133,13 @@ class SamplingGenerator(ProblemGenerator):
 
 
 def _is_legal_position(position: Position) -> bool:
-    """Reject a position the rules of chess cannot reach.
+    """Reject a position the rules of chess cannot reach (see ``rules.is_legal_position``).
 
-    Specifically: the side *not* to move being in check. python-chess happily
-    generates the capture of a king standing in check, so such a position would
-    hand every contestant a free "solution" that says nothing about its play. Random
-    board builders produce them regularly, hence the check here rather than in each
-    generator.
+    Random board builders produce them regularly, hence the check here rather than in
+    each generator.
     """
     game = position.to_game()
-    return not is_in_check(game, other(game.turn))
+    return is_legal_position(game, game.turn)
 
 
 # ------------------------------------------------------------------------ boards
@@ -269,7 +266,7 @@ class BoardBuilder:
         return piece_type != PieceType.PAWN or 0 < square[1] < BOARD_SIZE - 1
 
     def _next_to_king(self, square: Coord, player: Player) -> bool:
-        enemy = self.king_square(other(player))
+        enemy = self.king_square(player.opponent)
         return enemy is not None and max(abs(enemy[0] - square[0]), abs(enemy[1] - square[1])) <= 1
 
 

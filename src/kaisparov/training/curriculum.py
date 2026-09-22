@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from kaisparov.core.pieces import BOARD_SIZE, Piece, PieceType, Player
-from kaisparov.core.rules import is_in_check
+from kaisparov.core.rules import is_in_check, is_legal_position
 
 Grid = list[list[Piece | None]]
 
@@ -81,7 +81,7 @@ class PieceCountCurriculum(BaseCurriculum):
         """
         for _ in range(self.MAX_DRAWS):
             grid = self._draw_board()
-            if not is_in_check(grid, Player.BLACK):
+            if is_legal_position(grid, Player.WHITE):
                 return grid
         raise RuntimeError(
             f"curriculum phase {self.phase.name!r}: no legal position in "

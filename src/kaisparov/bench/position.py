@@ -55,10 +55,6 @@ _CASTLING: dict[str, tuple[Player, int, int]] = {
 }
 
 
-def other(player: Player) -> Player:
-    return Player.BLACK if player == Player.WHITE else Player.WHITE
-
-
 # ----------------------------------------------------------------------- squares
 
 
@@ -153,14 +149,14 @@ class Position:
         for col, row in ALL_SQUARES:
             piece = game.grid[col][row]
             if piece is not None:
-                flipped = Piece(other(piece.player), piece.type)
+                flipped = Piece(piece.player.opponent, piece.type)
                 flipped.has_moved = piece.has_moved  # castling rights survive the flip
                 grid[col][BOARD_SIZE - 1 - row] = flipped
         en_passant = game.en_passant_target
         if en_passant is not None:
             en_passant = (en_passant[0], BOARD_SIZE - 1 - en_passant[1])
         moves = tuple(move_to_uci(mirror_move(uci_to_move(move))) for move in self.moves)
-        return Position(to_fen(grid, other(game.turn), en_passant), moves)
+        return Position(to_fen(grid, game.turn.opponent, en_passant), moves)
 
 
 def mirror_move(move: Move) -> Move:
@@ -266,7 +262,6 @@ __all__ = [
     "Position",
     "mirror_move",
     "move_to_uci",
-    "other",
     "parse_square",
     "to_fen",
     "uci_to_move",
