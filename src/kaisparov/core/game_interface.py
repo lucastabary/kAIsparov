@@ -7,7 +7,7 @@ import pygame
 
 from kaisparov.core.coords import Coord
 from kaisparov.core.game import ChessGame
-from kaisparov.core.move import Move
+from kaisparov.core.move import PROMOTION_PIECES, Move
 from kaisparov.core.notation import MoveRow
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 
@@ -102,6 +102,18 @@ class SidebarLayout:
     status_rows: int = 0  # lines of the analysis card under the move list (0: no card)
     step_button: bool = False  # "Coup suivant" — AI vs AI, one move at a time
     legend_button: bool = False  # the key to the review badges
+
+
+def promotion_picker_cells(dest_display: tuple[int, int]) -> list[tuple[int, int]]:
+    """Display cells of the promotion picker, one per piece of ``PROMOTION_PIECES``.
+
+    A column that starts on the promotion square and runs toward the middle of the
+    board, as on chess.com: down from the top edge, up from the bottom one (a board
+    seen from Black's side puts White's last rank at the bottom).
+    """
+    x, y = dest_display
+    step = -1 if y == BOARD_SIZE - 1 else 1
+    return [(x, y + step * i) for i in range(len(PROMOTION_PIECES))]
 
 
 class GameInterface:
@@ -1177,6 +1189,64 @@ class GameInterface:
             pygame.display.flip()
             self._clock.tick(60)
 
+    def _choose_promotion(
+        self,
+        source: Coord,
+        dest: Coord,
+        choices: list[PieceType],
+        view_as: Player | None,
+        fps: int = 60,
+    ) -> tuple[bool, PieceType | None]:
+        """Ask which piece the pawn on ``source`` becomes on ``dest``.
+
+        Returns ``(closed, piece)``: ``closed`` when the window was shut, and ``piece``
+        ``None`` when the choice was dismissed (Esc, right click, or a click off the
+        picker), which takes the move back rather than queening behind the player's
+        back.
+        """
+        assert self.game is not None
+        assert self._screen is not None
+        assert self._clock is not None
+        mover = self.game.turn
+        cells = promotion_picker_cells(self._to_display_coord(dest, view_as=view_as))
+        options = [
+            (self._coord_to_rect(cell), piece)
+            for cell, piece in zip(cells, PROMOTION_PIECES, strict=True)
+            if piece in choices
+        ]
+        board = pygame.Rect(self.margin, self.margin, self.board_size_px, self.board_size_px)
+
+        while True:
+            mouse = pygame.mouse.get_pos()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return True, None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return False, None
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+                    return False, None
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    for rect, piece in options:
+                        if rect.collidepoint(event.pos):
+                            return False, piece
+                    return False, None
+
+            self._draw_frame(view_as=view_as, selected_coord=source)
+            dim = pygame.Surface(board.size, pygame.SRCALPHA)
+            dim.fill((10, 14, 24, 150))
+            self._screen.blit(dim, board.topleft)
+            for rect, piece in options:
+                hover = rect.collidepoint(mouse)
+                card = rect.inflate(-6, -6)
+                fill = (255, 255, 255) if hover else (226, 231, 240)
+                pygame.draw.rect(self._screen, fill, card, border_radius=12)
+                border = self._colors["accent"] if hover else self._colors["board_border"]
+                pygame.draw.rect(self._screen, border, card, width=3, border_radius=12)
+                sprite = self._piece_sprites[(mover, piece)]
+                self._screen.blit(sprite, sprite.get_rect(center=rect.center))
+            pygame.display.flip()
+            self._clock.tick(fps)
+
     def _get_single_move(
         self,
         view_as: Player | None = None,
@@ -1190,8 +1260,11 @@ class GameInterface:
         ``analysis_arrows``/``status_lines`` feed the developer overlay so the
         model's read of the position stays visible while the human deliberates.
 
+        A pawn reaching the last rank opens a picker for the piece it becomes.
+
         Returns:
-                (source, destination) in engine coordinates, or None if window closed.
+                The move in engine coordinates, promotion included, or None if the
+                window was closed.
         """
         if self.game is None:
             raise ValueError("No ChessGame assigned. Use set_game(...) first.")
@@ -1242,10 +1315,18 @@ class GameInterface:
                         continue
 
                     if real_coord in possible_destinations:
-                        # No promotion picker yet: a pawn reaching the last rank
-                        # queens, which is what ChessGame.make does for a Move that
-                        # names no piece.
-                        return Move(selected_source, real_coord)
+                        choices = self.game.promotion_choices(selected_source, real_coord)
+                        if not choices:
+                            return Move(selected_source, real_coord)
+                        closed, promotion = self._choose_promotion(
+                            selected_source, real_coord, choices, view_as=view_as, fps=fps
+                        )
+                        if closed:
+                            return None
+                        if promotion is not None:
+                            return Move(selected_source, real_coord, promotion)
+                        selected_source = None  # dismissed: take the move back
+                        possible_destinations = set()
 
             self._draw_frame(
                 view_as=view_as,

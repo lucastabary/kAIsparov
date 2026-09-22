@@ -30,6 +30,7 @@ from kaisparov.core import coords, draw
 from kaisparov.core.coords import Coord
 from kaisparov.core.move import (
     FROM_CHESS_PIECE,
+    PROMOTION_PIECES,
     TO_CHESS_PIECE,
     Move,
     coord_to_square,
@@ -222,6 +223,20 @@ class ChessGame:
             if move.from_square == from_square:
                 seen[square_to_coord(move.to_square)] = None
         return list(seen)
+
+    def promotion_choices(self, source: Coord, dest: Coord) -> list[PieceType]:
+        """The pieces a pawn may become by playing ``source -> dest``, queen first.
+
+        Empty when the move is not a legal promotion. This is what a human picker
+        offers; the policy never asks, since its action space is ``(source, dest)``.
+        """
+        from_square, to_square = coord_to_square(source), coord_to_square(dest)
+        legal = {
+            move.promotion
+            for move in self.board.legal_moves
+            if move.from_square == from_square and move.to_square == to_square
+        }
+        return [piece for piece in PROMOTION_PIECES if TO_CHESS_PIECE[piece] in legal]
 
     def is_move_valid(self, source: Coord, dest: Coord, promotion: PieceType | None = None) -> bool:
         """Whether this move is legal right now.

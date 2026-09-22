@@ -132,3 +132,50 @@ def test_a_stalemate_is_a_draw_on_the_game_over_panel():
     game.board.set_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
     message = _game_over_message(game)
     assert message is not None and message.startswith("Partie nulle")
+
+
+def test_the_promotion_picker_runs_from_the_last_rank_toward_the_middle():
+    from kaisparov.core.game_interface import promotion_picker_cells
+
+    assert promotion_picker_cells((1, 7)) == [(1, 7), (1, 6), (1, 5), (1, 4)]
+    assert promotion_picker_cells((6, 0)) == [(6, 0), (6, 1), (6, 2), (6, 3)]
+
+
+def _clicks(monkeypatch, ui: GameInterface, cells: list[tuple[int, int]]) -> None:
+    """Feed left clicks on these display cells, one per event poll, as a human would.
+
+    Posting them all at once would hand the whole batch to the move loop's first
+    ``event.get()``, and the picker it opens would never see its click.
+    """
+    queue = [
+        [pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=ui._coord_to_rect(c).center)]
+        for c in cells
+    ]
+
+    def get():
+        assert queue, "the interface asked for more clicks than the test gave it"
+        return queue.pop(0)
+
+    monkeypatch.setattr(pygame.event, "get", get)
+
+
+def test_a_human_promotion_plays_the_piece_picked(monkeypatch):
+    import chess
+
+    from kaisparov.core.move import Move
+    from kaisparov.core.pieces import PieceType
+
+    game = ChessGame(board=chess.Board("8/1P6/8/8/8/8/8/k3K3 w - - 0 1"))
+    ui = GameInterface(game)
+    ui._ensure_initialized()
+    try:
+        # The pawn on b7 to b8: the picker opens with the queen on b8 and the rook,
+        # bishop and knight below it.
+        _clicks(monkeypatch, ui, [(1, 6), (1, 7), (1, 4)])
+        assert ui._get_single_move(view_as=W) == Move((1, 6), (1, 7), PieceType.KNIGHT)
+
+        # A click off the picker takes the move back instead of queening.
+        _clicks(monkeypatch, ui, [(1, 6), (1, 7), (6, 2), (4, 0), (4, 1)])
+        assert ui._get_single_move(view_as=W) == Move((4, 0), (4, 1))
+    finally:
+        pygame.quit()

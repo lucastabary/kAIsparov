@@ -217,6 +217,16 @@ def test_perft_matches_standard_chess_from_start():
     assert _perft(game, 3) == 8902
 
 
+def test_promotion_choices_offer_the_four_pieces_queen_first():
+    import chess
+
+    game = ChessGame(board=chess.Board("r1b1k1nr/1P6/8/8/8/8/8/4K3 w kq - 0 1"))
+    assert game.promotion_choices((1, 6), (1, 7)) == list(PROMOTION_PIECES)  # b7-b8
+    assert game.promotion_choices((1, 6), (0, 7)) == list(PROMOTION_PIECES)  # bxa8
+    assert game.promotion_choices((4, 0), (4, 1)) == []  # a king step
+    assert game.promotion_choices((1, 6), (1, 5)) == []  # not a legal move at all
+
+
 def test_perft_counts_promotions():
     """Perft from the start position never reaches a promotion — this one does.
 

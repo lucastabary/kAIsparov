@@ -92,6 +92,8 @@ Pure Python, no torch, no pygame — fast and unit-tested.
     move with no board cloning. A pawn reaching the last rank without a named
     promotion queens.
   - `legal_moves()`, `possible_moves(source)`, `is_checkmate()`, `is_stalemate()`.
+  - `promotion_choices(source, dest)` — the pieces a pawn push may become, queen first
+    (empty if it is not a promotion). The pygame UI opens its picker from it.
   - `grid` is a **cached snapshot**, rebuilt on demand and invalidated by every
     make/unmake. Writing into it does not move a piece — use `place(coord, piece)` to
     set a position up by hand. Hot paths should read `.board` and its bitboards.
