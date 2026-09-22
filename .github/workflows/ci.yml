@@ -21,7 +21,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch==2.0.1 --index-url https://download.pytorch.org/whl/cpu
           pip install torch-geometric==2.7.0 "numpy==1.26.4" pyyaml tensorboard==2.12.3 chess==1.11.2
-          pip install ruff mypy pytest
+          pip install ruff mypy pytest import-linter
           pip install -e . --no-deps
 
       - name: Ruff (lint)
@@ -32,6 +32,9 @@ jobs:
 
       - name: Mypy
         run: mypy src/kaisparov
+
+      - name: Import contracts
+        run: lint-imports
 
       - name: Pytest
         run: pytest

@@ -27,6 +27,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.10",
     "pytest>=8.0",
+    "import-linter>=2.1",
     "pre-commit>=3.7",
 ]
 notebooks = [
@@ -71,6 +72,65 @@ warn_redundant_casts = true
 check_untyped_defs = true
 # game_interface (pygame UI) fights the pygame stubs; not worth typing strictly.
 exclude = ["build/", "dist/", "game_interface.py"]
+
+# ---- import-linter: the architecture rules of CLAUDE.md, checked (`lint-imports`) ----
+[tool.importlinter]
+root_package = "kaisparov"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "python-chess stays inside the engine (core/game, move, rules)"
+type = "forbidden"
+source_modules = [
+    "kaisparov.agents", "kaisparov.analysis", "kaisparov.bench", "kaisparov.cli",
+    "kaisparov.envs", "kaisparov.eval", "kaisparov.insights", "kaisparov.models",
+    "kaisparov.play", "kaisparov.tracking", "kaisparov.train", "kaisparov.training",
+    "kaisparov.core.bitboard_batch", "kaisparov.core.coords", "kaisparov.core.draw",
+    "kaisparov.core.game_interface", "kaisparov.core.material", "kaisparov.core.notation",
+    "kaisparov.core.pieces", "kaisparov.core.utils",
+]
+forbidden_modules = ["chess"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "the engine depends on nothing above it"
+type = "forbidden"
+source_modules = ["kaisparov.core"]
+forbidden_modules = [
+    "kaisparov.agents", "kaisparov.analysis", "kaisparov.bench", "kaisparov.cli",
+    "kaisparov.envs", "kaisparov.eval", "kaisparov.insights", "kaisparov.models",
+    "kaisparov.play", "kaisparov.tracking", "kaisparov.train", "kaisparov.training",
+]
+
+[[tool.importlinter.contracts]]
+name = "torch-free: the engine, the benchmark, the run registry"
+type = "forbidden"
+source_modules = ["kaisparov.core", "kaisparov.bench", "kaisparov.tracking.registry"]
+forbidden_modules = ["torch", "torch_geometric"]
+# A `run:<id>` contestant loads its network on first use, inside a function: the
+# benchmark stays importable (and runnable against the baselines) without torch.
+ignore_imports = [
+    "kaisparov.bench.contestants -> torch",
+    "kaisparov.bench.contestants -> kaisparov.models.factory",
+    "kaisparov.bench.contestants -> kaisparov.agents.minimax_agent",
+    "kaisparov.bench.contestants -> kaisparov.agents.neural_agent",
+    "kaisparov.bench.contestants -> kaisparov.agents.neural_analyzer",
+]
+
+[[tool.importlinter.contracts]]
+name = "pygame only in the UI (play, core/game_interface)"
+type = "forbidden"
+source_modules = [
+    "kaisparov.agents", "kaisparov.analysis", "kaisparov.bench", "kaisparov.cli",
+    "kaisparov.envs", "kaisparov.eval", "kaisparov.insights", "kaisparov.models",
+    "kaisparov.tracking", "kaisparov.train", "kaisparov.training",
+    "kaisparov.core.bitboard_batch", "kaisparov.core.coords", "kaisparov.core.draw",
+    "kaisparov.core.game", "kaisparov.core.material", "kaisparov.core.move",
+    "kaisparov.core.notation", "kaisparov.core.pieces", "kaisparov.core.rules",
+    "kaisparov.core.utils",
+]
+forbidden_modules = ["pygame"]
+allow_indirect_imports = true
 
 # ---- pytest ----
 [tool.pytest.ini_options]

@@ -503,16 +503,18 @@ for a position. Add one notebook per investigation.
 ## 13. Developing: tests, lint, types
 
 ```bash
-pip install -e ".[dev]"          # ruff, mypy, pytest, pre-commit
+pip install -e ".[dev]"          # ruff, mypy, pytest, import-linter, pre-commit
 pip install -e ".[notebooks]"    # jupyter, matplotlib, pandas
 
 ruff check . && ruff format --check .   # lint + format (notebooks excluded)
 mypy src/kaisparov                       # static types (game_interface excluded)
+lint-imports                             # architecture contracts (pyproject.toml)
 pytest                                    # engine, agents, env, arena, ppo, tracking, smoke
 pre-commit install                        # run the above on commit
 ```
 
-CI (`.github/workflows/ci.yml`) runs ruff + mypy + pytest on CPU wheels. Tests avoid
+CI (`.github/workflows/ci.yml`) runs ruff + mypy + import contracts + pytest on CPU
+wheels. Tests avoid
 importing the pygame UI so they run headless.
 
 **Conventions**: `(col, row)` coordinates via `core/coords.py`; snake_case, English,

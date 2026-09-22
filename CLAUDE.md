@@ -33,8 +33,12 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 - **Rules**: standard chess, on [python-chess](https://python-chess.readthedocs.io/).
   Legal moves only, checkmate, stalemate, castling, en passant, promotion. The older
   capture-the-king variant is gone (tag `pre-python-chess`); runs from before it are
-  not comparable. python-chess must not leak past `core/game.py` — everything above
-  speaks `(col, row)` and `Piece`.
+  not comparable. python-chess must not leak out of `core/` (`game`, `move`, `rules`) —
+  everything above speaks `(col, row)` and `Piece`.
+- **Architecture contracts** (`[tool.importlinter]` in `pyproject.toml`, run by
+  `lint-imports`): python-chess stays in `core/`, `core/` imports nothing above it,
+  `core/`, `bench/` and `tracking/registry` are torch-free, pygame stays in the UI. A
+  new exception goes into the contract's `ignore_imports` with a comment saying why.
 - **`Move` is a 3-tuple** `(source, dest, promotion)`. `game.make(*move)` and `move[0]`
   work as before, but `source, dest = move` does not, and a `Move` never matches a bare
   pair as a dict key — use `Move.coerce` on anything coming from outside. `make` with
@@ -83,6 +87,7 @@ kaisparov play  --vs-ai
 
 ruff check . && ruff format --check .           # lint + format
 mypy src/kaisparov                              # types (CI runs it; game_interface excluded)
+lint-imports                                    # architecture contracts (see Conventions)
 pytest                                          # tests (torch-free where possible)
 ```
 
@@ -102,8 +107,8 @@ pytest                                          # tests (torch-free where possib
   command) costs more than the code it describes. `CHANGELOG.md` records *what it
   means*, not every commit: add an entry for a change someone would need explained.
 - **Before committing / merging**: `ruff check . && ruff format --check .`, `mypy
-  src/kaisparov` and `pytest` must pass — all four are CI steps (`.github/workflows/ci.yml`),
-  and mypy is the easy one to forget. After code changes, also run `graphify update .`
+  src/kaisparov`, `lint-imports` and `pytest` must pass — all five are CI steps
+  (`.github/workflows/ci.yml`), and mypy is the easy one to forget. After code changes, also run `graphify update .`
   (see below).
 - **Never commit** training artifacts — `runs/`, `data/`, `*.pth` are git-ignored on
   purpose (see Gotchas). Commit/push only when asked.
