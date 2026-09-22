@@ -1,6 +1,6 @@
 """Tactics: positions with a concrete, forcing answer the oracle can prove.
 
-- ``win_in_n`` — a king capture forced in exactly ``depth`` moves;
+- ``win_in_n`` — a mate forced in exactly ``depth`` moves (mate in N, N >= 2);
 - ``free_capture`` — an enemy piece can be taken for free;
 - ``fork`` — a quiet move attacks two targets and wins material by force;
 - ``parry_threat`` — the opponent threatens a forced win; find a move that stops it.
@@ -40,7 +40,7 @@ def _captures(game: ChessGame) -> list[Move]:
 class WinInNGenerator(SamplingGenerator):
     name = "win_in_n"
     theme = "win_in_n"
-    description = "Force a king capture in exactly N moves (N=2 is a classical mate in one)."
+    description = "Force mate in exactly N moves (N >= 2; N = 1 is mate_in_one)."
 
     def __init__(
         self,
@@ -219,7 +219,7 @@ class ForkGenerator(SamplingGenerator):
 class ParryThreatGenerator(SamplingGenerator):
     name = "parry_threat"
     theme = "parry_threat"
-    description = "The opponent threatens a forced king capture: find a move that stops it."
+    description = "The opponent threatens a forced mate: find a move that stops it."
 
     def __init__(self, depth: int = 2, max_fraction: float = 0.3, **kwargs):
         super().__init__(**kwargs)

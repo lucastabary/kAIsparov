@@ -29,7 +29,7 @@ W, B = Player.WHITE, Player.BLACK
 # White's queen to c7 boxes in the lone black king on a8 without attacking it.
 STALEMATING_MOVE = ((2, 0), (2, 6))
 
-# A king capture that would be worth a lot if the stalemate were mistaken for a win.
+# A reward that would be worth a lot if the stalemate were mistaken for a win.
 REWARDS = RewardSettings(material=1.0, checkmate=10.0, step_penalty=0.0)
 
 
@@ -109,5 +109,5 @@ def test_league_ends_the_learners_stalemate_before_the_opponent_replies():
 
     assert stats["drawrate"] == 1.0
     assert stats["winrate"] == 0.0
-    assert buffer.rewards == [0.0]  # no king-capture bonus for a draw
+    assert buffer.rewards == [0.0]  # no win bonus for a draw
     assert buffer.dones == [True]

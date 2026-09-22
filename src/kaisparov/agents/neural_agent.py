@@ -24,8 +24,8 @@ class NeuralAgent:
         self.model = model
         self.processor = processor
         self.deterministic = deterministic
-        # When True, mask out moves that hang our own king so the policy only samples
-        # king-safe moves (unless none exist). Best-effort: requires the processor to
+        # When True, mask out moves that walk into mate in one so the policy only
+        # samples the others (unless none exist). Best-effort: requires the processor to
         # expose ``move_mask``; otherwise it's a no-op. See kaisparov.agents.safety.
         self.avoid_king_suicide = avoid_king_suicide
 

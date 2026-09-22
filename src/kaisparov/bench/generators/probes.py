@@ -1,8 +1,8 @@
 """Probes of the model's heads: does the value know who wins, does the policy rank
 the right move high even when it does not play it?
 
-- ``value_sign`` — positions the oracle can call won (a forced king capture within two
-  moves) or lost (every move lets the opponent take the king), half and half;
+- ``value_sign`` — positions the oracle can call won (a forced mate within two moves)
+  or lost (every move lets the opponent force mate), half and half;
 - ``policy_rank`` — any move-finding theme, re-graded on where the policy ranks the
   answer. It wraps another generator instead of sampling on its own, so the problems
   are exactly that theme's.

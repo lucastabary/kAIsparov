@@ -26,9 +26,9 @@ class PhaseConfig:
     allow_major: bool = True  # queen / rook
     allow_minor: bool = True  # bishop / knight (KNIGHT)
     allow_pawns: bool = True
-    # Place each king on a square that is NOT already attacked at ply 0, so a game
-    # can't be decided by the random placement handing one side a free king capture
-    # on the first move. Kept on by default; turn off for the old raw-random behavior.
+    # Place each king on a square that is NOT already attacked at ply 0, so the
+    # random placement never starts a side in check. (A position with the side not
+    # to move in check is redrawn regardless; see get_initial_board.) Kept on by default; turn off for the old raw-random behavior.
     ensure_kings_safe: bool = True
 
     def allowed_piece_types(self) -> list[PieceType]:

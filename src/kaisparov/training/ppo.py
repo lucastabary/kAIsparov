@@ -182,7 +182,7 @@ def train_one_epoch(
         surr2 = torch.clamp(ratio, 1.0 - clip_eps, 1.0 + clip_eps) * advantages
         policy_loss = -torch.min(surr1, surr2).mean()
         # Huber (smooth L1) instead of MSE: robust to the occasional huge return
-        # (a king capture is worth many material swings), so a single outlier can't
+        # (a mate is worth many material swings), so a single outlier can't
         # dominate the critic gradient and inflate the shared trunk.
         value_loss = F.smooth_l1_loss(values, returns)
         loss = policy_loss + value_coef * value_loss - entropy_coef * entropy

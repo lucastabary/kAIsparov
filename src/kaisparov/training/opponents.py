@@ -53,7 +53,7 @@ class OpponentPool:
         self.device = device
         self.max_size = max_size
         self.search_depth = search_depth
-        # Past-selves added to the pool refuse moves that hang their own king.
+        # Past-selves added to the pool refuse moves that walk into mate in one.
         self.avoid_king_suicide = avoid_king_suicide
         # Only used by depth-0 snapshots (raw NeuralAgent): sample vs argmax.
         self.snapshot_deterministic = snapshot_deterministic

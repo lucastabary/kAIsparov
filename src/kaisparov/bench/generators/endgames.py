@@ -2,9 +2,9 @@
 
 One-move themes say whether a model *sees*; these say whether it can *plan* over tens
 of moves against a real defence. The default opponent is ``material+safe`` — it grabs
-material and never hangs its own king, the least a defender must do.
+material and never walks into mate in one, the least a defender must do.
 
-- ``conversion`` — heavy pieces against a bare king: capture it before the ply cap;
+- ``conversion`` — heavy pieces against a bare king: mate it before the ply cap;
 - ``material_edge`` — a full-ish middlegame a piece up: win it;
 - ``hold`` — the same, a piece down: do not lose within the cap.
 """
@@ -26,7 +26,7 @@ _CONVERSION_DIFFICULTY = {"QQ": 1, "QR": 1, "Q": 2, "RR": 2, "R": 3}
 class ConversionGenerator(SamplingGenerator):
     name = "conversion"
     theme = "conversion"
-    description = "Heavy pieces against a bare king: capture it within the ply cap."
+    description = "Heavy pieces against a bare king: mate it within the ply cap."
 
     def __init__(
         self,

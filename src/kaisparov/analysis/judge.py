@@ -256,7 +256,7 @@ class MoveJudge:
         t = self.thresholds
         if legal_count == 1:
             return MoveQuality.FORCED
-        # Walking past an immediate king capture is a missed win however comfortable
+        # Walking past a mate in one is a missed win however comfortable
         # the position stays — a distinction winning chances alone cannot draw, since
         # "up two rooks" and "mate in one" both round to ~100%.
         if missed_win:

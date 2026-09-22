@@ -43,8 +43,8 @@ class Evaluator(Protocol):
 class MaterialEvaluator:
     """Plain material balance in pawns, from the side to move's point of view.
 
-    Kings are excluded: in capture-the-king a missing king means the game is over,
-    which the judge handles as a terminal win rather than as ±100 pawns of material.
+    Kings are excluded: a king is never captured, and mate is a terminal win the
+    judge scores as ``WIN``, not as ±100 pawns of material.
 
     ``slope`` is Lichess' win-probability curve (``0.00368208`` per centipawn), so a
     pawn up reads as ~59% winning chances and three pawns up as ~75%.

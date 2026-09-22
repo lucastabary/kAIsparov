@@ -16,7 +16,7 @@ from kaisparov.bench.oracle import Oracle
 from kaisparov.core.game import ChessGame
 from kaisparov.insights import MoveInsight, PositionAnalysis
 
-_CLIP = 20.0  # pawns: a king capture (±WIN) weighs like a huge gain, not an overflow
+_CLIP = 20.0  # pawns: a mate (±WIN) weighs like a huge gain, not an overflow
 
 
 class MaterialAnalyzer:

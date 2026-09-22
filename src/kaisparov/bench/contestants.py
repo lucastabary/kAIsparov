@@ -6,7 +6,7 @@ and the neural ones pay for loading their weights once. The spec string is how t
 command line and a play-out's ``opponent`` name one::
 
     random                          the baselines ...
-    material+safe                   ... here refusing moves that hang their own king
+    material+safe                   ... here refusing moves that walk into mate in one
     run:20260903-155710_rgcn        a tracked run, latest checkpoint
     run:20260903-155710_rgcn@best   ... its best checkpoint (or @latest, @40 for epoch 40)
     ckpt:path/to/weights.pth        a raw checkpoint (backend rgcn, width inferred)

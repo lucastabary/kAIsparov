@@ -16,9 +16,9 @@ from kaisparov.envs.chess_env import ChessEnv
 class PlayOut(Task):
     """Play the position out against ``opponent`` for at most ``max_plies`` plies.
 
-    The contestant plays the side to move. ``goal`` is ``"win"`` (capture the enemy
-    king before the ply cap) or ``"not_lose"`` (still have a king when the game ends,
-    by a draw rule or the cap). The score is 1 when the goal is met; the outcome's
+    The contestant plays the side to move. ``goal`` is ``"win"`` (mate before the ply
+    cap) or ``"not_lose"`` (not be mated before the game ends, by a draw rule or the
+    cap). The score is 1 when the goal is met; the outcome's
     ``plies`` says how many moves it took, so reports can rank conversions by speed.
     """
 

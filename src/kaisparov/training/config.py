@@ -67,7 +67,7 @@ class RolloutSettings:
     # Wrap frozen snapshots in a Minimax alpha-beta search of this depth, so past
     # selves refute one-move blunders instead of just sampling their policy (0 = raw
     # policy reply, the default; 1 = cheap 1-ply lookahead that still catches every
-    # king capture; 2 = stronger but ~b x costlier). Costly on CPU with many pieces.
+    # mate in one; 2 = stronger but ~b x costlier). Costly on CPU with many pieces.
     snapshot_search_depth: int = 0
     # Make every pool opponent (baselines + snapshots) refuse moves that hang their
     # own king (one-ply king safety guard, see kaisparov.agents.safety). Off by
