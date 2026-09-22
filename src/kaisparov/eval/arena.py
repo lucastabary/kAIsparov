@@ -125,13 +125,12 @@ def _format(stats: MatchStats) -> str:
 
 
 def _load_neural(model_name, checkpoint, device, hidden_dim, minimax_depth=0):
-    from kaisparov.models.factory import load_backend_spec
+    from kaisparov.models.factory import load_agent
 
-    spec = load_backend_spec(model_name)
-    model, path = spec.model_class.load_agent_for_inference(
-        device=device, model_path=checkpoint, hidden_dim=hidden_dim
-    )
-    processor = spec.processor_class()
+    if checkpoint is None:
+        raise SystemExit("--model needs --checkpoint <path> to the weights to evaluate.")
+    loaded = load_agent(checkpoint, device, model=model_name, hidden_dim=hidden_dim)
+    model, processor, path = loaded.model, loaded.processor, loaded.path
     if minimax_depth > 0:
         from kaisparov.agents.minimax_agent import MinimaxAgent
 
@@ -151,7 +150,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default=None, help="Also evaluate this neural backend.")
     parser.add_argument("--checkpoint", default=None, help="Explicit weights path for --model.")
-    parser.add_argument("--hidden-dim", type=int, default=8)
+    parser.add_argument(
+        "--hidden-dim", type=int, default=None, help="Override the width the run recorded."
+    )
     parser.add_argument(
         "--minimax-depth", type=int, default=0, help="Wrap --model in a minimax search."
     )

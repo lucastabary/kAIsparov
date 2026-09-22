@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from kaisparov.models.architecture import Architecture
+
 if TYPE_CHECKING:
     from kaisparov.agents.base import Policy
 
@@ -34,9 +36,8 @@ def build_baseline(name: str, seed: int, avoid_king_suicide: bool = False):
 class OpponentPool:
     def __init__(
         self,
-        spec,
+        architecture: Architecture,
         device: torch.device,
-        hidden_dim: int,
         max_size: int = 5,
         seed=None,
         baselines: list | None = None,
@@ -47,9 +48,9 @@ class OpponentPool:
         avoid_king_suicide: bool = False,
         snapshot_deterministic: bool = False,
     ):
-        self.spec = spec
+        # The learner's: every past-self is a frozen copy of the learner.
+        self.architecture = architecture
         self.device = device
-        self.hidden_dim = hidden_dim
         self.max_size = max_size
         self.search_depth = search_depth
         # Past-selves added to the pool refuse moves that hang their own king.
@@ -85,12 +86,13 @@ class OpponentPool:
         search (a past self that *looks ahead* and refutes one-move blunders);
         otherwise they play as a plain sampling ``NeuralAgent``.
         """
-        frozen = self.spec.model_class.create_agent(device=self.device, hidden_dim=self.hidden_dim)
+        from kaisparov.models.factory import build_agent
+
+        frozen, processor = build_agent(self.architecture, self.device)
         frozen.load_state_dict(state_dict)
         frozen.eval()
         for param in frozen.parameters():
             param.requires_grad_(False)
-        processor = self.spec.processor_class()
         if self.search_depth >= 1:
             from kaisparov.agents.minimax_agent import MinimaxAgent
 
@@ -161,21 +163,13 @@ class OpponentPool:
         return self._rng.choice(self._agents + self._baselines)
 
 
-def _load_frozen_model(spec, device, hidden_dim, checkpoint: str):
-    """Load a frozen (eval, no-grad) model of this architecture from a checkpoint."""
-    model = spec.model_class.create_agent(device=device, hidden_dim=hidden_dim)
-    model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
-    model.eval()
-    for param in model.parameters():
-        param.requires_grad_(False)
-    return model
-
-
-def build_pool_baseline(spec, device, hidden_dim, opp, seed: int):
+def build_pool_baseline(device, opp, seed: int):
     """Build one fixed baseline agent from a pool-preset entry (:class:`OpponentSpec`).
 
     ``random``/``material`` are model-free; ``neural``/``minimax`` load a frozen model
-    from ``params.checkpoint`` (a past run's weights) — a strong, fixed teacher.
+    from ``params.checkpoint`` (a past run's weights) — a strong, fixed teacher. It is
+    rebuilt as the architecture *its* run recorded, which need not be the learner's:
+    each agent graphifies the board with its own processor.
     """
     params, kind = opp.params, opp.kind
     if kind in ("random", "material"):
@@ -186,8 +180,10 @@ def build_pool_baseline(spec, device, hidden_dim, opp, seed: int):
         checkpoint = params.get("checkpoint")
         if not checkpoint:
             raise ValueError(f"A '{kind}' baseline needs params.checkpoint (frozen weights path).")
-        model = _load_frozen_model(spec, device, hidden_dim, checkpoint)
-        processor = spec.processor_class()
+        from kaisparov.models.factory import load_agent
+
+        loaded = load_agent(checkpoint, device, frozen=True)
+        model, processor = loaded.model, loaded.processor
         if kind == "minimax":
             from kaisparov.agents.minimax_agent import MinimaxAgent
 
@@ -208,7 +204,7 @@ def build_pool_baseline(spec, device, hidden_dim, opp, seed: int):
     raise ValueError(f"Kind {kind!r} is not valid for a fixed baseline (group: baseline).")
 
 
-def build_opponent_pool(spec, device, hidden_dim: int, rollout, seed: int):
+def build_opponent_pool(architecture: Architecture, device, rollout, seed: int):
     """Build the opponent pool from a ``RolloutSettings`` — the single source of truth
     shared by the trainer and the parallel workers.
 
@@ -223,15 +219,14 @@ def build_opponent_pool(spec, device, hidden_dim: int, rollout, seed: int):
         pspec = build_pool_spec(rollout.pool)
         baselines, baseline_weights = [], []
         for opp in pspec.baselines:
-            baselines.append(build_pool_baseline(spec, device, hidden_dim, opp, seed))
+            baselines.append(build_pool_baseline(device, opp, seed))
             baseline_weights.append(opp.weight)
         snap = pspec.snapshot
         sp = snap.params if snap else {}
         gw = pspec.group_weights
         pool = OpponentPool(
-            spec,
+            architecture,
             device,
-            hidden_dim,
             max_size=snap.count if snap else 0,
             seed=seed,
             baselines=baselines,
@@ -248,9 +243,8 @@ def build_opponent_pool(spec, device, hidden_dim: int, rollout, seed: int):
     avoid = rollout.opponent_avoid_king_suicide
     baselines = [build_baseline(n, seed, avoid_king_suicide=avoid) for n in rollout.baselines]
     pool = OpponentPool(
-        spec,
+        architecture,
         device,
-        hidden_dim,
         max_size=rollout.pool_size,
         seed=seed,
         baselines=baselines,

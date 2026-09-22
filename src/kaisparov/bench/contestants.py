@@ -171,7 +171,8 @@ class NeuralContestant(Contestant):
 
     checkpoint: Path
     model: str | None = None  # backend name; None = the default backend
-    hidden_dim: int | None = None  # None = read it off the checkpoint
+    hidden_dim: int | None = None  # None = what the run recorded, else the weights
+    features: str | None = None  # likewise
     modifiers: Modifiers = Modifiers()
     name: str = ""
     spec: str = ""
@@ -202,6 +203,7 @@ class NeuralContestant(Contestant):
             checkpoint=registry.resolve_checkpoint(run_id, selector),
             model=run.get("model") or config.get("model"),
             hidden_dim=config.get("hidden_dim"),
+            features=config.get("features"),
             modifiers=modifiers,
             name=f"{run_id}@{selector}{modifiers.suffix()}",
         )
@@ -211,24 +213,21 @@ class NeuralContestant(Contestant):
         if self._loaded is None:
             import torch
 
-            from kaisparov.models.factory import infer_hidden_dim, load_backend_spec
+            from kaisparov.models.factory import load_agent
 
             if not Path(self.checkpoint).exists():
                 raise FileNotFoundError(f"{self.name}: no checkpoint at {self.checkpoint}")
-            device = torch.device("cpu")
-            spec = load_backend_spec(self.model)
-            state_dict = torch.load(self.checkpoint, map_location=device, weights_only=True)
-            hidden_dim = self.hidden_dim or infer_hidden_dim(state_dict) or 8
-            model = spec.model_class.create_agent(device=device, hidden_dim=hidden_dim)
             try:
-                model.load_state_dict(state_dict)
+                loaded = load_agent(
+                    self.checkpoint,
+                    torch.device("cpu"),
+                    model=self.model,
+                    hidden_dim=self.hidden_dim,
+                    features=self.features,
+                )
             except RuntimeError as exc:
-                raise RuntimeError(
-                    f"{self.name}: {self.checkpoint} does not fit the current {spec.name} "
-                    "backend — most likely trained before a change to its input features"
-                ) from exc
-            model.eval()
-            self._loaded = (model, spec.processor_class())
+                raise RuntimeError(f"{self.name}: {exc}") from exc
+            self._loaded = (loaded.model, loaded.processor)
         return self._loaded
 
     def build(self, seed: int) -> Policy:

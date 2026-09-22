@@ -61,6 +61,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "set it <= --epochs so a short run still leaves a checkpoint to resume from).",
     )
     parser.add_argument("--hidden-dim", type=int, default=None)
+    parser.add_argument(
+        "--features", default=None, help="Node feature set (see models/features.py)."
+    )
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--episodes", type=int, default=None, help="Self-play games per epoch.")
     parser.add_argument("--title", default=None)
@@ -101,6 +104,9 @@ def build_config(
             config.model = args.model
         if args.hidden_dim is not None:
             config.hidden_dim = args.hidden_dim
+        if args.features is not None:
+            config.features = args.features
+            _ = config.architecture  # reject an unknown name before any work starts
     if args.epochs is not None:
         config.epochs = args.epochs
     if args.checkpoint_every is not None:

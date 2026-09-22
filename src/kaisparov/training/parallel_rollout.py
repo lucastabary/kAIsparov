@@ -33,6 +33,7 @@ import torch
 
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.core.game import ChessGame
+from kaisparov.models.architecture import Architecture
 from kaisparov.training.config import CurriculumSettings, RewardSettings, RolloutSettings
 
 # One persistent pool, reused across epochs so torch is imported once per worker
@@ -92,7 +93,7 @@ def _worker_collect(payload: dict[str, Any]) -> dict[str, Any]:
 
     import numpy as np
 
-    from kaisparov.models.factory import load_backend, load_backend_spec
+    from kaisparov.models.factory import build_agent, load_backend, load_backend_spec
     from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
     from kaisparov.training.reward import make_reward_fn
 
@@ -101,13 +102,11 @@ def _worker_collect(payload: dict[str, Any]) -> dict[str, Any]:
     np.random.seed(seed % (2**32))
     torch.manual_seed(seed)
 
-    model_name = payload["model_name"]
-    spec = load_backend_spec(model_name)
-    module = load_backend(model_name)
+    architecture = Architecture(**payload["architecture"])
+    spec = load_backend_spec(architecture.model)
+    module = load_backend(architecture.model)
 
-    agent = spec.model_class.create_agent(
-        device=torch.device("cpu"), hidden_dim=payload["hidden_dim"]
-    )
+    agent, _processor = build_agent(architecture, torch.device("cpu"))
     agent.load_state_dict(payload["state_dict"])
     agent.eval()
 
@@ -162,8 +161,7 @@ def collect_data_parallel(
     num_workers: int,
     num_episodes: int,
     max_steps_per_episode: int,
-    model_name: str,
-    hidden_dim: int,
+    architecture: Architecture,
     reward_settings: RewardSettings,
     curriculum_settings: CurriculumSettings | None,
     gamma: float,
@@ -190,8 +188,7 @@ def collect_data_parallel(
         {
             "num_episodes": count,
             "max_steps_per_episode": max_steps_per_episode,
-            "model_name": model_name,
-            "hidden_dim": hidden_dim,
+            "architecture": architecture.to_dict(),
             "state_dict": state_dict,
             "reward": reward,
             "curriculum": curriculum,
@@ -234,7 +231,7 @@ def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
 
     import numpy as np
 
-    from kaisparov.models.factory import load_backend, load_backend_spec
+    from kaisparov.models.factory import build_agent, load_backend, load_backend_spec
     from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
     from kaisparov.training.opponents import build_opponent_pool
     from kaisparov.training.rollout_vs import collect_vs_opponent
@@ -245,11 +242,11 @@ def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
     torch.manual_seed(seed)
 
     device = torch.device("cpu")
-    model_name = payload["model_name"]
-    spec = load_backend_spec(model_name)
-    module = load_backend(model_name)
+    architecture = Architecture(**payload["architecture"])
+    spec = load_backend_spec(architecture.model)
+    module = load_backend(architecture.model)
 
-    agent = spec.model_class.create_agent(device=device, hidden_dim=payload["hidden_dim"])
+    agent, _processor = build_agent(architecture, device)
     agent.load_state_dict(payload["state_dict"])
     agent.eval()
 
@@ -259,9 +256,7 @@ def _worker_collect_vs(payload: dict[str, Any]) -> dict[str, Any]:
 
     # Same factory the trainer uses (seed = worker's opponent-sampling RNG); then add
     # the snapshot weights the trainer had accumulated by this epoch.
-    pool, _take, _every = build_opponent_pool(
-        spec, device, payload["hidden_dim"], payload["rollout"], seed
-    )
+    pool, _take, _every = build_opponent_pool(architecture, device, payload["rollout"], seed)
     for sd in payload["snapshot_sds"]:
         pool.add_snapshot_state_dict(sd)
 
@@ -304,8 +299,7 @@ def collect_vs_opponent_parallel(
     num_workers: int,
     num_episodes: int,
     max_steps_per_episode: int,
-    model_name: str,
-    hidden_dim: int,
+    architecture: Architecture,
     reward_settings: RewardSettings,
     curriculum_settings: CurriculumSettings | None,
     gamma: float,
@@ -335,8 +329,7 @@ def collect_vs_opponent_parallel(
         {
             "num_episodes": count,
             "max_steps_per_episode": max_steps_per_episode,
-            "model_name": model_name,
-            "hidden_dim": hidden_dim,
+            "architecture": architecture.to_dict(),
             "state_dict": state_dict,
             "reward": reward,
             "curriculum": curriculum,

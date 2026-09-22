@@ -13,6 +13,8 @@ from typing import Any
 import yaml
 
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
+from kaisparov.models.architecture import Architecture
+from kaisparov.models.features import DEFAULT_FEATURES
 from kaisparov.training.chain import ensure_not_chain, read_config_mapping
 
 
@@ -261,6 +263,9 @@ def build_pool_spec(value: Any) -> PoolSpec:
 class TrainConfig:
     model: str = "rgcn"
     hidden_dim: int = 8
+    # Node feature set the model reads (models/features.py). Part of the architecture:
+    # a checkpoint only loads into a model built for the same set.
+    features: str = DEFAULT_FEATURES
     epochs: int = 50
     seed: int = 0
     device: str = "auto"  # "auto" | "cpu" | "cuda"
@@ -284,6 +289,14 @@ class TrainConfig:
     curriculum: CurriculumSettings | None = None
     eval: EvalSettings = field(default_factory=EvalSettings)
     reward: RewardSettings = field(default_factory=RewardSettings)
+
+    def __post_init__(self) -> None:
+        _ = self.architecture  # validate the feature set name eagerly
+
+    @property
+    def architecture(self) -> Architecture:
+        """What :func:`~kaisparov.models.factory.build_agent` needs to build the model."""
+        return Architecture(model=self.model, hidden_dim=self.hidden_dim, features=self.features)
 
     # --------------------------------------------------------------- (de)serialize
     @classmethod
@@ -331,7 +344,7 @@ class TrainConfig:
 
 # Fields inferred from the parent run on resume (must match the checkpoint), so you
 # never redefine the architecture when continuing a run.
-_INHERITED_ARCHITECTURE = ("model", "hidden_dim")
+_INHERITED_ARCHITECTURE = ("model", "hidden_dim", "features")
 
 
 def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
@@ -361,16 +374,23 @@ def build_resume_config(
     parent_cfg: dict[str, Any] = parent.get("config", {})
     overrides = overrides or {}
 
+    checkpoint = reg.resolve_checkpoint(run_id, "latest")
+    if not checkpoint.exists():
+        raise SystemExit(f"Run '{run_id}' has no checkpoint to resume from.")
+
     config = TrainConfig.from_dict(_deep_merge(parent_cfg, overrides))
+    # The parent's architecture, as its checkpoint will be loaded — which for a run
+    # older than the ``features`` key means reading its feature set off the weights,
+    # not taking today's default.
+    from kaisparov.models.factory import resolve_architecture  # lazy: pulls torch
+
+    parent_arch = resolve_architecture(checkpoint)
     for name in _INHERITED_ARCHITECTURE:
-        setattr(config, name, parent_cfg.get(name, getattr(config, name)))
+        setattr(config, name, getattr(parent_arch, name))
 
     config.runs_dir = runs_dir
     config.parent_run_id = run_id
     config.resume_from_run = run_id
-    checkpoint = reg.resolve_checkpoint(run_id, "latest")
-    if not checkpoint.exists():
-        raise SystemExit(f"Run '{run_id}' has no checkpoint to resume from.")
     config.resume_from = str(checkpoint)
 
     # Documentation describes THIS run, not the parent's — don't inherit it.

@@ -142,51 +142,18 @@ def _resolve_checkpoint(checkpoint: str | None, runs_dir: str, use_best: bool = 
 # ---------------------------------------------------------------------- model
 
 
-def _run_model_name(checkpoint: str) -> str | None:
-    """The backend a tracked checkpoint was trained with, or ``None`` if untracked.
-
-    Tracked checkpoints live at ``runs/<id>/checkpoints/<file>.pth``, next to the run's
-    ``run.json`` which records the backend name.
-    """
-    import json
-    from pathlib import Path
-
-    run_json = Path(checkpoint).parent.parent / "run.json"
-    try:
-        run = json.loads(run_json.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return run.get("model") or (run.get("config") or {}).get("model")
-
-
 def _load_model(checkpoint: str, hidden_dim: int | None, device, model_name: str | None = None):
     """Load the backend once; agents and the analyzer are cheap wrappers over it.
 
-    ``hidden_dim=None`` means "infer it from the checkpoint" (the default), which
-    avoids the size-mismatch crash when a model was trained at a non-default width.
-    ``model_name=None`` means "the backend recorded by the checkpoint's run", falling
-    back to the default backend for an untracked file.
+    The checkpoint is rebuilt as its run recorded it (backend, width, feature set),
+    read off the weights for an untracked file. ``hidden_dim``/``model_name`` override
+    that; leave them ``None`` (the default) unless the file is mislabelled.
     """
-    import torch
+    from kaisparov.models.factory import load_agent
 
-    from kaisparov.models.factory import infer_hidden_dim, load_backend_spec
-
-    model_name = model_name or _run_model_name(checkpoint)
-    spec = load_backend_spec(model_name)
-    state_dict = torch.load(checkpoint, map_location=device, weights_only=True)
-
-    if hidden_dim is None:
-        hidden_dim = infer_hidden_dim(state_dict)
-        if hidden_dim is None:
-            hidden_dim = 8
-            print("Could not infer hidden_dim from the checkpoint; falling back to 8.")
-        else:
-            print(f"Using hidden_dim={hidden_dim} (inferred from the checkpoint).")
-
-    model = spec.model_class.create_agent(device=device, hidden_dim=hidden_dim)
-    model.load_state_dict(state_dict)
-    model.eval()
-    return model, spec.processor_class(), str(checkpoint)
+    loaded = load_agent(checkpoint, device, model=model_name, hidden_dim=hidden_dim)
+    print(f"Model: {loaded.architecture}")
+    return loaded.model, loaded.processor, loaded.path
 
 
 def _build_ai(args, device, *, deterministic: bool, allow_fallback: bool):

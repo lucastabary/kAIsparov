@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import torch
 
+from kaisparov.models.architecture import Architecture
 from kaisparov.models.factory import load_backend_spec
 from kaisparov.training.config import RewardSettings, RolloutSettings
 from kaisparov.training.parallel_rollout import (
@@ -41,8 +42,7 @@ def test_collect_vs_opponent_parallel_fills_buffer():
             num_workers=2,
             num_episodes=4,
             max_steps_per_episode=8,
-            model_name="rgcn",
-            hidden_dim=4,
+            architecture=Architecture(model="rgcn", hidden_dim=4),
             reward_settings=RewardSettings(),
             curriculum_settings=None,
             gamma=0.99,

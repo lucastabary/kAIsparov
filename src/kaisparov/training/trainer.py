@@ -12,7 +12,7 @@ from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
 from kaisparov.core.game import ChessGame
 from kaisparov.eval.arena import evaluate
-from kaisparov.models.factory import load_backend, load_backend_spec
+from kaisparov.models.factory import build_agent, load_backend, load_backend_spec
 from kaisparov.tracking.run import RunManager
 from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
@@ -47,9 +47,8 @@ class Trainer:
         self.module = load_backend(config.model)
         self.spec = load_backend_spec(config.model)
 
-        self.agent = self.spec.model_class.create_agent(
-            device=self.device, hidden_dim=config.hidden_dim
-        )
+        self.architecture = config.architecture
+        self.agent, self._processor = build_agent(self.architecture, self.device)
         self.optimizer = self.spec.model_class.create_optimizer(
             self.agent, learning_rate=config.ppo.learning_rate
         )
@@ -72,7 +71,6 @@ class Trainer:
                 ),
                 seed=config.seed,
             )
-        self._processor = self.spec.processor_class()
         self._num_params = sum(p.numel() for p in self.agent.parameters())
         self.reward_fn = make_reward_fn(config.reward)
 
@@ -87,7 +85,7 @@ class Trainer:
             from kaisparov.training.opponents import build_opponent_pool
 
             self.pool, self.take_snapshots, self.snapshot_every = build_opponent_pool(
-                self.spec, self.device, config.hidden_dim, config.rollout, config.seed
+                self.architecture, self.device, config.rollout, config.seed
             )
 
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
@@ -175,8 +173,7 @@ class Trainer:
                     num_workers=cfg.rollout.num_workers,
                     num_episodes=cfg.rollout.episodes_per_epoch,
                     max_steps_per_episode=cfg.rollout.max_steps_per_episode,
-                    model_name=cfg.model,
-                    hidden_dim=cfg.hidden_dim,
+                    architecture=self.architecture,
                     reward_settings=cfg.reward,
                     curriculum_settings=cfg.curriculum,
                     gamma=cfg.ppo.gamma,
@@ -219,8 +216,7 @@ class Trainer:
                 num_workers=cfg.rollout.num_workers,
                 num_episodes=cfg.rollout.episodes_per_epoch,
                 max_steps_per_episode=cfg.rollout.max_steps_per_episode,
-                model_name=cfg.model,
-                hidden_dim=cfg.hidden_dim,
+                architecture=self.architecture,
                 reward_settings=cfg.reward,
                 curriculum_settings=cfg.curriculum,
                 gamma=cfg.ppo.gamma,

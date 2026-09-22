@@ -9,11 +9,14 @@ from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.minimax_agent import MinimaxAgent
 from kaisparov.agents.random_agent import RandomAgent
 from kaisparov.core.game import ChessGame
+from kaisparov.models.architecture import Architecture
 from kaisparov.models.factory import load_backend, load_backend_spec
 from kaisparov.training.config import RewardSettings
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
 from kaisparov.training.opponents import OpponentPool
 from kaisparov.training.rollout_vs import _gain, collect_vs_opponent
+
+ARCH = Architecture(model="rgcn", hidden_dim=8)
 
 
 def _spec_and_agent():
@@ -48,7 +51,7 @@ def test_gain_counts_captures_and_promotions():
 
 def test_pool_snapshot_sample_and_cap():
     spec, agent = _spec_and_agent()
-    pool = OpponentPool(spec, torch.device("cpu"), hidden_dim=8, max_size=2, seed=0)
+    pool = OpponentPool(ARCH, torch.device("cpu"), max_size=2, seed=0)
     assert len(pool) == 0 and pool.sample() is None
     for _ in range(3):
         pool.snapshot(agent)
@@ -61,9 +64,7 @@ def test_pool_snapshot_sample_and_cap():
 
 def test_pool_baselines_available_from_start():
     spec, _ = _spec_and_agent()
-    pool = OpponentPool(
-        spec, torch.device("cpu"), hidden_dim=8, seed=0, baselines=[RandomAgent(seed=0)]
-    )
+    pool = OpponentPool(ARCH, torch.device("cpu"), seed=0, baselines=[RandomAgent(seed=0)])
     # A seeded baseline makes the pool usable before any snapshot exists.
     assert len(pool) == 1
     assert pool.sample() is not None
@@ -75,9 +76,8 @@ def test_pool_group_weight_zero_excludes_snapshots():
     spec, agent = _spec_and_agent()
     material = MaterialAgent(seed=0)
     pool = OpponentPool(
-        spec,
+        ARCH,
         torch.device("cpu"),
-        hidden_dim=8,
         seed=0,
         baselines=[material],
         baseline_weight=1.0,
@@ -94,9 +94,8 @@ def test_pool_baseline_weights_bias():
     spec, _ = _spec_and_agent()
     material, random_agent = MaterialAgent(seed=0), RandomAgent(seed=0)
     pool = OpponentPool(
-        spec,
+        ARCH,
         torch.device("cpu"),
-        hidden_dim=8,
         seed=0,
         baselines=[material, random_agent],
         baseline_weights=[1.0, 0.0],
@@ -108,9 +107,8 @@ def test_pool_baseline_weights_length_mismatch_raises():
     spec, _ = _spec_and_agent()
     with pytest.raises(ValueError):
         OpponentPool(
-            spec,
+            ARCH,
             torch.device("cpu"),
-            hidden_dim=8,
             baselines=[MaterialAgent(seed=0), RandomAgent(seed=0)],
             baseline_weights=[1.0],  # only one weight for two baselines
         )
@@ -119,7 +117,7 @@ def test_pool_baseline_weights_length_mismatch_raises():
 def test_pool_minimax_snapshots():
     # search_depth >= 1 wraps frozen snapshots in a Minimax search.
     spec, agent = _spec_and_agent()
-    pool = OpponentPool(spec, torch.device("cpu"), hidden_dim=8, seed=0, search_depth=1)
+    pool = OpponentPool(ARCH, torch.device("cpu"), seed=0, search_depth=1)
     pool.snapshot(agent)
     opp = pool.sample()
     assert isinstance(opp, MinimaxAgent) and opp.depth == 1
