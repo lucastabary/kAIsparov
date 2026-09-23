@@ -47,8 +47,8 @@ Notes
 * ``start``, and ``run`` before it launches, ``git pull --ff-only`` the pod's repo
   (``RUNPOD_REPO_DIR``) so a session always runs fresh code; pass ``--no-pull`` to skip,
   or use the standalone ``pull`` command. A failed pull warns but does not abort.
-* ``run`` builds the repo's ``.venv`` on first use (runs ``setup_pod.sh`` if it is
-  missing), then executes the command from ``RUNPOD_REPO_DIR`` with that venv activated,
+* ``run`` builds the repo's ``.venv`` when it is missing or broken (``setup_pod.sh``, run
+  inside the detached job so it survives a dropped connection), then executes the command from ``RUNPOD_REPO_DIR`` with that venv activated,
   so relative paths (``config/...``) and console entry points (``kaisparov``) work
   directly. It launches the job **detached** (``setsid``) on the pod,
   so the work survives a dropped SSH connection; this script tails its output and, once the
@@ -332,30 +332,13 @@ def git_pull(cfg: Config, ip: str, port: int) -> int:
     return code
 
 
-def ensure_setup(cfg: Config, ip: str, port: int) -> None:
-    """Build the repo's venv on the pod if it is missing or broken (runs setup_pod.sh).
-
-    "Broken" is a venv whose interpreter is gone: it symlinks to the image's Python, so a
-    pod on another image leaves ``.venv/bin/kaisparov`` pointing at nothing (exit 127).
-    """
-    venv = f"{cfg.repo_dir}/.venv"
-    if ssh_run(cfg, ip, port, f'"{venv}/bin/python" -c "import kaisparov"').returncode == 0:
-        return
-    broken = ssh_run(cfg, ip, port, f'test -e "{venv}"').returncode == 0
+def ensure_repo(cfg: Config, ip: str, port: int) -> None:
+    """Check the repo is checked out on the pod. The venv itself is (re)built by the job."""
     setup = f"{cfg.repo_dir}/scripts/runpod/setup_pod.sh"
     if ssh_run(cfg, ip, port, f'test -f "{setup}"').returncode != 0:
         sys.exit(
-            f"No venv and no setup script at {setup} — clone the repo on the pod first "
-            "(see scripts/runpod/README.md)."
+            f"No repo at {cfg.repo_dir} — clone it on the pod first (see scripts/runpod/README.md)."
         )
-    if broken:
-        print(">> the pod's venv is broken (its Python is gone — did the pod image change?).")
-        print(">> rebuilding it with setup_pod.sh (may take a few minutes) ...")
-    else:
-        print(">> no venv on the pod; running setup_pod.sh (one-time, may take a few minutes) ...")
-    if ssh_run(cfg, ip, port, f"bash {shlex.quote(setup)}").returncode != 0:
-        sys.exit("setup_pod.sh failed on the pod — fix it there, then retry.")
-    print(">> setup complete.")
 
 
 def shell_rc() -> str:
@@ -521,7 +504,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     """Start the pod if needed, run a command detached, then stop the pod at the end."""
     if not args.command:
         sys.exit("Nothing to run. Usage: run [--session NAME] [--keep] -- <command...>")
-    command = " ".join(args.command)
+    command = " ".join(posix_path_arg(part) for part in args.command)
     session = args.session
 
     pod_id = resolve_pod_id(cfg)
@@ -530,7 +513,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     if not args.no_pull:
         git_pull(cfg, ip, port)
 
-    ensure_setup(cfg, ip, port)
+    ensure_repo(cfg, ip, port)
     launch_remote_command(cfg, ip, port, session, command)
     print(
         f">> launched job '{session}' (detached). Streaming output "
@@ -556,6 +539,19 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
     else:
         stop_pod(cfg, pod_id)
     return exit_code
+
+
+def posix_path_arg(part: str) -> str:
+    """``.\\config\\x.yaml`` (a Windows path, from tab completion) -> ``config/x.yaml``.
+
+    The command runs in bash on the pod, where a backslash is an escape: left alone, the
+    path would reach the trainer as ``.configx.yaml``. Only an argument naming an existing
+    local path is rewritten, so a backslash meant for bash is kept.
+    """
+    if "\\" not in part or not Path(part).exists():
+        return part
+    posix = part.replace("\\", "/")
+    return posix[2:] if posix.startswith("./") else posix
 
 
 def pod_busy(cfg: Config, ip: str, port: int) -> bool | None:
@@ -635,15 +631,16 @@ def _runner_script(repo_dir: str, session: str, command: str) -> str:
         # still-running job; it is removed once the exit code is recorded.
         "(\n"
         f"cd {shlex.quote(repo_dir)} || exit 1\n"
-        # Activate the repo's venv; fail loudly (not a cryptic 'command not found')
-        # if it isn't built yet.
-        "if [ -f .venv/bin/activate ]; then\n"
-        "  source .venv/bin/activate\n"
-        "else\n"
-        '  echo ">> ERROR: no virtualenv at $(pwd)/.venv." >&2\n'
-        '  echo ">>        Build it once with: bash scripts/runpod/setup_pod.sh" >&2\n'
-        "  exit 1\n"
+        # (Re)build the venv when it is missing or broken — its Python gone with a change
+        # of pod image. setup_pod.sh runs here, inside the detached job, so the long
+        # install survives a dropped SSH connection like the command itself.
+        'if ! .venv/bin/python -c "import kaisparov" >/dev/null 2>&1; then\n'
+        '  echo ">> the venv is missing or broken; running setup_pod.sh (a few minutes) ..."\n'
+        # flock: two jobs launched together must not both pip install into one venv.
+        '  flock "$RUN_DIR/setup.lock" bash scripts/runpod/setup_pod.sh \\\n'
+        "    || { echo '>> ERROR: setup_pod.sh failed.'; exit 1; }\n"
         "fi\n"
+        "source .venv/bin/activate\n"
         f"{command}\n"
         ') 2>&1 | tee "$LOG"\n'
         'echo "${PIPESTATUS[0]}" > "$EXIT_FILE"\n'

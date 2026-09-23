@@ -116,9 +116,10 @@ and debug, and stops it once nobody has been connected (no SSH shell, no running
 `--fail-grace` minutes (default 30; `0` stops at once). `Ctrl-C` during that wait leaves the
 pod running for good. A success still stops the pod straight away.
 
-`run` builds the repo's `.venv` on first use (it runs `setup_pod.sh` automatically if the
-venv is missing, or broken — a venv whose Python vanished with a change of pod image), then executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with that
-venv activated, so relative paths (`config/...`) and the `kaisparov` entry point work
+`run` builds the repo's `.venv` on first use: it runs `setup_pod.sh` automatically if the
+venv is missing, or broken — a venv whose Python vanished with a change of pod image. That
+install runs inside the detached job, so a dropped connection doesn't kill it. It then
+executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with that venv activated, so relative paths (`config/...`) and the `kaisparov` entry point work
 directly. `kaisparov train` writes checkpoints and TensorBoard metrics under `runs/<id>/`
 on the volume — exactly as it does locally — which `pull_runs.ps1` then brings home.
 
