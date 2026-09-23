@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaisparov"
-version = "0.1.0"
+dynamic = ["version"]  # from the git tag, see [tool.setuptools_scm]
 description = "A Graph Neural Network that learns to play chess via PPO self-play."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,6 +46,10 @@ kaisparov = "kaisparov.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["kaisparov*"]
+
+# ---- Version: read off the latest `vX.Y.Z` tag (1.0.1.devN+g<sha> between tags) ----
+[tool.setuptools_scm]
+fallback_version = "0.0.0"  # a source tree without git metadata
 
 # ---- Ruff: linter + formatter ----
 [tool.ruff]

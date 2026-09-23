@@ -4,9 +4,17 @@ High-level milestones for kAIsparov. Commit history has the *what changed*;
 this file keeps the *what it means* — the phases the project moved through and
 the reasoning behind the big design decisions.
 
-Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
+Format loosely follows [Keep a Changelog](https://keepachangelog.com/). To release,
+rename `[Unreleased]` to `[X.Y.Z] - <date>`, commit, and push a `vX.Y.Z` tag: the
+package version is read off the tag, and the Release workflow publishes that section.
 
 ## [Unreleased]
+
+- **Tooling**: the version comes from the git tag (setuptools-scm), and pushing a tag
+  publishes a GitHub release. CI tests the pinned stack (it was on torch 2.0.1), and
+  checks the architecture rules of `CLAUDE.md` as import-linter contracts.
+
+## [1.0.0] - 2026-09-23
 
 Recent additions:
 

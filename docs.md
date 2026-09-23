@@ -517,6 +517,12 @@ CI (`.github/workflows/ci.yml`) runs ruff + mypy + import contracts + pytest on 
 wheels. Tests avoid
 importing the pygame UI so they run headless.
 
+**Releasing**: the package version is read off the latest `vX.Y.Z` git tag
+(setuptools-scm; between tags it is `X.Y.Z+1.devN+g<sha>`). Rename `[Unreleased]` in
+`CHANGELOG.md` to `[X.Y.Z] - <date>`, commit, then `git tag vX.Y.Z && git push origin
+vX.Y.Z`: `.github/workflows/release.yml` builds the package and publishes a GitHub
+release whose notes are that CHANGELOG section (it fails if the section is missing).
+
 **Conventions**: `(col, row)` coordinates via `core/coords.py`; snake_case, English,
 ruff-formatted (line length 100); the `runs/` registry is the only tracking system;
 keep training CPU-friendly and don't launch long runs unprompted.

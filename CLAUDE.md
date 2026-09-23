@@ -110,6 +110,9 @@ pytest                                          # tests (torch-free where possib
   src/kaisparov`, `lint-imports` and `pytest` must pass — all five are CI steps
   (`.github/workflows/ci.yml`), and mypy is the easy one to forget. After code changes, also run `graphify update .`
   (see below).
+- **Releases**: the version comes from the `vX.Y.Z` tag (setuptools-scm) — never write
+  one into a file. Rename `[Unreleased]` in `CHANGELOG.md` to `[X.Y.Z] - <date>`, commit,
+  push the tag; the Release workflow publishes that section.
 - **Never commit** training artifacts — `runs/`, `data/`, `*.pth` are git-ignored on
   purpose (see Gotchas). Commit/push only when asked.
 
