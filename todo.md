@@ -63,3 +63,9 @@ copies relations 0-5 and seeds 6-8.
   for the README (deferred: currently finishing the scaffolding, not training).
 - **Interpretability notebooks** — node-embedding probes, per-relation message flow,
   attention analysis (the project's main research goal; see `notebooks/`).
+- **A public selection of runs** — `runs/` stays git-ignored, but a curated folder of
+  a few chosen runs (config, metrics, latest checkpoint; small at `hidden_dim` 32)
+  pushed to the repo — or attached to a release — would let visitors reproduce the
+  README's numbers, and let CI run the skill benchmark on real models instead of
+  only the `random` / `material` baselines. Decide what makes a run worth publishing,
+  and keep the registry reading both places.
