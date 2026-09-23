@@ -17,7 +17,7 @@ relational GCN actor–critic trained with PPO self-play) is the first backend.
 | `core/` | Chess engine — a facade over **python-chess**, no torch. `coords` (single source of truth), `move` (`Move` with its promotion), `material` (what pieces and moves are worth, `WIN`), `game` (`ChessGame`: `make`/`unmake`, `legal_moves`, `grid` snapshot), `rules`, `draw`, `pieces`, `bitboard_batch` (vectorised control maps), `game_interface` (pygame). |
 | `envs/` | `ChessEnv` — Gym-like `reset`/`step`/reward/terminal: when a game is over, and the raw material reward. Shaping (weights, mate and check bonuses) is `training/reward.py`; what pieces and moves are worth is `core/material.py`. |
 | `models/` | Neural backends. Each `models/<name>/` exposes a `BACKEND_SPEC` (`backend_spec.py`). `features` — the named node feature sets, shared by every backend; `architecture` — `Architecture(model, hidden_dim, features)`, what a run records; `factory` — `build_agent` / `load_agent`, the only way to build or load a network. |
-| `agents/` | Policies with `select_move(game)`: `RandomAgent`, `MaterialAgent`, `NeuralAgent`. |
+| `agents/` | Policies with `select_move(game)`: `RandomAgent`, `MaterialAgent`, `MaterialMinimaxAgent` (search on material), `NeuralAgent`, `MinimaxAgent` (search on the critic). |
 | `analysis/` | Move review — `evaluators` (score a position), `judge` (grade a played move, chess.com-style labels + accuracy), `critic` (torch-backed evaluator). Vocabulary lives in `insights.py`. |
 | `training/` | `config` (typed), `trainer`, `ppo` (buffer + negamax GAE), `rollout`, `curriculum`. |
 | `eval/` | `arena` — play matches, win-rates, Elo. |

@@ -7,6 +7,7 @@ command line and a play-out's ``opponent`` name one::
 
     random                          the baselines ...
     material+safe                   ... here refusing moves that walk into mate in one
+    material+minimax2               an alpha-beta search on material, 2 plies deep
     run:20260903-155710_rgcn        a tracked run, latest checkpoint
     run:20260903-155710_rgcn@40     ... its epoch-40 checkpoint (or @latest, the default)
     ckpt:path/to/weights.pth        a raw checkpoint (backend rgcn, width inferred)
@@ -14,7 +15,8 @@ command line and a play-out's ``opponent`` name one::
     v2=run:<id>@40                  ``label=`` renames it in the reports
 
 Modifiers after ``+``: ``safe`` (avoid king suicide), ``sample`` (sample the policy
-instead of taking its argmax), ``minimax<N>`` (search ``N`` plies with the critic).
+instead of taking its argmax), ``minimax<N>`` (search ``N`` plies — with the critic for
+a neural source, on material for ``material``).
 
 Sources register by prefix (:class:`Contestant` subclasses with ``prefixes``), so a
 new kind of player — an external engine, a batch of checkpoints — is one class.
@@ -131,8 +133,10 @@ class BaselineContestant(Contestant):
     spec: str = ""
 
     def __post_init__(self) -> None:
-        if self.modifiers.search_depth or self.modifiers.sample:
-            raise ValueError(f"{self.kind}: only the 'safe' modifier applies to a baseline")
+        if self.modifiers.sample or (self.modifiers.search_depth and self.kind != "material"):
+            raise ValueError(
+                f"{self.kind}: a baseline takes 'safe', and material also 'minimax<N>'"
+            )
         self.name = self.name or self.kind + self.modifiers.suffix()
         self.spec = self.spec or self.name
 
@@ -148,6 +152,14 @@ class BaselineContestant(Contestant):
         from kaisparov.agents.material_agent import MaterialAgent
         from kaisparov.agents.random_agent import RandomAgent
 
+        if self.modifiers.search_depth:
+            from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+
+            return MaterialMinimaxAgent(
+                depth=self.modifiers.search_depth,
+                seed=seed,
+                avoid_king_suicide=self.modifiers.safe,
+            )
         agent_class = RandomAgent if self.kind == "random" else MaterialAgent
         return agent_class(seed=seed, avoid_king_suicide=self.modifiers.safe)
 

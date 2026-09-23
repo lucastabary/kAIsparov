@@ -343,9 +343,18 @@ def test_contestant_specs_parse():
     assert isinstance(safe, BaselineContestant) and safe.modifiers.safe
     labelled = Contestant.parse("greedy=material")
     assert (labelled.name, labelled.spec) == ("greedy", "greedy=material")
-    for bad in ("stockfish", "material+minimax2", "random+wings", "run:"):
+    for bad in ("stockfish", "random+minimax2", "material+sample", "random+wings", "run:"):
         with pytest.raises(ValueError):
             Contestant.parse(bad)
+
+
+def test_material_minimax_contestant_builds_the_search():
+    from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+
+    contestant = Contestant.parse("material+minimax2")
+    assert contestant.name == "material+minimax2"
+    agent = contestant.build(seed=0)
+    assert isinstance(agent, MaterialMinimaxAgent) and agent.depth == 2
 
 
 def test_run_spec_resolves_through_the_registry(tmp_path):

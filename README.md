@@ -264,7 +264,7 @@ kAIsparov/
 │  ├─ core/        # chess engine: coords, move, material, game (facade), rules, draw, UI
 │  ├─ envs/        # ChessEnv — Gym-like reset/step/reward/terminal
 │  ├─ models/      # neural backends (rgcn, shared_rgcn), node features, factory
-│  ├─ agents/      # policies: RandomAgent, MaterialAgent, NeuralAgent
+│  ├─ agents/      # policies: random, material (greedy or searched), neural (+ minimax)
 │  ├─ analysis/    # move review: evaluators + chess.com-style move grading
 │  ├─ eval/        # arena: play matches, win-rates, Elo
 │  ├─ bench/       # skill benchmark: generators, oracle, tasks, suites, reports
