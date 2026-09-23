@@ -63,6 +63,7 @@ class Trainer:
                     allow_minor=config.curriculum.allow_minor,
                     allow_pawns=config.curriculum.allow_pawns,
                     ensure_kings_safe=config.curriculum.ensure_kings_safe,
+                    defender_pieces=config.curriculum.defender_pieces,
                 ),
                 seed=config.seed,
             )

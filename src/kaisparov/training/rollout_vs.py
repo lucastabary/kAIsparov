@@ -31,8 +31,15 @@ from kaisparov.training.curriculum import BaseCurriculum
 from kaisparov.training.reward import make_reward_fn, weighted_gain
 
 
-def _new_game(curriculum: BaseCurriculum | None) -> ChessGame:
-    return ChessGame(initial_board=curriculum.get_initial_board() if curriculum else None)
+def _new_game(curriculum: BaseCurriculum | None) -> tuple[ChessGame, Player | None]:
+    """A fresh game, and the side the learner must play in it (``None``: either)."""
+    if curriculum is None:
+        return ChessGame(), None
+    get_start = getattr(curriculum, "get_start", None)  # a bare get_initial_board still works
+    if get_start is None:
+        return ChessGame(initial_board=curriculum.get_initial_board()), None
+    grid, side = get_start()
+    return ChessGame(initial_board=grid), side
 
 
 def _opponent_reply(game: ChessGame, opponent) -> tuple[bool, Undo | None]:
@@ -116,8 +123,9 @@ def collect_vs_opponent(
     # Initialise each game; if the opponent is on move first, let it play (not stored).
     for i in range(num_episodes):
         opp = pick_opponent()
-        game = _new_game(curriculum)
-        learner = rng.choice([Player.WHITE, Player.BLACK])
+        game, side = _new_game(curriculum)
+        # A lopsided curriculum position seats the learner on its strong side.
+        learner = side if side is not None else rng.choice([Player.WHITE, Player.BLACK])
         games.append(game)
         opponents.append(opp)
         learners.append(learner)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from kaisparov.core.game import ChessGame
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.rules import find_king, is_in_check
@@ -76,3 +78,45 @@ def test_curriculum_never_leaves_the_side_not_to_move_in_check():
         for _ in range(200):
             game = ChessGame(initial_board=curriculum.get_initial_board())
             assert not game.is_in_check(Player.BLACK)
+
+
+# ------------------------------------------------------------ lopsided (won) endgames
+
+
+def test_defender_pieces_draws_a_won_endgame_for_a_random_strong_side():
+    phase = PhaseConfig(
+        name="won",
+        max_pieces_per_side=3,
+        allow_minor=False,
+        allow_pawns=False,
+        defender_pieces=1,
+    )
+    curriculum = PieceCountCurriculum(phase, seed=0)
+    sides = set()
+    for _ in range(100):
+        grid, strong = curriculum.get_start()
+        assert strong is not None
+        sides.add(strong)
+        weak = strong.opponent
+        assert _count(grid, strong) == 3  # king + two majors
+        assert _count(grid, weak) == 1  # the bare king
+        assert all(
+            grid[col][row].type in (PieceType.KING, PieceType.ROOK, PieceType.QUEEN)
+            for col in range(BOARD_SIZE)
+            for row in range(BOARD_SIZE)
+            if grid[col][row] is not None
+        )
+        assert not ChessGame(initial_board=grid).is_in_check(Player.BLACK)
+    assert sides == {Player.WHITE, Player.BLACK}  # the learner trains as both colours
+
+
+def test_a_balanced_phase_leaves_the_side_to_the_rollout():
+    curriculum = PieceCountCurriculum(PhaseConfig(name="t", max_pieces_per_side=4), seed=0)
+    _, strong = curriculum.get_start()
+    assert strong is None
+
+
+def test_defender_pieces_out_of_range_is_refused():
+    for bad in (0, 5):
+        with pytest.raises(ValueError, match="defender_pieces"):
+            PhaseConfig(name="t", max_pieces_per_side=4, defender_pieces=bad)

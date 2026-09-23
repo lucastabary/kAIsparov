@@ -30,6 +30,22 @@ class PhaseConfig:
     # random placement never starts a side in check. (A position with the side not
     # to move in check is redrawn regardless; see get_initial_board.) Kept on by default; turn off for the old raw-random behavior.
     ensure_kings_safe: bool = True
+    # Pieces (king included) of the side the learner plays *against*. ``None`` gives a
+    # balanced position (``max_pieces_per_side`` each, the learner's colour drawn at
+    # random). Set it and the position is lopsided: a random colour gets the full
+    # budget, the other only ``defender_pieces``, and the learner always plays the
+    # strong side — ``defender_pieces: 1`` with majors only is a won endgame (KQ/KR vs K).
+    defender_pieces: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.defender_pieces is not None and not (
+            1 <= self.defender_pieces <= self.max_pieces_per_side
+        ):
+            raise ValueError(
+                f"curriculum phase {self.name!r}: defender_pieces must be between 1 (a "
+                f"bare king) and max_pieces_per_side ({self.max_pieces_per_side}), "
+                f"got {self.defender_pieces}"
+            )
 
     def allowed_piece_types(self) -> list[PieceType]:
         types: list[PieceType] = []
@@ -52,6 +68,14 @@ class BaseCurriculum(ABC):
     def get_initial_board(self) -> Grid:
         """Return a fresh grid[col][row] usable as ChessGame(initial_board=...)."""
 
+    def get_start(self) -> tuple[Grid, Player | None]:
+        """A fresh grid, plus the side the learner must play (``None``: either).
+
+        A lopsided position is only a lesson for its strong side; the rollout against
+        an opponent seats the learner there instead of drawing its colour.
+        """
+        return self.get_initial_board(), None
+
 
 class PieceCountCurriculum(BaseCurriculum):
     """Random positions with a bounded number of pieces per side.
@@ -72,23 +96,38 @@ class PieceCountCurriculum(BaseCurriculum):
     MAX_DRAWS = 100
 
     def get_initial_board(self) -> Grid:
+        return self.get_start()[0]
+
+    def get_start(self) -> tuple[Grid, Player | None]:
         """A random position with White to move, never one chess cannot reach.
 
         Specifically, Black is never left in check: with White to move that position
         is illegal, and python-chess would happily generate the capture of the black
         king — handing White a "move" worth the king's sentinel material value and a
         game that then runs on without a king.
+
+        With ``defender_pieces`` set, also returns the strong side (drawn at random,
+        so the learner trains as both colours); otherwise ``None``.
         """
+        strong: Player | None = None
+        if self.phase.defender_pieces is not None:
+            strong = self._rng.choice([Player.WHITE, Player.BLACK])
         for _ in range(self.MAX_DRAWS):
-            grid = self._draw_board()
+            grid = self._draw_board(strong)
             if is_legal_position(grid, Player.WHITE):
-                return grid
+                return grid, strong
         raise RuntimeError(
             f"curriculum phase {self.phase.name!r}: no legal position in "
             f"{self.MAX_DRAWS} draws; lower max_pieces_per_side or enable ensure_kings_safe"
         )
 
-    def _draw_board(self) -> Grid:
+    def _budget(self, player: Player, strong: Player | None) -> int:
+        """Pieces (king included) ``player`` gets in this draw."""
+        if strong is None or player == strong or self.phase.defender_pieces is None:
+            return self.phase.max_pieces_per_side
+        return self.phase.defender_pieces
+
+    def _draw_board(self, strong: Player | None = None) -> Grid:
         grid: Grid = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 
         white_rows = range(0, BOARD_SIZE // 2)  # 0..3
@@ -100,15 +139,17 @@ class PieceCountCurriculum(BaseCurriculum):
         # off an attacked square when ``ensure_kings_safe``). Black's king goes down
         # first and White's second: White's safe-square check then also sees Black's
         # king, which keeps the two kings from being placed adjacent (mutual capture).
-        self._place_extras(grid, Player.WHITE, white_rows, pawn_rows)
-        self._place_extras(grid, Player.BLACK, black_rows, pawn_rows)
+        white_n = self._budget(Player.WHITE, strong)
+        black_n = self._budget(Player.BLACK, strong)
+        self._place_extras(grid, Player.WHITE, white_rows, pawn_rows, white_n)
+        self._place_extras(grid, Player.BLACK, black_rows, pawn_rows, black_n)
         self._place_king(grid, Player.BLACK, black_rows)
         self._place_king(grid, Player.WHITE, white_rows)
         return grid
 
-    def _place_extras(self, grid: Grid, player: Player, rows, pawn_rows) -> None:
+    def _place_extras(self, grid: Grid, player: Player, rows, pawn_rows, n_pieces: int) -> None:
         allowed = self.phase.allowed_piece_types()
-        n_extra = max(0, self.phase.max_pieces_per_side - 1)
+        n_extra = max(0, n_pieces - 1)
         for _ in range(n_extra):
             piece_type = self._rng.choice(allowed)
             candidate_rows = pawn_rows if piece_type == PieceType.PAWN else rows

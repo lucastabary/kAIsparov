@@ -101,6 +101,9 @@ class CurriculumSettings:
     allow_pawns: bool = True
     # Guarantee neither king starts on an attacked square (no ply-0 free capture).
     ensure_kings_safe: bool = True
+    # Pieces (king included) of the side the learner plays against; None = balanced.
+    # Set, the learner always plays the strong side (see curriculum.PhaseConfig).
+    defender_pieces: int | None = None
 
 
 @dataclass

@@ -247,3 +247,41 @@ def test_pool_mode_scores_the_learner_like_self_play(monkeypatch):
         seed=0,
     )
     assert buffer.rewards == [7.0]
+
+
+def test_collect_vs_opponent_seats_the_learner_on_the_strong_side():
+    """A lopsided curriculum position is a lesson for its strong side only."""
+    spec, agent = _spec_and_agent()
+    module = load_backend("rgcn")
+    buffer = spec.buffer_class(self_play=False)
+    curriculum = PieceCountCurriculum(
+        PhaseConfig(
+            name="won",
+            max_pieces_per_side=3,
+            allow_minor=False,
+            allow_pawns=False,
+            defender_pieces=1,
+        ),
+        seed=0,
+    )
+
+    class Spy(RandomAgent):
+        """Checks it is always the bare king that the opponent moves."""
+
+        def select_move(self, game):
+            own = [p for column in game.grid for p in column if p and p.player == game.turn]
+            assert len(own) == 1  # a lone king
+            return super().select_move(game)
+
+    stats = collect_vs_opponent(
+        agent,
+        buffer,
+        num_episodes=8,
+        max_steps_per_episode=20,
+        model_module=module,
+        curriculum=curriculum,
+        reward_settings=RewardSettings(checkmate=1.0),
+        opponent=Spy(seed=1),
+        seed=0,
+    )
+    assert stats["lossrate"] == 0.0  # a bare king can never mate the learner
