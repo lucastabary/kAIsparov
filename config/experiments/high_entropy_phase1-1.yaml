@@ -12,7 +12,7 @@
 
 title: "high_entropy v4 - phase 1a (4 pieces)"
 
-epochs: 200             # 2x v4's 100 — wider net + higher entropy needs more iterations to settle
+epochs: 500             # 5x v4's 100 — wider net + higher entropy needs more iterations to settle
 
 curriculum:
   name: "4 pieces/side, no pawns"
