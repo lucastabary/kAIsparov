@@ -15,7 +15,8 @@ from pathlib import Path
 def main() -> None:
     event = json.load(sys.stdin)
     path = Path(event.get("tool_input", {}).get("file_path", ""))
-    project = Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    # The project, or the checkout the shell is in (a worktree of it, say).
+    project = Path(event.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
     if path.suffix not in (".py", ".pyi") or not path.is_file():
         return
     if not path.resolve().is_relative_to(project):
