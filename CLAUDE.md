@@ -143,6 +143,16 @@ pytest                                          # tests, in parallel (-n0 to deb
   contestant a free "solution". `SamplingGenerator.generate` rejects those; a generator
   that builds positions another way has to do the same.
 
+## Claude Code setup (`.claude/`)
+
+- **Hooks** (`settings.json`, scripts in `.claude/hooks/`, run with the `.env` venv):
+  a `.py` file Claude edits is ruff-formatted right away; a `git commit` by Claude first
+  runs the five CI steps and is **blocked** if one fails (~1.5 min; a Markdown-only
+  change skips them); after a commit, `graphify update .` runs in the background.
+- **Permissions**: the read-only git commands and the checks run without prompting;
+  reading `credentials.txt` / `.env.local`, force-pushing, `git clean` and deleting
+  `runs/` or `data/` are denied — even in bypass mode.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

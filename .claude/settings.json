@@ -1,4 +1,50 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(gh run *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(pytest *)",
+      "Bash(lint-imports *)",
+      "Bash(py -3.10 -m ruff *)",
+      "Bash(py -3.10 -m mypy *)",
+      "Bash(py -3.10 -m pytest *)",
+      "Bash(./.env/Scripts/python.exe -m ruff *)",
+      "Bash(./.env/Scripts/python.exe -m mypy *)",
+      "Bash(./.env/Scripts/python.exe -m pytest *)",
+      "Bash(./.env/Scripts/lint-imports.exe *)",
+      "Bash(py -3.13 -m graphify *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)"
+    ],
+    "deny": [
+      "Read(./credentials.txt)",
+      "Read(./.env.local)",
+      "Read(./**/*.credentials)",
+      "Edit(./credentials.txt)",
+      "Edit(./.env.local)",
+      "Bash(git push *--force*)",
+      "Bash(git push *-f)",
+      "Bash(git push *-f *)",
+      "Bash(git clean *)",
+      "Bash(rm -rf runs*)",
+      "Bash(rm -rf data*)",
+      "PowerShell(git push *--force*)",
+      "PowerShell(git push *-f)",
+      "PowerShell(git push *-f *)",
+      "PowerShell(git clean *)",
+      "PowerShell(Remove-Item runs*)",
+      "PowerShell(Remove-Item data*)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -16,6 +62,64 @@
           {
             "type": "command",
             "command": "graphify hook-guard read"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/commit_gate.py\"",
+            "timeout": 600,
+            "statusMessage": "Running the CI checks before committing..."
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "PowerShell(git commit *)",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/commit_gate.py\"",
+            "timeout": 600,
+            "statusMessage": "Running the CI checks before committing..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_py.py\"",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && py -3.13 -m graphify update . >/dev/null 2>&1 || true",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "PowerShell(git commit *)",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && py -3.13 -m graphify update . >/dev/null 2>&1 || true",
+            "async": true
           }
         ]
       }
