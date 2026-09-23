@@ -349,12 +349,21 @@ def test_contestant_specs_parse():
 
 
 def test_material_minimax_contestant_builds_the_search():
-    from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+    from kaisparov.agents.minimax_agent import MinimaxAgent
+    from kaisparov.analysis.evaluators import HeuristicEvaluator, MaterialEvaluator
 
     contestant = Contestant.parse("material+minimax2")
     assert contestant.name == "material+minimax2"
     agent = contestant.build(seed=0)
-    assert isinstance(agent, MaterialMinimaxAgent) and agent.depth == 2
+    assert isinstance(agent, MinimaxAgent) and agent.depth == 2
+    assert isinstance(agent.evaluator, MaterialEvaluator)
+    # heuristic always searches: one ply alone, N with +minimax<N>.
+    alone, deeper = (
+        Contestant.parse("heuristic").build(0),
+        Contestant.parse("heuristic+minimax3").build(0),
+    )
+    assert isinstance(alone.evaluator, HeuristicEvaluator) and alone.depth == 1
+    assert deeper.depth == 3
 
 
 def test_run_spec_resolves_through_the_registry(tmp_path):

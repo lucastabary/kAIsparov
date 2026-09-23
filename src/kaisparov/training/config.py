@@ -162,7 +162,7 @@ def _build_reward(value: Any) -> RewardSettings:
 
 # ------------------------------------------------------------------- opponent pool
 # Opponent kinds usable in a pool preset. ``random``/``material`` need no model, nor
-# does ``minimax`` with ``params.evaluator: material`` (a search on material);
+# does ``minimax`` with ``params.evaluator`` (a search on material or the heuristic);
 # ``neural``/``minimax`` otherwise load a frozen model from ``params.checkpoint``;
 # ``snapshot`` is the stream of frozen past-selves of the learner, added over time.
 KNOWN_OPPONENT_KINDS = frozenset({"random", "material", "neural", "minimax", "snapshot"})
@@ -175,12 +175,14 @@ class OpponentSpec:
     ``group`` is either ``"baseline"`` (a fixed opponent present from epoch 1) or
     ``"snapshot"`` (the accumulating stream of frozen past-selves). ``weight`` is the
     entry's share of the pool: it faces the learner in ``weight / sum(weights)`` of the
-    games (for the snapshot entry, the whole stream together). ``params`` holds
+    games (for the snapshot entry, the whole stream together). ``random_move_prob``
+    (any kind, default 0) is the chance that it plays a random legal move instead of
+    its own on each move — a strong but fallible opponent. ``params`` holds
     that agent's own hyper-parameters, e.g. ``seed``, ``avoid_king_suicide`` for the
     baselines; ``depth`` (0 = raw policy, >=1 = minimax lookahead), ``deterministic``,
     ``avoid_king_suicide`` for snapshots; ``checkpoint``/``depth`` for a frozen
-    neural/minimax baseline loaded from a past run; ``evaluator: material``/``depth``
-    for a minimax that searches on material instead.
+    neural/minimax baseline loaded from a past run; ``evaluator`` (``material`` or
+    ``heuristic``)/``depth`` for a minimax that searches on that instead.
     """
 
     kind: str
@@ -188,6 +190,7 @@ class OpponentSpec:
     weight: float = 1.0
     count: int = 1  # snapshot group: max past-selves retained in the pool
     every: int = 20  # snapshot group: add one frozen self every N epochs
+    random_move_prob: float = 0.0  # chance of a random legal move instead, on each move
     params: dict[str, Any] = field(default_factory=dict)
 
 
@@ -240,7 +243,7 @@ def _expand_pool(value: Any) -> Any:
 
 
 # What a minimax opponent can evaluate its leaves with, besides a network's critic.
-MINIMAX_EVALUATORS = frozenset({"material"})
+MINIMAX_EVALUATORS = frozenset({"material", "heuristic"})
 
 
 def _check_minimax_params(kind: str, params: dict[str, Any]) -> None:
@@ -281,6 +284,9 @@ def build_pool_spec(value: Any) -> PoolSpec:
             )
         params = dict(item.get("params", {}))
         _check_minimax_params(kind, params)
+        random_move_prob = float(item.get("random_move_prob", 0.0))
+        if not 0.0 <= random_move_prob <= 1.0:
+            raise ValueError(f"random_move_prob must be in [0, 1], got {random_move_prob}")
         group = item.get("group", "snapshot" if kind == "snapshot" else "baseline")
         if group not in ("baseline", "snapshot"):
             raise ValueError(f"Opponent group must be 'baseline' or 'snapshot', got {group!r}.")
@@ -291,6 +297,7 @@ def build_pool_spec(value: Any) -> PoolSpec:
                 weight=float(item.get("weight", 1.0)),
                 count=int(item.get("count", 1)),
                 every=int(item.get("every", 20)),
+                random_move_prob=random_move_prob,
                 params=params,
             )
         )

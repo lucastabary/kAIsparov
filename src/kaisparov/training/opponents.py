@@ -50,6 +50,7 @@ class OpponentPool:
         search_depth: int = 0,
         avoid_king_suicide: bool = False,
         snapshot_deterministic: bool = False,
+        snapshot_random_move_prob: float = 0.0,
     ):
         # The learner's: every past-self is a frozen copy of the learner.
         self.architecture = architecture
@@ -60,6 +61,8 @@ class OpponentPool:
         self.avoid_king_suicide = avoid_king_suicide
         # Only used by depth-0 snapshots (raw NeuralAgent): sample vs argmax.
         self.snapshot_deterministic = snapshot_deterministic
+        # Chance, on each move, that a past-self plays a random legal move (Fallible).
+        self.snapshot_random_move_prob = snapshot_random_move_prob
         # Share of the whole past-self stream, on the same scale as `baseline_weights`
         # (see `sample`). None -> the legacy uniform draw over baselines + snapshots.
         self.snapshot_weight = snapshot_weight
@@ -87,7 +90,8 @@ class OpponentPool:
 
         With ``search_depth >= 1`` the frozen weights are wrapped in a Minimax
         search (a past self that *looks ahead* and refutes one-move blunders);
-        otherwise they play as a plain sampling ``NeuralAgent``.
+        otherwise they play as a plain sampling ``NeuralAgent``. Either way it plays
+        a random move with probability ``snapshot_random_move_prob``.
         """
         from kaisparov.models.factory import build_agent
 
@@ -96,24 +100,27 @@ class OpponentPool:
         frozen.eval()
         for param in frozen.parameters():
             param.requires_grad_(False)
+        agent: Policy
         if self.search_depth >= 1:
             from kaisparov.agents.minimax_agent import MinimaxAgent
 
-            return MinimaxAgent(
+            agent = MinimaxAgent.on_model(
                 frozen,
                 processor,
                 depth=self.search_depth,
                 avoid_king_suicide=self.avoid_king_suicide,
             )
-        from kaisparov.agents.neural_agent import NeuralAgent
+        else:
+            from kaisparov.agents.neural_agent import NeuralAgent
 
-        # deterministic=False -> a bit of variety in the opponents' play.
-        return NeuralAgent(
-            frozen,
-            processor,
-            deterministic=self.snapshot_deterministic,
-            avoid_king_suicide=self.avoid_king_suicide,
-        )
+            # deterministic=False -> a bit of variety in the opponents' play.
+            agent = NeuralAgent(
+                frozen,
+                processor,
+                deterministic=self.snapshot_deterministic,
+                avoid_king_suicide=self.avoid_king_suicide,
+            )
+        return _fallible(agent, self.snapshot_random_move_prob, self._rng.randrange(2**31))
 
     def _add_snapshot(self, agent: Policy, state_dict: dict) -> None:
         self._agents.append(agent)
@@ -165,25 +172,45 @@ class OpponentPool:
         return self._rng.choice(self._agents) if picked is _STREAM else picked
 
 
+def _fallible(agent, random_move_prob: float, seed: int):
+    """``agent``, playing a random move with probability ``random_move_prob`` (0: as is)."""
+    if not random_move_prob:
+        return agent
+    from kaisparov.agents.fallible import Fallible
+
+    return Fallible(agent, random_move_prob, seed=seed)
+
+
 def build_pool_baseline(device, opp, seed: int):
     """Build one fixed baseline agent from a pool-preset entry (:class:`OpponentSpec`).
 
-    ``random``/``material`` are model-free; so is ``minimax`` with
-    ``params.evaluator: material`` (an alpha-beta search on material, ``depth`` plies).
+    ``random``/``material`` are model-free; so is ``minimax`` with ``params.evaluator``
+    (``material`` or ``heuristic``: an alpha-beta search on it, ``depth`` plies).
     ``neural``/``minimax`` otherwise load a frozen model from ``params.checkpoint`` (a
     past run's weights) — a strong, fixed teacher. It is rebuilt as the architecture
     *its* run recorded, which need not be the learner's: each agent graphifies the
-    board with its own processor.
+    board with its own processor. Any of them plays a random move with probability
+    ``opp.random_move_prob``.
     """
+    return _fallible(_build_pool_agent(device, opp, seed), opp.random_move_prob, seed)
+
+
+def _build_pool_agent(device, opp, seed: int):
     params, kind = opp.params, opp.kind
     if kind in ("random", "material"):
         return build_baseline(
             kind, params.get("seed", seed), params.get("avoid_king_suicide", False)
         )
-    if kind == "minimax" and params.get("evaluator") == "material":
-        from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+    if kind == "minimax" and params.get("evaluator"):
+        from kaisparov.agents.minimax_agent import MinimaxAgent
+        from kaisparov.analysis.evaluators import HeuristicEvaluator, MaterialEvaluator
 
-        return MaterialMinimaxAgent(
+        evaluators: dict[str, type[MaterialEvaluator] | type[HeuristicEvaluator]] = {
+            "material": MaterialEvaluator,
+            "heuristic": HeuristicEvaluator,
+        }
+        return MinimaxAgent(
+            evaluators[params["evaluator"]](),
             depth=int(params.get("depth", 2)),
             seed=params.get("seed", seed),
             avoid_king_suicide=params.get("avoid_king_suicide", False),
@@ -199,7 +226,7 @@ def build_pool_baseline(device, opp, seed: int):
         if kind == "minimax":
             from kaisparov.agents.minimax_agent import MinimaxAgent
 
-            return MinimaxAgent(
+            return MinimaxAgent.on_model(
                 model,
                 processor,
                 depth=int(params.get("depth", 2)),
@@ -246,6 +273,7 @@ def build_opponent_pool(architecture: Architecture, device, rollout, seed: int):
             search_depth=int(sp.get("depth", 0)),
             avoid_king_suicide=bool(sp.get("avoid_king_suicide", False)),
             snapshot_deterministic=bool(sp.get("deterministic", False)),
+            snapshot_random_move_prob=snap.random_move_prob if snap else 0.0,
         )
         return pool, (snap is not None), (snap.every if snap else rollout.snapshot_every)
 

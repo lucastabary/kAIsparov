@@ -14,10 +14,16 @@ package version is read off the tag, and the Release workflow publishes that sec
   the games (`weight / sum`); the snapshot entry's weight is the share of the whole
   past-self stream. `group_weights` is gone (a config still using it is refused with a
   pointer); the shipped presets were converted to the same shares.
-- **Minimax on material**: `MaterialMinimaxAgent`, an alpha-beta search scored on
-  material with no model, as a pool opponent (`{kind: minimax, params: {evaluator:
-  material}}`) or a benchmark contestant (`material+minimax2`). Unlike `material` it
-  keeps its pieces defended and refuses poisoned captures.
+- **One minimax, any evaluator**: `MinimaxAgent(evaluator, depth)` is an alpha-beta
+  search that scores its leaves with any `Evaluator` — material, the heuristic, or a
+  network's critic (`MinimaxAgent.on_model`, what `MinimaxAgent(model, processor)`
+  was). On material it needs no model: as a pool opponent (`{kind: minimax, params:
+  {evaluator: material}}`, or `heuristic`) or a contestant (`material+minimax2`,
+  `heuristic`), it keeps its pieces defended and refuses poisoned captures.
+- **Fallible opponents**: any pool entry, snapshots included, takes
+  `random_move_prob` (default 0) — the chance, on each move, that it plays a random
+  legal move instead of its own. A strong but fallible opponent, e.g. a checkpoint's
+  minimax at 0.1.
 
 - **Won-endgame curriculum**: `curriculum.defender_pieces` gives the side the learner
   plays against fewer pieces (`1` = a bare king), and seats the learner on the strong

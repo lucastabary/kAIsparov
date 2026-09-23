@@ -84,7 +84,7 @@ How much experience is gathered each epoch.
 | `opponent` | str | `self` | `self` = self-play (negamax). `pool` = a **league**: the learner trains against frozen past snapshots of itself (breaks the "everyone rushes" collapse). |
 | `pool_size` | int | `5` | (`pool` mode) how many past snapshots to keep. |
 | `snapshot_every` | int | `20` | (`pool` mode) add the current learner to the pool every N epochs. Until the first snapshot, training is plain self-play. |
-| `pool` | str \| mapping | `null` | (`pool` mode) the opponents, by preset name from `config/pools.yaml` or inline (same shape): a list of `opponents`, each with a `kind` (`random`, `material`, `minimax`, `neural`, `snapshot`), its `params`, and a `weight` — **its share of the games**, `weight / sum(weights)`; the `snapshot` entry's weight is the share of the whole past-self stream, however many snapshots it holds. `{kind: minimax, params: {evaluator: material, depth: 2}}` is a search on material, with no model. Overrides the flat fields above. |
+| `pool` | str \| mapping | `null` | (`pool` mode) the opponents, by preset name from `config/pools.yaml` or inline (same shape): a list of `opponents`, each with a `kind` (`random`, `material`, `minimax`, `neural`, `snapshot`), its `params`, and a `weight` — **its share of the games**, `weight / sum(weights)`; the `snapshot` entry's weight is the share of the whole past-self stream, however many snapshots it holds. `{kind: minimax, params: {evaluator: material, depth: 2}}` is a search on material (or `heuristic`), with no model. Any entry takes `random_move_prob` (default 0): the chance, on each move, that it plays a random legal move — a strong but fallible opponent. Overrides the flat fields above. |
 
 ---
 

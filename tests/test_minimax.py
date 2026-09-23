@@ -1,4 +1,4 @@
-"""Tests for the MinimaxAgent (search on the critic, ordered by the actor)."""
+"""Tests for MinimaxAgent.on_model (search on the critic, ordered by the actor)."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def serialize(game):
 def make_agent(depth: int) -> MinimaxAgent:
     spec = load_backend_spec("rgcn")
     model = spec.model_class.create_agent(device=torch.device("cpu"), hidden_dim=8)
-    return MinimaxAgent(model, spec.processor_class(), depth=depth)
+    return MinimaxAgent.on_model(model, spec.processor_class(), depth=depth)
 
 
 def test_minimax_plays_mate_when_available():

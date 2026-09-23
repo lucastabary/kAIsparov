@@ -163,7 +163,20 @@ def test_pool_minimax_snapshots():
     pool.snapshot(agent)
     opp = pool.sample()
     assert isinstance(opp, MinimaxAgent) and opp.depth == 1
-    assert all(not p.requires_grad for p in opp.model.parameters())
+    assert all(not p.requires_grad for p in opp.evaluator.model.parameters())
+
+
+def test_pool_snapshots_can_be_made_fallible():
+    from kaisparov.agents.fallible import Fallible
+
+    spec, agent = _spec_and_agent()
+    pool = OpponentPool(
+        ARCH, torch.device("cpu"), seed=0, search_depth=1, snapshot_random_move_prob=0.25
+    )
+    pool.snapshot(agent)
+    opp = pool.sample()
+    assert isinstance(opp, Fallible) and opp.random_move_prob == 0.25
+    assert isinstance(opp.agent, MinimaxAgent)
 
 
 def test_collect_vs_opponent_fills_buffer_and_reports():

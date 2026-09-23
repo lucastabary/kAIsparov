@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from kaisparov.agents.base import Move, Policy
+from kaisparov.agents.fallible import Fallible
 from kaisparov.agents.material_agent import MaterialAgent
 from kaisparov.agents.random_agent import RandomAgent
 
@@ -23,6 +24,7 @@ __all__ = [
     "Move",
     "RandomAgent",
     "MaterialAgent",
+    "Fallible",
     "NeuralAgent",
     "MinimaxAgent",
     "NeuralAnalyzer",

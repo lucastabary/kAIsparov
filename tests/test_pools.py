@@ -43,18 +43,46 @@ def test_group_weights_are_refused_with_a_way_out():
 
 
 def test_minimax_on_material_needs_no_checkpoint():
-    from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+    from kaisparov.agents.minimax_agent import MinimaxAgent
+    from kaisparov.analysis.evaluators import HeuristicEvaluator, MaterialEvaluator
     from kaisparov.training.config import OpponentSpec
 
     spec = build_pool_spec(
         {"opponents": [{"kind": "minimax", "params": {"evaluator": "material", "depth": 3}}]}
     )
     agent = build_pool_baseline(None, spec.baselines[0], seed=0)
-    assert isinstance(agent, MaterialMinimaxAgent) and agent.depth == 3
+    assert isinstance(agent, MinimaxAgent) and agent.depth == 3
+    assert isinstance(agent.evaluator, MaterialEvaluator)
+    heuristic = build_pool_baseline(
+        None, OpponentSpec(kind="minimax", params={"evaluator": "heuristic"}), seed=0
+    )
+    assert isinstance(heuristic.evaluator, HeuristicEvaluator)
     default = build_pool_baseline(
         None, OpponentSpec(kind="minimax", params={"evaluator": "material"}), seed=0
     )
     assert default.depth == 2
+
+
+def test_any_opponent_can_be_made_fallible():
+    from kaisparov.agents.fallible import Fallible
+    from kaisparov.agents.minimax_agent import MinimaxAgent
+
+    spec = build_pool_spec(
+        {
+            "opponents": [
+                {"kind": "minimax", "random_move_prob": 0.2, "params": {"evaluator": "material"}},
+                {"kind": "material"},
+                {"kind": "snapshot", "random_move_prob": 0.1},
+            ]
+        }
+    )
+    fallible = build_pool_baseline(None, spec.baselines[0], seed=0)
+    assert isinstance(fallible, Fallible) and fallible.random_move_prob == 0.2
+    assert isinstance(fallible.agent, MinimaxAgent)
+    assert not isinstance(build_pool_baseline(None, spec.baselines[1], seed=0), Fallible)
+    assert spec.snapshot.random_move_prob == 0.1
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        build_pool_spec({"opponents": [{"kind": "random", "random_move_prob": 2}]})
 
 
 def test_minimax_evaluator_is_checked():

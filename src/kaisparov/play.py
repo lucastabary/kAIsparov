@@ -171,7 +171,7 @@ def _build_ai(args, device, *, deterministic: bool, allow_fallback: bool):
         from kaisparov.agents.minimax_agent import MinimaxAgent
 
         print(f"AI loaded from {path} (minimax depth {args.minimax_depth})")
-        return MinimaxAgent(model, processor, depth=args.minimax_depth), analyzer
+        return MinimaxAgent.on_model(model, processor, depth=args.minimax_depth), analyzer
 
     from kaisparov.agents.neural_agent import NeuralAgent
 
@@ -248,7 +248,7 @@ def _controller_from_key(key, args, device, *, deterministic: bool, model_cache:
         from kaisparov.agents.minimax_agent import MinimaxAgent
 
         print(f"AI loaded from {path} (minimax depth {args.minimax_depth})")
-        return MinimaxAgent(model, processor, depth=args.minimax_depth), analyzer
+        return MinimaxAgent.on_model(model, processor, depth=args.minimax_depth), analyzer
 
     from kaisparov.agents.neural_agent import NeuralAgent
 

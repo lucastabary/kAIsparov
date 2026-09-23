@@ -8,6 +8,7 @@ command line and a play-out's ``opponent`` name one::
     random                          the baselines ...
     material+safe                   ... here refusing moves that walk into mate in one
     material+minimax2               an alpha-beta search on material, 2 plies deep
+    heuristic+minimax2              ... on material + piece placement (alone: 1 ply)
     run:20260903-155710_rgcn        a tracked run, latest checkpoint
     run:20260903-155710_rgcn@40     ... its epoch-40 checkpoint (or @latest, the default)
     ckpt:path/to/weights.pth        a raw checkpoint (backend rgcn, width inferred)
@@ -16,7 +17,7 @@ command line and a play-out's ``opponent`` name one::
 
 Modifiers after ``+``: ``safe`` (avoid king suicide), ``sample`` (sample the policy
 instead of taking its argmax), ``minimax<N>`` (search ``N`` plies — with the critic for
-a neural source, on material for ``material``).
+a neural source, on its evaluator for ``material`` and ``heuristic``).
 
 Sources register by prefix (:class:`Contestant` subclasses with ``prefixes``), so a
 new kind of player — an external engine, a batch of checkpoints — is one class.
@@ -123,9 +124,14 @@ class Contestant(ABC):
 
 @dataclass
 class BaselineContestant(Contestant):
-    """The torch-free reference players."""
+    """The torch-free reference players.
 
-    prefixes: ClassVar[tuple[str, ...]] = ("random", "material")
+    ``material`` alone is the greedy capture baseline; with ``+minimax<N>`` it searches
+    on material. ``heuristic`` always searches (on material + piece placement), one ply
+    unless ``+minimax<N>`` says otherwise.
+    """
+
+    prefixes: ClassVar[tuple[str, ...]] = ("random", "material", "heuristic")
 
     kind: str
     modifiers: Modifiers = Modifiers()
@@ -133,9 +139,9 @@ class BaselineContestant(Contestant):
     spec: str = ""
 
     def __post_init__(self) -> None:
-        if self.modifiers.sample or (self.modifiers.search_depth and self.kind != "material"):
+        if self.modifiers.sample or (self.modifiers.search_depth and self.kind == "random"):
             raise ValueError(
-                f"{self.kind}: a baseline takes 'safe', and material also 'minimax<N>'"
+                f"{self.kind}: a baseline takes 'safe', and material/heuristic 'minimax<N>'"
             )
         self.name = self.name or self.kind + self.modifiers.suffix()
         self.spec = self.spec or self.name
@@ -152,11 +158,14 @@ class BaselineContestant(Contestant):
         from kaisparov.agents.material_agent import MaterialAgent
         from kaisparov.agents.random_agent import RandomAgent
 
-        if self.modifiers.search_depth:
-            from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+        if self.kind == "heuristic" or self.modifiers.search_depth:
+            from kaisparov.agents.minimax_agent import MinimaxAgent
+            from kaisparov.analysis.evaluators import HeuristicEvaluator, MaterialEvaluator
 
-            return MaterialMinimaxAgent(
-                depth=self.modifiers.search_depth,
+            evaluator = HeuristicEvaluator() if self.kind == "heuristic" else MaterialEvaluator()
+            return MinimaxAgent(
+                evaluator,
+                depth=self.modifiers.search_depth or 1,
                 seed=seed,
                 avoid_king_suicide=self.modifiers.safe,
             )
@@ -253,7 +262,7 @@ class NeuralContestant(Contestant):
             if self.modifiers.search_depth:
                 from kaisparov.agents.minimax_agent import MinimaxAgent
 
-                self._policy = MinimaxAgent(
+                self._policy = MinimaxAgent.on_model(
                     model,
                     processor,
                     depth=self.modifiers.search_depth,

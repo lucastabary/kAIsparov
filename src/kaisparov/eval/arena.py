@@ -131,7 +131,7 @@ def _load_neural(model_name, checkpoint, device, hidden_dim, minimax_depth=0):
         from kaisparov.agents.minimax_agent import MinimaxAgent
 
         print(f"Loaded neural agent from {path} (minimax depth {minimax_depth})")
-        return MinimaxAgent(model, processor, depth=minimax_depth)
+        return MinimaxAgent.on_model(model, processor, depth=minimax_depth)
 
     from kaisparov.agents.neural_agent import NeuralAgent
 

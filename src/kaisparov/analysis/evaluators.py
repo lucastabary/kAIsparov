@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from kaisparov.core.game import ChessGame
-from kaisparov.core.material import material_balance
+from kaisparov.core.material import material_balance, move_gain
 from kaisparov.core.pieces import BOARD_SIZE, PieceType, Player
 from kaisparov.core.utils import get_piece_value
 
@@ -40,14 +40,28 @@ class Evaluator(Protocol):
         ...
 
 
-class MaterialEvaluator:
+class _PawnUnits:
+    """The unit shared by the handcrafted evaluators: pawns.
+
+    ``slope`` is Lichess' win-probability curve (``0.00368208`` per centipawn), so a
+    pawn up reads as ~59% winning chances and three pawns up as ~75%. Material only
+    changes on captures, so a static read cannot see a hanging piece — hence one ply
+    of lookahead by default.
+    """
+
+    slope = 0.368
+    default_lookahead = 1
+
+
+class MaterialEvaluator(_PawnUnits):
     """Plain material balance in pawns, from the side to move's point of view.
 
     Kings are excluded: a king is never captured, and mate is a terminal win the
     judge scores as ``WIN``, not as ±100 pawns of material.
 
-    ``slope`` is Lichess' win-probability curve (``0.00368208`` per centipawn), so a
-    pawn up reads as ~59% winning chances and three pawns up as ~75%.
+    ``move_delta`` is what lets a search track it move by move instead of recounting
+    the board at every leaf (see :class:`~kaisparov.agents.minimax_agent.MinimaxAgent`):
+    a move changes the balance by exactly the material it won.
 
     Be aware of what pure material cannot do: every quiet move scores the same, so
     in a calm position it rates the whole move list as equally best. Use it as a
@@ -55,11 +69,14 @@ class MaterialEvaluator:
     """
 
     name = "material"
-    slope = 0.368
-    default_lookahead = 1
 
     def evaluate(self, game: ChessGame) -> float:
         return material_balance(game, game.turn)
+
+    @staticmethod
+    def move_delta(undo) -> float:
+        """How much the move just played raised its mover's balance."""
+        return move_gain(undo)
 
 
 def _centrality(col: int, row: int) -> float:
@@ -87,7 +104,7 @@ _CENTRE_WEIGHT: dict[PieceType, float] = {
 _PAWN_ADVANCE = 0.06  # per rank pushed, so pawns actually want to move forward
 
 
-class HeuristicEvaluator(MaterialEvaluator):
+class HeuristicEvaluator(_PawnUnits):
     """Material plus a light piece-square term — the default behind the move review.
 
     Same unit and same win-probability curve as :class:`MaterialEvaluator` (the

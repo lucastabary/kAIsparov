@@ -24,6 +24,10 @@
 #             snapshot is taken, its share goes to the other opponents.
 #     count:  snapshot only — max past-selves retained in the pool (default 1).
 #     every:  snapshot only — add one frozen self every N epochs (default 20).
+#     random_move_prob: any kind — the chance, on each move, that it plays a random legal
+#             move instead of its own (default 0). A strong but fallible opponent: e.g.
+#             a checkpoint's minimax at 0.1 is beatable by punishing its blunders. On
+#             the snapshot entry it applies to every past-self.
 #     params: that agent's own hyper-parameters:
 #               random/material : seed, avoid_king_suicide
 #               snapshot        : depth (0 = raw NeuralAgent, >=1 = MinimaxAgent lookahead),
@@ -31,9 +35,10 @@
 #               neural/minimax  : checkpoint (path to frozen weights of a past run),
 #                                 depth (minimax), deterministic (neural),
 #                                 avoid_king_suicide
-#               minimax         : ...or evaluator: material instead of a checkpoint — an
-#                                 alpha-beta search on material, no model (depth 2:
-#                                 ~40 ms/move; it keeps its pieces defended and refuses
+#               minimax         : ...or evaluator: material | heuristic instead of a
+#                                 checkpoint — an alpha-beta search scored on that, no
+#                                 model (depth 2: ~50 ms/move on material, ~80 on the
+#                                 heuristic; it keeps its pieces defended and refuses
 #                                 poisoned captures, unlike `material`)
 # At most one `snapshot` entry per preset.
 #

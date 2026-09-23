@@ -214,19 +214,25 @@ All agents implement `Policy.select_move(game) -> (source, dest) | None`:
 - `RandomAgent` — uniform legal move.
 - `MaterialAgent` — greedy 1-ply: win the most material, counting the highest-value
   capture and what a promotion gains; else random. A meaningful baseline.
-- `MaterialMinimaxAgent` — negamax alpha-beta scored on material, no model: it keeps its
-  pieces defended and refuses a poisoned capture, which `MaterialAgent` never does.
-  Mate is ±`WIN`, any draw 0. ~40 ms/move at depth 2 — cheap enough for a training
-  opponent (`{kind: minimax, params: {evaluator: material}}` in a pool) and a benchmark
-  contestant (`material+minimax2`).
 - `NeuralAgent` — wraps a model + processor; `select_move` graphifies, runs the model,
   masks, and returns the chosen move. (Imported lazily so baselines stay torch-free.)
-- `MinimaxAgent` — **negamax alpha-beta search** on the model: the critic evaluates
-  leaves, the actor orders moves (better ordering → more pruning), mate = win.
-  The search-improved player (stronger than the raw policy; the bridge to AlphaZero).
-  Use it via `kaisparov play --vs-ai --minimax-depth D` or `kaisparov eval
-  --minimax-depth D` to measure how much search improves the net. One forward per
-  node, so keep `D` small (2-3) on CPU.
+- `MinimaxAgent(evaluator, depth)` — **negamax alpha-beta search** that scores its
+  leaves with any `analysis/evaluators` evaluator; `order` sorts the moves first
+  (captures first by default — better ordering, more pruning). Mate is ±`WIN` (sooner
+  is better), any draw 0. Two uses:
+  - on **material** or the **heuristic**, no model: a baseline that looks ahead — it
+    keeps its pieces defended and refuses a poisoned capture, which `MaterialAgent`
+    never does. Material is tracked move by move (`MaterialEvaluator.move_delta`), so
+    depth 2 costs ~50 ms/move: a training opponent (`{kind: minimax, params:
+    {evaluator: material}}` in a pool) and a contestant (`material+minimax2`).
+  - on a **network** (`MinimaxAgent.on_model`): the critic scores the leaves and the
+    actor orders the moves. The search-improved player (stronger than the raw policy;
+    the bridge to AlphaZero). Use it via `kaisparov play --vs-ai --minimax-depth D` or
+    `kaisparov eval --minimax-depth D`. One forward per node, so keep `D` small (2-3)
+    on CPU.
+- `Fallible(agent, random_move_prob)` — `agent`, except that on each move it plays a
+  random legal move with that probability: a strong but fallible opponent
+  (`random_move_prob` on any pool entry).
 
 ---
 
