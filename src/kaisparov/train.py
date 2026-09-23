@@ -13,9 +13,9 @@ latest checkpoint), so a whole recipe runs end to end without hand-copying run i
         config/experiments/scratch_stage2.yaml \
         config/experiments/scratch_stage3.yaml
 
-Or name the recipe once: a config whose only content is a ``stages:`` list is an
-entry point that expands to exactly that chain (see
-:mod:`kaisparov.training.chain`)::
+Or name the recipe once: a config holding a ``stages:`` list is an entry point that
+expands to exactly that chain, and any other setting in it is shared by every stage
+(see :mod:`kaisparov.training.chain`)::
 
     python -m kaisparov.train --config config/experiments/high_entropy_all.yaml
 """
@@ -24,8 +24,13 @@ from __future__ import annotations
 
 import argparse
 
-from kaisparov.training.chain import ensure_not_chain, expand_config_chain, read_config_mapping
-from kaisparov.training.config import TrainConfig, build_resume_config, load_train_config
+from kaisparov.training.chain import (
+    deep_merge,
+    ensure_not_chain,
+    expand_chain_stages,
+    read_config_mapping,
+)
+from kaisparov.training.config import TrainConfig, build_resume_config
 from kaisparov.training.trainer import Trainer
 
 
@@ -40,8 +45,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Path to a YAML config file. Pass several to chain a curriculum: each "
             "stage after the first resumes from the run the previous stage produced "
             "(its latest checkpoint), so any `resume_from_run` in those YAMLs is "
-            "overridden by the actual parent run id. A config that only holds a "
-            "`stages:` list is an entry point and expands to that chain."
+            "overridden by the actual parent run id. A config holding a `stages:` "
+            "list is an entry point: it expands to that chain, and its other "
+            "settings are shared by every stage."
         ),
     )
     parser.add_argument(
@@ -76,25 +82,28 @@ def build_config(
     args: argparse.Namespace,
     config_path: str | None = None,
     resume_run_id: str | None = None,
+    shared: dict | None = None,
 ) -> TrainConfig:
     """Build the config for a single training stage.
 
     ``config_path`` is the YAML for this stage (``None`` -> defaults).
     ``resume_run_id`` is the run the previous stage produced when chaining; it
     overrides both ``--resume`` and the YAML's ``resume_from_run`` so the stage
-    continues from that run's latest checkpoint.
+    continues from that run's latest checkpoint. ``shared`` holds the settings of
+    the chain config(s) this stage came from; the stage's own YAML wins over them.
     """
-    raw: dict = {}
+    raw: dict = dict(shared or {})
     if config_path:
-        raw = read_config_mapping(config_path)
-        ensure_not_chain(config_path, raw)  # chains are expanded before we get here
+        own = read_config_mapping(config_path)
+        ensure_not_chain(config_path, own)  # chains are expanded before we get here
+        raw = deep_merge(raw, own)
 
     resume_run = resume_run_id or args.resume or raw.get("resume_from_run")
     if resume_run:
         # Inherit architecture (and anything not overridden) from the parent run.
         config = build_resume_config(resume_run, raw, args.runs_dir)
-    elif config_path:
-        config = load_train_config(config_path, args.runs_dir)
+    elif raw:
+        config = TrainConfig.from_dict(raw)
     else:
         config = TrainConfig()
 
@@ -130,15 +139,19 @@ def main(argv: list[str] | None = None) -> None:
     # the run the previous one produced. `[None]` = no config -> a single default run.
     # A chain config counts as the stages it lists, wherever it appears in the list.
     requested = list(args.config) if args.config else []
-    stages: list[str | None] = list(expand_config_chain(requested)) if requested else [None]
-    if stages != requested:
+    # Each stage carries the shared settings of the chain config(s) it came from.
+    expanded: list[tuple[str | None, dict]] = (
+        list(expand_chain_stages(requested)) if requested else [(None, {})]
+    )
+    stages: list[str | None] = [path for path, _ in expanded]
+    if stages != requested and requested:
         print("Config chain expands to:")
         for number, stage in enumerate(stages, 1):
             print(f"  {number}. {stage}")
 
     prev_run_id: str | None = None
     completed: list[str] = []
-    for index, config_path in enumerate(stages):
+    for index, (config_path, shared) in enumerate(expanded):
         if len(stages) > 1:
             label = config_path or "default"
             print(f"\n=== stage {index + 1}/{len(stages)}: {label} ===")
@@ -147,7 +160,7 @@ def main(argv: list[str] | None = None) -> None:
         # Only stages after the first chain onto the previous run; the first stage
         # still honours an explicit --resume / resume_from_run of its own.
         resume_run_id = prev_run_id if index > 0 else None
-        config = build_config(args, config_path, resume_run_id)
+        config = build_config(args, config_path, resume_run_id, shared)
         prev_run_id = Trainer(config).train()
         completed.append(prev_run_id)
 

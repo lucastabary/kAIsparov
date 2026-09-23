@@ -10,6 +10,11 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **Chain configs carry the shared settings**: besides its `stages:` list, a chain
+  config may hold any training setting, applied to every stage under the stage's own
+  values. The `high_entropy` phases now hold only what changes from one phase to the
+  next; what the four have in common lives once in `high_entropy_all.yaml`.
+
 - **Tooling**: the version comes from the git tag (setuptools-scm), and pushing a tag
   publishes a GitHub release. CI tests the pinned stack (it was on torch 2.0.1), and
   checks the architecture rules of `CLAUDE.md` as import-linter contracts.

@@ -1,8 +1,8 @@
 """Chain configs: a YAML file that names a *suite* of training configs.
 
-A normal config describes one run. A **chain config** describes a recipe: it holds
-nothing but a ``stages:`` list of other config files, so a multi-phase curriculum
-gets one memorable entry point instead of a long command line::
+A normal config describes one run. A **chain config** describes a recipe: a
+``stages:`` list of other config files, so a multi-phase curriculum gets one
+memorable entry point instead of a long command line::
 
     # config/experiments/high_entropy_all.yaml
     title: "high_entropy v4 — full curriculum"
@@ -24,7 +24,10 @@ Rules:
 - An entry may be a glob (``high_entropy_phase*.yaml``); matches are expanded in
   sorted order. Prefer an explicit list when the order matters and doesn't sort.
 - A stage may itself be a chain — it is expanded in place (loops are refused).
-- A chain file carries no training settings: those belong in the stage files.
+- Any other key is a **shared setting**: it applies to every stage, under the stage's
+  own values (a stage that sets the key wins). So the settings common to the whole
+  recipe live once in the chain file, and each stage file keeps only what changes. A
+  nested chain's shared settings sit on top of its parent's.
 """
 
 from __future__ import annotations
@@ -36,8 +39,8 @@ from typing import Any
 import yaml
 
 CHAIN_KEY = "stages"
-# The only other keys a chain file may carry: they document the recipe, they don't
-# configure a run (a chain never becomes a TrainConfig).
+# Keys that document the recipe itself: never passed down to the stages as shared
+# settings (each stage run keeps its own title/description).
 _DOC_KEYS = frozenset({"title", "description", "notes"})
 _GLOB_CHARS = "*?["
 
@@ -56,24 +59,30 @@ def is_chain_config(data: dict[str, Any]) -> bool:
     return CHAIN_KEY in data
 
 
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """Recursively overlay ``over`` on ``base`` (nested dicts merge key by key)."""
+    out = dict(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def ensure_not_chain(path: str | Path, data: dict[str, Any]) -> None:
     """Refuse a chain file where a single training config is expected."""
     if is_chain_config(data):
         raise SystemExit(
-            f"'{path}' is a chain config (it only lists `{CHAIN_KEY}:`), not a training "
+            f"'{path}' is a chain config (it lists `{CHAIN_KEY}:`), not a training "
             "config. Run it with `kaisparov train --config <that file>`, which expands "
             "it into its stages."
         )
 
 
-def _check_chain_keys(path: Path, data: dict[str, Any]) -> None:
-    extra = sorted(set(data) - _DOC_KEYS - {CHAIN_KEY})
-    if extra:
-        raise SystemExit(
-            f"'{path}' is a chain config, so it may only hold `{CHAIN_KEY}:` plus "
-            f"{sorted(_DOC_KEYS)}; found {extra}. Per-stage settings belong in the "
-            "stage files it points to."
-        )
+def shared_settings(data: dict[str, Any]) -> dict[str, Any]:
+    """The training settings a chain config applies to every one of its stages."""
+    return {key: value for key, value in data.items() if key != CHAIN_KEY and key not in _DOC_KEYS}
 
 
 def _resolve_entry(entry: str, base: Path, source: Path) -> list[Path]:
@@ -89,32 +98,47 @@ def _resolve_entry(entry: str, base: Path, source: Path) -> list[Path]:
     raise SystemExit(f"'{source}': stage '{entry}' not found (looked in {base} and {Path.cwd()}).")
 
 
-def _expand_one(path: Path, label: str, stack: tuple[Path, ...]) -> list[str]:
-    """Expand ``path`` to the stages it stands for (itself, if it isn't a chain)."""
+def _expand_one(
+    path: Path, label: str, stack: tuple[Path, ...], shared: dict[str, Any]
+) -> list[tuple[str, dict[str, Any]]]:
+    """Expand ``path`` to the stages it stands for, each with its shared settings."""
     if not path.is_file():
         # Not ours to report: pass it through and let the stage loader raise where it
         # normally would. (Stages named *inside* a chain are checked when resolved.)
-        return [label]
+        return [(label, shared)]
     data = read_config_mapping(path)
     if not is_chain_config(data):
-        return [label]
+        return [(label, shared)]
 
     resolved = path.resolve()
     if resolved in stack:
         loop = " -> ".join(p.name for p in (*stack, resolved))
         raise SystemExit(f"Config chain loops back on itself: {loop}")
-    _check_chain_keys(path, data)
+    shared = deep_merge(shared, shared_settings(data))
 
     entries = data[CHAIN_KEY]
     if not isinstance(entries, list) or not entries:
         raise SystemExit(f"'{path}': `{CHAIN_KEY}:` must be a non-empty list of config paths.")
 
-    stages: list[str] = []
+    stages: list[tuple[str, dict[str, Any]]] = []
     for entry in entries:
         if not isinstance(entry, str):
             raise SystemExit(f"'{path}': every `{CHAIN_KEY}:` entry must be a path, got {entry!r}.")
         for stage in _resolve_entry(entry, path.parent, path):
-            stages.extend(_expand_one(stage, str(stage), (*stack, resolved)))
+            stages.extend(_expand_one(stage, str(stage), (*stack, resolved), shared))
+    return stages
+
+
+def expand_chain_stages(paths: list[str]) -> list[tuple[str, dict[str, Any]]]:
+    """Expand any chain config in ``paths`` into ``(stage path, shared settings)`` pairs.
+
+    A plain config passes through untouched (keeping the spelling you typed) with no
+    shared settings; a stage reached through a chain carries the settings of every
+    chain above it.
+    """
+    stages: list[tuple[str, dict[str, Any]]] = []
+    for path in paths:
+        stages.extend(_expand_one(Path(path), path, (), {}))
     return stages
 
 
@@ -125,7 +149,4 @@ def expand_config_chain(paths: list[str]) -> list[str]:
     is a no-op for the usual ``--config one.yaml`` and for a hand-written chain of
     several files.
     """
-    stages: list[str] = []
-    for path in paths:
-        stages.extend(_expand_one(Path(path), path, ()))
-    return stages
+    return [stage for stage, _ in expand_chain_stages(paths)]

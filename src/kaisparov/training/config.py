@@ -15,7 +15,7 @@ import yaml
 from kaisparov.core.draw import DEFAULT_RULES, DrawRules
 from kaisparov.models.architecture import Architecture
 from kaisparov.models.features import DEFAULT_FEATURES
-from kaisparov.training.chain import ensure_not_chain, read_config_mapping
+from kaisparov.training.chain import deep_merge, ensure_not_chain, read_config_mapping
 
 
 @dataclass
@@ -352,17 +352,6 @@ class TrainConfig:
 _INHERITED_ARCHITECTURE = ("model", "hidden_dim", "features")
 
 
-def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
-    """Recursively overlay ``over`` on ``base`` (one level of nested dicts)."""
-    out = dict(base)
-    for key, value in over.items():
-        if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_merge(out[key], value)
-        else:
-            out[key] = value
-    return out
-
-
 def build_resume_config(
     run_id: str, overrides: dict[str, Any] | None = None, runs_dir: str = "runs"
 ) -> TrainConfig:
@@ -383,7 +372,7 @@ def build_resume_config(
     if not checkpoint.exists():
         raise SystemExit(f"Run '{run_id}' has no checkpoint to resume from.")
 
-    config = TrainConfig.from_dict(_deep_merge(parent_cfg, overrides))
+    config = TrainConfig.from_dict(deep_merge(parent_cfg, overrides))
     # The parent's architecture, as its checkpoint will be loaded — which for a run
     # older than the ``features`` key means reading its feature set off the weights,
     # not taking today's default.

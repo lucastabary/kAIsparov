@@ -189,8 +189,10 @@ run id to copy by hand (any `resume_from_run:` in those files is overridden):
 kaisparov train --config   config/experiments/scratch_v3_stage1.yaml   config/experiments/scratch_v3_stage2.yaml   config/experiments/scratch_v3_stage3.yaml
 ```
 
-To name a recipe once, write a **chain config**: a YAML holding nothing but a
-`stages:` list. Point `--config` at it and it expands to exactly the chain above.
+To name a recipe once, write a **chain config**: a YAML holding a `stages:` list.
+Point `--config` at it and it expands to exactly the chain above. Any other setting
+in it is **shared by every stage**, so each stage file keeps only what changes from
+the stage before it (a resumed stage inherits the rest from the previous run).
 
 ```yaml
 # config/experiments/high_entropy_all.yaml
@@ -202,6 +204,12 @@ stages:
   - high_entropy_phase1-2.yaml
   - high_entropy_phase2.yaml
   - high_entropy_phase3.yaml
+
+# shared by every stage; a stage that sets the same key wins
+hidden_dim: 64
+reward: checkmate_only
+ppo:
+  update_epochs: 2
 ```
 
 ```bash
@@ -210,10 +218,10 @@ kaisparov train --config config/experiments/high_entropy_all.yaml
 
 | Rule | Detail |
 |------|--------|
-| Keys allowed | `stages:` plus `title` / `description` / `notes` (documentation). **No training settings** — those belong in the stage files, and putting one here is an error rather than a silently ignored override. |
+| Shared settings | Every key but `stages:` and `title` / `description` / `notes` (which document the recipe) applies to each stage, **under** the stage's own values; nested sections (`ppo:`, `rollout:`) merge key by key. A stage run on its own, outside the chain, does not get them — so the first stage is meant to be run through the recipe. |
 | Paths | Resolved next to the chain file first, then against the working directory — a recipe can sit beside its stages and still run from anywhere. |
 | Globs | An entry may be a pattern (`high_entropy_phase*.yaml`), expanded in **sorted** order. Prefer an explicit list when the order doesn't sort. |
-| Nesting | A stage may itself be a chain; it is expanded in place. Loops are refused. |
+| Nesting | A stage may itself be a chain; it is expanded in place, its shared settings on top of the outer chain's. Loops are refused. |
 | Mixing | Chains and plain configs can be combined in one `--config` (`--config warmup.yaml recipe_all.yaml`). |
 
 The resolved stage list is printed before training starts, and the lineage

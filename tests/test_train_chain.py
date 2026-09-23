@@ -42,7 +42,7 @@ def _run_main(argv):
     """Run train.main with Trainer/build_config stubbed; return build_config calls."""
     calls: list[tuple[str | None, str | None]] = []
 
-    def fake_build_config(args, config_path=None, resume_run_id=None):
+    def fake_build_config(args, config_path=None, resume_run_id=None, shared=None):
         calls.append((config_path, resume_run_id))
         return object()
 
@@ -70,8 +70,8 @@ def test_no_config_runs_one_default_stage():
 
 
 # --------------------------------------------------------------- chain entry points
-# A "chain config" is a YAML holding nothing but `stages:` — an entry point that
-# expands to the very same stage list you'd have typed by hand.
+# A "chain config" is a YAML holding `stages:` — an entry point that expands to the
+# very same stage list you'd have typed by hand, plus settings shared by every stage.
 
 
 def _write(path, text: str):
@@ -123,11 +123,44 @@ def test_chain_loop_is_refused(tmp_path):
         chain.expand_config_chain([str(tmp_path / "a.yaml")])
 
 
-def test_chain_rejects_training_settings(tmp_path):
+def test_chain_settings_are_shared_by_every_stage(tmp_path):
     _write(tmp_path / "a.yaml", "epochs: 1\n")
-    entry = _write(tmp_path / "all.yaml", "stages: [a.yaml]\nepochs: 10\n")
-    with pytest.raises(SystemExit, match="epochs"):
-        chain.expand_config_chain([str(entry)])
+    _write(tmp_path / "b.yaml", "epochs: 2\n")
+    entry = _write(
+        tmp_path / "all.yaml",
+        """\
+        title: the recipe
+        stages: [a.yaml, b.yaml]
+        hidden_dim: 64
+        ppo: {update_epochs: 2}
+        """,
+    )
+    shared = {"hidden_dim": 64, "ppo": {"update_epochs": 2}}  # doc keys stay behind
+    assert chain.expand_chain_stages([str(entry)]) == [
+        (str(tmp_path / "a.yaml"), shared),
+        (str(tmp_path / "b.yaml"), shared),
+    ]
+
+
+def test_nested_chain_settings_sit_on_top_of_the_outer_ones(tmp_path):
+    _write(tmp_path / "a.yaml", "epochs: 1\n")
+    _write(tmp_path / "inner.yaml", "stages: [a.yaml]\nppo: {entropy_coef: 0.1}\nseed: 2\n")
+    outer = _write(
+        tmp_path / "outer.yaml", "stages: [inner.yaml]\nppo: {update_epochs: 2}\nseed: 1\n"
+    )
+    assert chain.expand_chain_stages([str(outer)]) == [
+        (str(tmp_path / "a.yaml"), {"ppo": {"update_epochs": 2, "entropy_coef": 0.1}, "seed": 2})
+    ]
+
+
+def test_a_stage_overrides_the_shared_settings(tmp_path):
+    stage = _write(tmp_path / "a.yaml", "epochs: 3\nppo: {learning_rate: 0.001}\n")
+    shared = {"epochs": 50, "hidden_dim": 24, "ppo": {"update_epochs": 3}}
+    config = train.build_config(train.parse_args([]), str(stage), shared=shared)
+    assert config.epochs == 3  # the stage wins
+    assert config.hidden_dim == 24  # the rest comes from the chain
+    assert config.ppo.learning_rate == 0.001
+    assert config.ppo.update_epochs == 3
 
 
 def test_missing_stage_names_the_chain(tmp_path):
