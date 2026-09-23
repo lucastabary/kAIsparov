@@ -503,13 +503,13 @@ for a position. Add one notebook per investigation.
 ## 13. Developing: tests, lint, types
 
 ```bash
-pip install -e ".[dev]"          # ruff, mypy, pytest, import-linter, pre-commit
+pip install -e ".[dev]"          # ruff, mypy, pytest(-xdist), import-linter, pre-commit
 pip install -e ".[notebooks]"    # jupyter, matplotlib, pandas
 
 ruff check . && ruff format --check .   # lint + format (notebooks excluded)
 mypy src/kaisparov                       # static types (game_interface excluded)
 lint-imports                             # architecture contracts (pyproject.toml)
-pytest                                    # engine, agents, env, arena, ppo, tracking, smoke
+pytest                                    # the suite, in parallel (xdist; -n0 to debug)
 pre-commit install                        # run the above on commit
 ```
 

@@ -209,12 +209,21 @@ def test_every_registered_generator_is_covered_here():
     assert set(ProblemGenerator.available()) - {"fixed"} == set(CHEAP)
 
 
+class _Generated(dict):
+    """Each generator's two problems, drawn on first use: under pytest-xdist a worker
+    only pays for the generators its own tests need (avoid_mate alone takes ~20 s)."""
+
+    def __missing__(self, name):
+        problems = ProblemGenerator.create(name, CHEAP[name]).generate(
+            2, random.Random(f"test:{name}")
+        )
+        self[name] = problems
+        return problems
+
+
 @pytest.fixture(scope="module")
 def generated():
-    return {
-        name: ProblemGenerator.create(name, params).generate(2, random.Random(f"test:{name}"))
-        for name, params in CHEAP.items()
-    }
+    return _Generated()
 
 
 @pytest.mark.parametrize("name", sorted(CHEAP))

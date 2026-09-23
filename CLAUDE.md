@@ -88,7 +88,7 @@ kaisparov play  --vs-ai
 ruff check . && ruff format --check .           # lint + format
 mypy src/kaisparov                              # types (CI runs it; game_interface excluded)
 lint-imports                                    # architecture contracts (see Conventions)
-pytest                                          # tests (torch-free where possible)
+pytest                                          # tests, in parallel (-n0 to debug)
 ```
 
 ## Git

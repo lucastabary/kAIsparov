@@ -27,6 +27,7 @@ dev = [
     "ruff==0.16.5",  # same pins as requirements-dev.txt
     "mypy==2.3.1",
     "pytest>=8.0",
+    "pytest-xdist>=3.5",
     "import-linter>=2.1",
     "pre-commit>=3.7",
 ]
@@ -139,4 +140,6 @@ allow_indirect_imports = true
 # ---- pytest ----
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# In parallel (pytest-xdist): ~3.5 min serial on a laptop CPU. `-n0` to debug with pdb;
+# PYTEST_XDIST_AUTO_NUM_WORKERS caps `auto` on a CPU whose efficiency cores slow it down.
+addopts = "-q -n auto"
