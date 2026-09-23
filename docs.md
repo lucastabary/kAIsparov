@@ -214,6 +214,11 @@ All agents implement `Policy.select_move(game) -> (source, dest) | None`:
 - `RandomAgent` — uniform legal move.
 - `MaterialAgent` — greedy 1-ply: win the most material, counting the highest-value
   capture and what a promotion gains; else random. A meaningful baseline.
+- `MaterialMinimaxAgent` — negamax alpha-beta scored on material, no model: it keeps its
+  pieces defended and refuses a poisoned capture, which `MaterialAgent` never does.
+  Mate is ±`WIN`, any draw 0. ~40 ms/move at depth 2 — cheap enough for a training
+  opponent (`{kind: minimax, params: {evaluator: material}}` in a pool) and a benchmark
+  contestant (`material+minimax2`).
 - `NeuralAgent` — wraps a model + processor; `select_move` graphifies, runs the model,
   masks, and returns the chosen move. (Imported lazily so baselines stay torch-free.)
 - `MinimaxAgent` — **negamax alpha-beta search** on the model: the critic evaluates
@@ -275,6 +280,12 @@ instead of only the current self (breaks the degenerate "everyone rushes" collap
 it's **single-agent** RL: only the learner's moves are stored, the per-step reward is
 `(learner captures) − (opponent captures) − step_penalty`, and the buffer uses standard
 GAE (`self_play=False`). Until the first snapshot exists, training is plain self-play.
+
+`rollout.pool` (a preset from `config/pools.yaml`, or inline) lists the opponents with
+one weight each: an opponent faces the learner in `weight / sum(weights)` of the games.
+The snapshot entry's weight is the share of the whole past-self stream — the snapshots
+are drawn uniformly within it — so the fixed teachers keep their share however many
+snapshots accumulate; before the first one, that share goes to the others.
 
 ### Curriculum (`curriculum.py`)
 

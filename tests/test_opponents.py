@@ -71,9 +71,9 @@ def test_pool_baselines_available_from_start():
     assert pool.sample() is not None
 
 
-def test_pool_group_weight_zero_excludes_snapshots():
-    # snapshot_weight=0 -> once both groups exist, only baselines are ever drawn,
-    # no matter how many snapshots have accumulated (the dilution fix).
+def test_pool_snapshot_weight_zero_excludes_snapshots():
+    # snapshot_weight=0 -> only baselines are ever drawn, no matter how many
+    # snapshots have accumulated (the dilution fix).
     spec, agent = _spec_and_agent()
     material = MaterialAgent(seed=0)
     pool = OpponentPool(
@@ -81,13 +81,54 @@ def test_pool_group_weight_zero_excludes_snapshots():
         torch.device("cpu"),
         seed=0,
         baselines=[material],
-        baseline_weight=1.0,
         snapshot_weight=0.0,
     )
     for _ in range(3):
         pool.snapshot(agent)
     assert len(pool._agents) == 3
     assert all(pool.sample() is material for _ in range(30))
+
+
+def test_pool_shares_follow_the_weights_whatever_the_snapshot_count():
+    # material 3 : random 1 : the snapshot stream 6 -> 30% / 10% / 60% of the games,
+    # with one snapshot or with five.
+    spec, agent = _spec_and_agent()
+    material, random_agent = MaterialAgent(seed=0), RandomAgent(seed=0)
+    pool = OpponentPool(
+        ARCH,
+        torch.device("cpu"),
+        max_size=8,
+        seed=0,
+        baselines=[material, random_agent],
+        baseline_weights=[3.0, 1.0],
+        snapshot_weight=6.0,
+    )
+    # No snapshot yet: the stream's share goes to the baselines (3 : 1).
+    draws = [pool.sample() for _ in range(4000)]
+    assert draws.count(material) / 4000 == pytest.approx(0.75, abs=0.03)
+    for n_snapshots in (1, 5):
+        while len(pool._agents) < n_snapshots:
+            pool.snapshot(agent)
+        draws = [pool.sample() for _ in range(4000)]
+        assert draws.count(material) / 4000 == pytest.approx(0.30, abs=0.03)
+        assert draws.count(random_agent) / 4000 == pytest.approx(0.10, abs=0.02)
+
+
+def test_legacy_group_weights_are_flattened_onto_the_same_shares():
+    from kaisparov.training.config import RolloutSettings
+    from kaisparov.training.opponents import build_opponent_pool
+
+    rollout = RolloutSettings(
+        opponent="pool",
+        baselines=["material", "random"],
+        baseline_weight=2.0,
+        snapshot_weight=1.0,
+        baseline_weights=[3.0, 1.0],
+    )
+    pool, _, _ = build_opponent_pool(ARCH, torch.device("cpu"), rollout, seed=0)
+    # group 2 split 3:1 -> 1.5 and 0.5, next to the stream's 1: 50% / 17% / 33%.
+    assert pool._baseline_weights == [1.5, 0.5]
+    assert pool.snapshot_weight == 1.0
 
 
 def test_pool_baseline_weights_bias():

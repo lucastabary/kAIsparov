@@ -7,7 +7,6 @@
 #       opponent: pool
 #       pool:
 #         opponents: [...]
-#         group_weights: {...}
 #
 # When `rollout.pool` is set it fully defines the pool and OVERRIDES the flat legacy
 # fields (baselines / *_weight / pool_size / snapshot_every / snapshot_search_depth /
@@ -18,50 +17,57 @@
 #     kind:   random | material | neural | minimax | snapshot
 #     group:  baseline (fixed, in the pool from epoch 1) | snapshot (frozen past-selves,
 #             added over training). Defaults: snapshot for kind=snapshot, else baseline.
-#     weight: relative sampling weight WITHIN its group (default 1.0).
+#     weight: the entry's share of the pool (default 1.0): it faces the learner in
+#             weight / sum(weights) of the games — out of N games, N * weight / sum.
+#             For the snapshot entry, the share of the whole past-self stream (its
+#             snapshots drawn uniformly within it), however many exist. Until the first
+#             snapshot is taken, its share goes to the other opponents.
 #     count:  snapshot only — max past-selves retained in the pool (default 1).
 #     every:  snapshot only — add one frozen self every N epochs (default 20).
 #     params: that agent's own hyper-parameters:
 #               random/material : seed, avoid_king_suicide
 #               snapshot        : depth (0 = raw NeuralAgent, >=1 = MinimaxAgent lookahead),
 #                                 avoid_king_suicide, deterministic
-#               neural/minimax  : checkpoint (REQUIRED, path to frozen weights of THIS
-#                                 architecture), depth (minimax), deterministic (neural),
+#               neural/minimax  : checkpoint (path to frozen weights of a past run),
+#                                 depth (minimax), deterministic (neural),
 #                                 avoid_king_suicide
-#   group_weights: relative share of the two GROUPS, e.g. {baseline: 1.5, snapshot: 1.0}.
-#     Omit for the legacy uniform draw over baselines + snapshots.
+#               minimax         : ...or evaluator: material instead of a checkpoint — an
+#                                 alpha-beta search on material, no model (depth 2:
+#                                 ~40 ms/move; it keeps its pieces defended and refuses
+#                                 poisoned captures, unlike `material`)
 # At most one `snapshot` entry per preset.
+#
+# (`group_weights` is gone: fold it into the weights. The presets below were converted
+# with the shares they had, e.g. v4_phase3's baseline 1.0 : snapshot 1.5 with material
+# 3 : random 1 inside the baselines is material 30% / random 10% / snapshots 60%.)
 
 
 # Reproduces the scratch v3 league (pure king-capture era): Material 3x Random, the
-# baseline group drawn 2:1 vs a depth-1 past-self stream. No king-safety guard.
+# baselines drawn 2:1 vs a depth-1 past-self stream (50% / 17% / 33%). No guard.
 teachers_v3:
   opponents:
     - {kind: material, weight: 3.0}
     - {kind: random,   weight: 1.0}
-    - {kind: snapshot, count: 5, every: 20, params: {depth: 1}}
-  group_weights: {baseline: 2.0, snapshot: 1.0}
+    - {kind: snapshot, weight: 2.0, count: 5, every: 20, params: {depth: 1}}
 
 
 # "Sound play" league: every opponent defends its own king (avoid_king_suicide), so a
 # blind king rush no longer wins, and past-selves look 2 plies ahead. Use this to break
 # the knight-rush strategy without any reward shaping.
 sound_v4:
-  opponents:
-    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
-    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
-    - {kind: snapshot, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}
-  group_weights: {baseline: 1.5, snapshot: 1.0}
+  opponents:  # 45% / 15% / 40%
+    - {kind: material, weight: 9.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: snapshot, weight: 8.0, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}
 
 
 # Stage-1 starter: guard OFF so the model first learns to CAPTURE a king (against
 # opponents that still leave it hanging) before we make defense matter in later stages.
 endgame_starter:
-  opponents:
+  opponents:  # 50% / 17% / 33%
     - {kind: material, weight: 3.0}
     - {kind: random,   weight: 1.0}
-    - {kind: snapshot, count: 5, every: 20, params: {depth: 1}}
-  group_weights: {baseline: 2.0, snapshot: 1.0}
+    - {kind: snapshot, weight: 2.0, count: 5, every: 20, params: {depth: 1}}
 
 
 # ---------------------------------------------------------------- scratch v4 curriculum
@@ -90,31 +96,28 @@ v4_phase1-2:
 
 # Phase 2: more material + pawns; the snapshot stream appears. All opponents defend.
 v4_phase2:
-  opponents:
-    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
-    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
-    - {kind: snapshot, count: 6, every: 15, params: {depth: 1, avoid_king_suicide: true}}
-  group_weights: {baseline: 1.5, snapshot: 1.0}
+  opponents:  # 45% / 15% / 40%
+    - {kind: material, weight: 9.0, params: {avoid_king_suicide: true}}
+    - {kind: random,   weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: snapshot, weight: 8.0, count: 6, every: 15, params: {depth: 1, avoid_king_suicide: true}}
 
 # Phase 3: the real game. Defending self-play dominates (snapshots weighted above the
 # baselines); every opponent defends.
 v4_phase3:
-  opponents:
+  opponents:  # 30% / 10% / 60%
     - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
     - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
-    - {kind: snapshot, count: 8, every: 15, params: {depth: 1, avoid_king_suicide: true}}
-  group_weights: {baseline: 1.0, snapshot: 1.5}
+    - {kind: snapshot, weight: 6.0, count: 8, every: 15, params: {depth: 1, avoid_king_suicide: true}}
 
 
 # Example: train against a strong FIXED teacher frozen from a past run — a genuinely
 # sound defender from epoch 1, not a weak early past-self. Point `checkpoint` at a
 # checkpoint of the SAME architecture (model + hidden_dim). Uncomment and set the path.
 # with_frozen_teacher:
-#   opponents:
-#     - {kind: material, weight: 2.0, params: {avoid_king_suicide: true}}
+#   opponents:  # 24% / 36% / 40%
+#     - {kind: material, weight: 6.0, params: {avoid_king_suicide: true}}
 #     - kind: minimax
-#       weight: 3.0
-#       params: {checkpoint: "runs/20260907-110051_rgcn/checkpoints/best.pth", depth: 2,
+#       weight: 9.0
+#       params: {checkpoint: "runs/20260907-110051_rgcn/checkpoints/epoch200.pth", depth: 2,
 #                avoid_king_suicide: true}
-#     - {kind: snapshot, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}
-#   group_weights: {baseline: 1.5, snapshot: 1.0}
+#     - {kind: snapshot, weight: 10.0, count: 6, every: 15, params: {depth: 2, avoid_king_suicide: true}}

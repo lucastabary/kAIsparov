@@ -10,6 +10,15 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **Pool weights are shares**: each opponent's `weight` in a pool is now its share of
+  the games (`weight / sum`); the snapshot entry's weight is the share of the whole
+  past-self stream. `group_weights` is gone (a config still using it is refused with a
+  pointer); the shipped presets were converted to the same shares.
+- **Minimax on material**: `MaterialMinimaxAgent`, an alpha-beta search scored on
+  material with no model, as a pool opponent (`{kind: minimax, params: {evaluator:
+  material}}`) or a benchmark contestant (`material+minimax2`). Unlike `material` it
+  keeps its pieces defended and refuses poisoned captures.
+
 - **Won-endgame curriculum**: `curriculum.defender_pieces` gives the side the learner
   plays against fewer pieces (`1` = a bare king), and seats the learner on the strong
   side. `high_entropy` opens with such a phase 0a (K + 3 majors vs K), then two

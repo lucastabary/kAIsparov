@@ -79,8 +79,8 @@ class RolloutSettings:
     opponent_avoid_king_suicide: bool = False
     # Fine-grained opponent pool. Either a preset name from config/pools.yaml, or an
     # inline mapping with the same shape (a flat ``opponents`` list, each entry with
-    # its own kind / group / weight / count / per-agent ``params``, plus optional
-    # ``group_weights``). When set it fully defines the pool and OVERRIDES the flat
+    # its own kind / group / weight — its share of the pool — / count / per-agent
+    # ``params``). When set it fully defines the pool and OVERRIDES the flat
     # legacy fields above (baselines / *_weight / pool_size / snapshot_every /
     # snapshot_search_depth / opponent_avoid_king_suicide). Leave None to use them.
     # See PoolSpec / config/pools.yaml. Resolved (expanded) at load time so the run's
@@ -161,8 +161,9 @@ def _build_reward(value: Any) -> RewardSettings:
 
 
 # ------------------------------------------------------------------- opponent pool
-# Opponent kinds usable in a pool preset. ``random``/``material`` need no model;
-# ``neural``/``minimax`` load a frozen model from a checkpoint (``params.checkpoint``);
+# Opponent kinds usable in a pool preset. ``random``/``material`` need no model, nor
+# does ``minimax`` with ``params.evaluator: material`` (a search on material);
+# ``neural``/``minimax`` otherwise load a frozen model from ``params.checkpoint``;
 # ``snapshot`` is the stream of frozen past-selves of the learner, added over time.
 KNOWN_OPPONENT_KINDS = frozenset({"random", "material", "neural", "minimax", "snapshot"})
 
@@ -172,11 +173,14 @@ class OpponentSpec:
     """One entry of a pool preset (see :class:`PoolSpec`).
 
     ``group`` is either ``"baseline"`` (a fixed opponent present from epoch 1) or
-    ``"snapshot"`` (the accumulating stream of frozen past-selves). ``params`` holds
+    ``"snapshot"`` (the accumulating stream of frozen past-selves). ``weight`` is the
+    entry's share of the pool: it faces the learner in ``weight / sum(weights)`` of the
+    games (for the snapshot entry, the whole stream together). ``params`` holds
     that agent's own hyper-parameters, e.g. ``seed``, ``avoid_king_suicide`` for the
     baselines; ``depth`` (0 = raw policy, >=1 = minimax lookahead), ``deterministic``,
     ``avoid_king_suicide`` for snapshots; ``checkpoint``/``depth`` for a frozen
-    neural/minimax baseline loaded from a past run.
+    neural/minimax baseline loaded from a past run; ``evaluator: material``/``depth``
+    for a minimax that searches on material instead.
     """
 
     kind: str
@@ -189,10 +193,9 @@ class OpponentSpec:
 
 @dataclass
 class PoolSpec:
-    """A fully-resolved opponent pool: a flat list of opponents + group weights."""
+    """A fully-resolved opponent pool: a flat list of weighted opponents."""
 
     opponents: list[OpponentSpec] = field(default_factory=list)
-    group_weights: dict[str, float] = field(default_factory=dict)
 
     @property
     def baselines(self) -> list[OpponentSpec]:
@@ -236,11 +239,38 @@ def _expand_pool(value: Any) -> Any:
     return value
 
 
+# What a minimax opponent can evaluate its leaves with, besides a network's critic.
+MINIMAX_EVALUATORS = frozenset({"material"})
+
+
+def _check_minimax_params(kind: str, params: dict[str, Any]) -> None:
+    """A minimax searches with a checkpoint's critic or with a named evaluator, not both."""
+    if kind != "minimax":
+        return
+    evaluator = params.get("evaluator")
+    if evaluator is None:
+        return  # the checkpoint is checked (and loaded) when the pool is built
+    if evaluator not in MINIMAX_EVALUATORS:
+        raise ValueError(
+            f"minimax evaluator {evaluator!r} unknown; expected one of "
+            f"{sorted(MINIMAX_EVALUATORS)}, or a `checkpoint` to search with its critic."
+        )
+    if params.get("checkpoint"):
+        raise ValueError("a minimax takes either `evaluator` or `checkpoint`, not both.")
+
+
 def build_pool_spec(value: Any) -> PoolSpec:
     """Build a :class:`PoolSpec` from a preset name (str) or an inline mapping."""
     data = _expand_pool(value)
     if not isinstance(data, dict):
         return PoolSpec()
+    if "group_weights" in data:
+        raise ValueError(
+            "pool: `group_weights` is gone — each opponent's `weight` is now its share of "
+            "the whole pool (weight / sum of weights; the snapshot entry's weight is the "
+            "share of the whole past-self stream). Fold the group weights into the "
+            "opponents' weights (see config/pools.yaml) and set `rollout.pool` here."
+        )
     opponents: list[OpponentSpec] = []
     for entry in data.get("opponents", []):
         item = dict(entry)
@@ -249,6 +279,8 @@ def build_pool_spec(value: Any) -> PoolSpec:
             raise ValueError(
                 f"Unknown opponent kind {kind!r}. Expected one of {sorted(KNOWN_OPPONENT_KINDS)}."
             )
+        params = dict(item.get("params", {}))
+        _check_minimax_params(kind, params)
         group = item.get("group", "snapshot" if kind == "snapshot" else "baseline")
         if group not in ("baseline", "snapshot"):
             raise ValueError(f"Opponent group must be 'baseline' or 'snapshot', got {group!r}.")
@@ -259,10 +291,10 @@ def build_pool_spec(value: Any) -> PoolSpec:
                 weight=float(item.get("weight", 1.0)),
                 count=int(item.get("count", 1)),
                 every=int(item.get("every", 20)),
-                params=dict(item.get("params", {})),
+                params=params,
             )
         )
-    spec = PoolSpec(opponents=opponents, group_weights=dict(data.get("group_weights", {})))
+    spec = PoolSpec(opponents=opponents)
     _ = spec.snapshot  # validate eagerly: raises if more than one snapshot entry
     return spec
 

@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from kaisparov.agents.base import Policy
 
 
+# Stands for "a past-self, drawn uniformly" in the weighted draw of OpponentPool.sample.
+_STREAM = object()
+
+
 def build_baseline(name: str, seed: int, avoid_king_suicide: bool = False):
     """Instantiate a fixed baseline opponent by name (shared by trainer and workers)."""
     if name == "random":
@@ -41,9 +45,8 @@ class OpponentPool:
         max_size: int = 5,
         seed=None,
         baselines: list | None = None,
-        baseline_weight: float | None = None,
-        snapshot_weight: float | None = None,
         baseline_weights: list | None = None,
+        snapshot_weight: float | None = None,
         search_depth: int = 0,
         avoid_king_suicide: bool = False,
         snapshot_deterministic: bool = False,
@@ -57,8 +60,8 @@ class OpponentPool:
         self.avoid_king_suicide = avoid_king_suicide
         # Only used by depth-0 snapshots (raw NeuralAgent): sample vs argmax.
         self.snapshot_deterministic = snapshot_deterministic
-        # Group-level sampling weights (see `sample`); None -> legacy uniform draw.
-        self.baseline_weight = baseline_weight
+        # Share of the whole past-self stream, on the same scale as `baseline_weights`
+        # (see `sample`). None -> the legacy uniform draw over baselines + snapshots.
         self.snapshot_weight = snapshot_weight
         self._rng = random.Random(seed)
         self._agents: list = []
@@ -67,7 +70,7 @@ class OpponentPool:
         self._snapshot_sds: list[dict] = []
         # Fixed opponents (baselines) always available for sampling.
         self._baselines: list = list(baselines or [])
-        # Per-baseline relative weights (same order as `baselines`); None = uniform.
+        # Per-baseline weights (same order as `baselines`); None = 1 each.
         weights = list(baseline_weights or [])
         if weights and len(weights) != len(self._baselines):
             raise ValueError(
@@ -135,46 +138,55 @@ class OpponentPool:
     def sample(self):
         """Draw an opponent for one episode.
 
-        Legacy (default, both group weights None): uniform over ``_agents +
-        _baselines`` — but accumulating snapshots then drown out the baselines, so
-        the learner rarely faces the opponents that punish tactical blunders. Set
-        ``baseline_weight``/``snapshot_weight`` to give the two groups a *fixed*
-        relative share regardless of how many snapshots exist, and
-        ``baseline_weights`` to weight individual baselines within their group.
+        Every baseline, and the past-self stream as a whole, has a weight on one scale:
+        an opponent is drawn with probability ``weight / sum(weights)``, so out of N
+        games each gets ``N * weight / sum`` of them, whatever the number of snapshots
+        (within the stream, the snapshots are drawn uniformly). Until the first
+        snapshot exists, the stream's share goes to the baselines.
+
+        With ``snapshot_weight`` None (the legacy flat fields, without group weights)
+        the draw is uniform over baselines + snapshots — accumulating snapshots then
+        drown out the baselines.
         """
-        have_base = bool(self._baselines)
         have_snap = bool(self._agents)
-        if not (have_base or have_snap):
+        if not (self._baselines or have_snap):
             return None
+        if self.snapshot_weight is None and have_snap:
+            return self._rng.choice(self._agents + self._baselines)
 
-        grouped = self.baseline_weight is not None or self.snapshot_weight is not None
-        if grouped and have_base and have_snap:
-            bw = self.baseline_weight if self.baseline_weight is not None else 1.0
-            sw = self.snapshot_weight if self.snapshot_weight is not None else 1.0
-            if self._rng.choices((True, False), weights=(bw, sw))[0]:
-                return self._rng.choices(self._baselines, weights=self._baseline_weights)[0]
-            return self._rng.choice(self._agents)
-
-        # A single non-empty group, or the legacy uniform draw over the union.
-        if have_base and not have_snap:
-            return self._rng.choices(self._baselines, weights=self._baseline_weights)[0]
-        if have_snap and not have_base:
-            return self._rng.choice(self._agents)
-        return self._rng.choice(self._agents + self._baselines)
+        entries: list = list(self._baselines)
+        weights = list(self._baseline_weights or [1.0] * len(self._baselines))
+        if have_snap:
+            entries.append(_STREAM)
+            weights.append(float(self.snapshot_weight or 0.0))
+        if sum(weights) <= 0:
+            weights = [1.0] * len(entries)  # every weight zero: fall back to uniform
+        picked = self._rng.choices(entries, weights=weights)[0]
+        return self._rng.choice(self._agents) if picked is _STREAM else picked
 
 
 def build_pool_baseline(device, opp, seed: int):
     """Build one fixed baseline agent from a pool-preset entry (:class:`OpponentSpec`).
 
-    ``random``/``material`` are model-free; ``neural``/``minimax`` load a frozen model
-    from ``params.checkpoint`` (a past run's weights) — a strong, fixed teacher. It is
-    rebuilt as the architecture *its* run recorded, which need not be the learner's:
-    each agent graphifies the board with its own processor.
+    ``random``/``material`` are model-free; so is ``minimax`` with
+    ``params.evaluator: material`` (an alpha-beta search on material, ``depth`` plies).
+    ``neural``/``minimax`` otherwise load a frozen model from ``params.checkpoint`` (a
+    past run's weights) — a strong, fixed teacher. It is rebuilt as the architecture
+    *its* run recorded, which need not be the learner's: each agent graphifies the
+    board with its own processor.
     """
     params, kind = opp.params, opp.kind
     if kind in ("random", "material"):
         return build_baseline(
             kind, params.get("seed", seed), params.get("avoid_king_suicide", False)
+        )
+    if kind == "minimax" and params.get("evaluator") == "material":
+        from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+
+        return MaterialMinimaxAgent(
+            depth=int(params.get("depth", 2)),
+            seed=params.get("seed", seed),
+            avoid_king_suicide=params.get("avoid_king_suicide", False),
         )
     if kind in ("neural", "minimax"):
         checkpoint = params.get("checkpoint")
@@ -223,34 +235,41 @@ def build_opponent_pool(architecture: Architecture, device, rollout, seed: int):
             baseline_weights.append(opp.weight)
         snap = pspec.snapshot
         sp = snap.params if snap else {}
-        gw = pspec.group_weights
         pool = OpponentPool(
             architecture,
             device,
             max_size=snap.count if snap else 0,
             seed=seed,
             baselines=baselines,
-            baseline_weight=gw.get("baseline"),
-            snapshot_weight=gw.get("snapshot"),
             baseline_weights=baseline_weights or None,
+            snapshot_weight=snap.weight if snap else None,
             search_depth=int(sp.get("depth", 0)),
             avoid_king_suicide=bool(sp.get("avoid_king_suicide", False)),
             snapshot_deterministic=bool(sp.get("deterministic", False)),
         )
         return pool, (snap is not None), (snap.every if snap else rollout.snapshot_every)
 
-    # Flat legacy path: baselines named in rollout.baselines.
+    # Flat legacy path: baselines named in rollout.baselines, with the old two-level
+    # weights (a share per group, then per baseline within its group) flattened onto
+    # the pool's single scale: baseline i gets group_share * w_i / sum(w).
     avoid = rollout.opponent_avoid_king_suicide
     baselines = [build_baseline(n, seed, avoid_king_suicide=avoid) for n in rollout.baselines]
+    weights: list[float] | None = list(rollout.baseline_weights) or None
+    snapshot_weight: float | None = None
+    if rollout.baseline_weight is not None or rollout.snapshot_weight is not None:
+        group = rollout.baseline_weight if rollout.baseline_weight is not None else 1.0
+        within = weights or [1.0] * len(baselines)
+        total = sum(within) or 1.0
+        weights = [group * w / total for w in within]
+        snapshot_weight = rollout.snapshot_weight if rollout.snapshot_weight is not None else 1.0
     pool = OpponentPool(
         architecture,
         device,
         max_size=rollout.pool_size,
         seed=seed,
         baselines=baselines,
-        baseline_weight=rollout.baseline_weight,
-        snapshot_weight=rollout.snapshot_weight,
-        baseline_weights=rollout.baseline_weights,
+        baseline_weights=weights,
+        snapshot_weight=snapshot_weight,
         search_depth=rollout.snapshot_search_depth,
         avoid_king_suicide=avoid,
     )

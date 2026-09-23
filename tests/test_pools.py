@@ -16,9 +16,14 @@ def test_build_pool_spec_from_inline_mapping():
             "opponents": [
                 {"kind": "material", "weight": 3.0, "params": {"avoid_king_suicide": True}},
                 {"kind": "random", "weight": 1.0},
-                {"kind": "snapshot", "count": 6, "every": 15, "params": {"depth": 2}},
+                {
+                    "kind": "snapshot",
+                    "weight": 4.0,
+                    "count": 6,
+                    "every": 15,
+                    "params": {"depth": 2},
+                },
             ],
-            "group_weights": {"baseline": 1.5, "snapshot": 1.0},
         }
     )
     assert isinstance(spec, PoolSpec)
@@ -29,7 +34,40 @@ def test_build_pool_spec_from_inline_mapping():
     snap = spec.snapshot
     assert snap is not None
     assert snap.count == 6 and snap.every == 15 and snap.params["depth"] == 2
-    assert spec.group_weights == {"baseline": 1.5, "snapshot": 1.0}
+    assert snap.weight == 4.0  # the whole stream's share, on the baselines' scale
+
+
+def test_group_weights_are_refused_with_a_way_out():
+    with pytest.raises(ValueError, match="group_weights. is gone"):
+        build_pool_spec({"opponents": [{"kind": "material"}], "group_weights": {"baseline": 1.0}})
+
+
+def test_minimax_on_material_needs_no_checkpoint():
+    from kaisparov.agents.material_minimax import MaterialMinimaxAgent
+    from kaisparov.training.config import OpponentSpec
+
+    spec = build_pool_spec(
+        {"opponents": [{"kind": "minimax", "params": {"evaluator": "material", "depth": 3}}]}
+    )
+    agent = build_pool_baseline(None, spec.baselines[0], seed=0)
+    assert isinstance(agent, MaterialMinimaxAgent) and agent.depth == 3
+    default = build_pool_baseline(
+        None, OpponentSpec(kind="minimax", params={"evaluator": "material"}), seed=0
+    )
+    assert default.depth == 2
+
+
+def test_minimax_evaluator_is_checked():
+    with pytest.raises(ValueError, match="evaluator 'critic' unknown"):
+        build_pool_spec({"opponents": [{"kind": "minimax", "params": {"evaluator": "critic"}}]})
+    with pytest.raises(ValueError, match="not both"):
+        build_pool_spec(
+            {
+                "opponents": [
+                    {"kind": "minimax", "params": {"evaluator": "material", "checkpoint": "x"}}
+                ]
+            }
+        )
 
 
 def test_build_pool_spec_from_named_preset():
