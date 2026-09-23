@@ -33,7 +33,7 @@ Examples
     python scripts/runpod/manage_pod.py status
     python scripts/runpod/manage_pod.py start           # resume + git pull
     python scripts/runpod/manage_pod.py pull            # git pull on the running pod
-    python scripts/runpod/manage_pod.py ssh             # interactive shell
+    python scripts/runpod/manage_pod.py ssh             # resumable shell (tmux)
     python scripts/runpod/manage_pod.py logs            # re-attach to a running job's output
     python scripts/runpod/manage_pod.py stop
 
@@ -54,7 +54,10 @@ Notes
   so the work survives a dropped SSH connection; this script tails its output and, once the
   command exits, stops the pod (unless ``--keep``). If *this* process is killed the remote
   command keeps running, but the automatic power-off won't fire — re-attach with the
-  ``logs`` command and stop the pod yourself.
+  ``logs`` command and stop the pod yourself. If the command *fails*, the pod stays up
+  for debugging and stops after ``--fail-grace`` minutes with nobody connected.
+* ``ssh`` opens a tmux session (``main``) that survives a dropped connection: it
+  reconnects by itself, and a later ``ssh`` resumes it. ``--plain`` skips tmux.
 * SSH uses the pod's directly-exposed TCP port for private port 22, which RunPod
   maps to a public ``ip:port``. Make sure your key is registered in RunPod
   (Settings -> SSH Public Keys) and that the pod exposes TCP port 22.
@@ -65,6 +68,7 @@ from __future__ import annotations
 import argparse
 import base64
 import os
+import posixpath
 import shlex
 import subprocess
 import sys
@@ -85,6 +89,12 @@ REMOTE_RUN_DIR = "$HOME/.kaisparov_runs"
 # How long to wait, in seconds, for the pod to come up / SSH to answer.
 START_TIMEOUT = 300
 SSH_TIMEOUT = 180
+
+# tmux session the interactive `ssh` shell lives in (re-attached on every `ssh`).
+TMUX_SESSION = "main"
+
+# How often, in seconds, a failed `run` checks whether someone is on the pod.
+BUSY_POLL = 30
 
 
 # --------------------------------------------------------------------------- #
@@ -323,20 +333,69 @@ def git_pull(cfg: Config, ip: str, port: int) -> int:
 
 
 def ensure_setup(cfg: Config, ip: str, port: int) -> None:
-    """Build the repo's venv on the pod once, if it isn't there yet (runs setup_pod.sh)."""
-    venv = f"{cfg.repo_dir}/.venv/bin/activate"
-    if ssh_run(cfg, ip, port, f'test -f "{venv}"').returncode == 0:
+    """Build the repo's venv on the pod if it is missing or broken (runs setup_pod.sh).
+
+    "Broken" is a venv whose interpreter is gone: it symlinks to the image's Python, so a
+    pod on another image leaves ``.venv/bin/kaisparov`` pointing at nothing (exit 127).
+    """
+    venv = f"{cfg.repo_dir}/.venv"
+    if ssh_run(cfg, ip, port, f'"{venv}/bin/python" -c "import kaisparov"').returncode == 0:
         return
+    broken = ssh_run(cfg, ip, port, f'test -e "{venv}"').returncode == 0
     setup = f"{cfg.repo_dir}/scripts/runpod/setup_pod.sh"
     if ssh_run(cfg, ip, port, f'test -f "{setup}"').returncode != 0:
         sys.exit(
             f"No venv and no setup script at {setup} — clone the repo on the pod first "
             "(see scripts/runpod/README.md)."
         )
-    print(">> no venv on the pod; running setup_pod.sh (one-time, may take a few minutes) ...")
+    if broken:
+        print(">> the pod's venv is broken (its Python is gone — did the pod image change?).")
+        print(">> rebuilding it with setup_pod.sh (may take a few minutes) ...")
+    else:
+        print(">> no venv on the pod; running setup_pod.sh (one-time, may take a few minutes) ...")
     if ssh_run(cfg, ip, port, f"bash {shlex.quote(setup)}").returncode != 0:
         sys.exit("setup_pod.sh failed on the pod — fix it there, then retry.")
     print(">> setup complete.")
+
+
+def shell_rc() -> str:
+    """Path of the rcfile the interactive shell starts with (cd into the repo + venv)."""
+    return f"{REMOTE_RUN_DIR}/shellrc"
+
+
+def ensure_shell(cfg: Config, ip: str, port: int, *, want_tmux: bool) -> bool:
+    """Write the shell rcfile and, if asked, make sure tmux is there. Returns whether it is.
+
+    The container disk is wiped when the pod stops, so tmux has to come back every session.
+    Its .deb files are cached on the volume the first time, so later installs are an offline
+    ``dpkg -i``; apt runs under a timeout (it used to hang), and on failure the caller falls
+    back to a plain shell rather than blocking.
+    """
+    repo = shlex.quote(cfg.repo_dir)
+    cache = posixpath.join(posixpath.dirname(cfg.repo_dir.rstrip("/")), ".cache", "tmux-debs")
+    rc = (
+        "[ -f ~/.bashrc ] && . ~/.bashrc\n"
+        f"cd {repo} 2>/dev/null && [ -f .venv/bin/activate ] && . .venv/bin/activate\n"
+    )
+    lines = [
+        f'mkdir -p "{REMOTE_RUN_DIR}"',
+        f"printf '%s' {shlex.quote(rc)} > \"{shell_rc()}\"",
+    ]
+    if want_tmux:
+        print(">> checking tmux on the pod ...", flush=True)
+        lines += [
+            "command -v tmux >/dev/null 2>&1 && exit 0",
+            f"CACHE={shlex.quote(cache)}",
+            'mkdir -p "$CACHE/partial"',
+            'if ls "$CACHE"/*.deb >/dev/null 2>&1 && dpkg -i "$CACHE"/*.deb >/dev/null 2>&1; '
+            "then exit 0; fi",
+            "export DEBIAN_FRONTEND=noninteractive",
+            "timeout 90 apt-get update -qq >/dev/null 2>&1",
+            "timeout 120 apt-get install -y -qq --no-install-recommends "
+            '-o Dir::Cache::archives="$CACHE" tmux >/dev/null 2>&1',
+            "command -v tmux >/dev/null 2>&1",
+        ]
+    return ssh_run(cfg, ip, port, "\n".join(lines)).returncode == 0 and want_tmux
 
 
 # --------------------------------------------------------------------------- #
@@ -412,8 +471,31 @@ def cmd_ssh(cfg: Config, args: argparse.Namespace) -> int:
         # Run a one-off command (non-interactive) and forward its exit code.
         remote = " ".join(shlex.quote(part) for part in args.command)
         return ssh_run(cfg, ip, port, remote).returncode
-    # Interactive login shell.
-    return subprocess.run(ssh_base(cfg, ip, port, tty=True)).returncode
+    use_tmux = ensure_shell(cfg, ip, port, want_tmux=not args.plain)
+    shell = f'bash --rcfile "{shell_rc()}" -i'
+    if use_tmux:
+        # -A attaches to the session if it exists: the shell (and whatever runs in it)
+        # outlives the SSH connection. Detach on purpose with Ctrl-b d.
+        remote = f"tmux new-session -A -s {TMUX_SESSION} {shlex.quote(shell)}"
+        print(f">> tmux session '{TMUX_SESSION}' (Ctrl-b d detaches; it survives a lost link).")
+    else:
+        if not args.plain:
+            print(">> WARNING: tmux is unavailable on the pod; plain shell (not resumable).")
+        remote = f"exec {shell}"
+    while True:
+        code = subprocess.run(ssh_base(cfg, ip, port, tty=True) + [remote]).returncode
+        if code != 255 or not use_tmux:  # 255 is ssh's own error: the connection dropped
+            return code
+        print("\n>> connection lost.", flush=True)
+        if not is_running(get_pod(pod_id)):
+            sys.exit(f">> pod {pod_id} is no longer running; nothing to reconnect to.")
+        try:
+            print(">> reconnecting to the tmux session (Ctrl-C to give up) ...", flush=True)
+            time.sleep(3)
+            wait_for_ssh(cfg, ip, port)
+        except KeyboardInterrupt:
+            print("\n>> gave up. The session is still there: run `ssh` again to resume it.")
+            return 255
 
 
 def cmd_logs(cfg: Config, args: argparse.Namespace) -> int:
@@ -469,9 +551,62 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
 
     if args.keep:
         print(">> --keep set: leaving the pod running.")
+    elif exit_code != 0 and args.fail_grace > 0:
+        hold_for_debug(cfg, pod_id, ip, port, args.fail_grace)
     else:
         stop_pod(cfg, pod_id)
     return exit_code
+
+
+def pod_busy(cfg: Config, ip: str, port: int) -> bool | None:
+    """Is someone on the pod (an interactive SSH/tmux session, or a live `run` job)?
+
+    ``None`` when the pod can't be reached. ``[s]shd`` keeps pgrep from matching the
+    probe's own command line; it also matches ``sshd-session``, newer OpenSSH's name.
+    """
+    probe = (
+        "if pgrep -f '[s]shd.*@pts' >/dev/null; then echo busy; exit 0; fi; "
+        f'for p in "{REMOTE_RUN_DIR}"/*.pid; do [ -e "$p" ] || continue; '
+        'if kill -0 "$(cat "$p")" 2>/dev/null; then echo busy; exit 0; fi; done; echo idle'
+    )
+    out = (ssh_run(cfg, ip, port, probe, capture=True).stdout or "").strip()
+    return {"busy": True, "idle": False}.get(out.splitlines()[-1] if out else "")
+
+
+def hold_for_debug(cfg: Config, pod_id: str, ip: str, port: int, grace_min: float) -> None:
+    """After a failed `run`, keep the pod up for debugging; stop it once nobody uses it.
+
+    The timer only runs while nobody is connected: an open `ssh` shell (or a new job)
+    resets it, so the pod isn't pulled out from under you mid-debug.
+    """
+    script = Path(__file__).name
+    print(
+        f">> the command failed: the pod stays up so you can debug it (python {script} ssh).\n"
+        f">> it stops after {grace_min:g} min with nobody connected. "
+        "Ctrl-C here leaves it running for good."
+    )
+    idle_since = time.time()
+    busy_before = False
+    try:
+        while True:
+            busy = pod_busy(cfg, ip, port)
+            if busy is None and not is_running(get_pod(pod_id)):
+                print(">> the pod was stopped elsewhere.")
+                return
+            if busy:
+                if not busy_before:
+                    print(">> someone is on the pod; the stop timer is paused.", flush=True)
+                idle_since = time.time()
+            elif busy_before:
+                print(f">> nobody on the pod; stopping in {grace_min:g} min.", flush=True)
+            busy_before = bool(busy)
+            if time.time() - idle_since >= grace_min * 60:
+                break
+            time.sleep(BUSY_POLL)
+    except KeyboardInterrupt:
+        print(f"\n>> leaving the pod running. Stop it with: python {script} stop")
+        return
+    stop_pod(cfg, pod_id)
 
 
 # --------------------------------------------------------------------------- #
@@ -604,7 +739,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("stop", help="Stop the pod (GPU billing ends; the volume persists).")
     sub.add_parser("pull", help="git pull --ff-only the pod's repo checkout (pod must be running).")
 
-    p_ssh = sub.add_parser("ssh", help="Open an interactive SSH shell (or run a one-off command).")
+    p_ssh = sub.add_parser(
+        "ssh", help="Open a resumable shell in tmux on the pod (or run a one-off command)."
+    )
+    p_ssh.add_argument(
+        "--plain", action="store_true", help="Plain SSH shell, no tmux (not resumable)."
+    )
     p_ssh.add_argument(
         "command", nargs=argparse.REMAINDER, help="Optional command to run instead of a shell."
     )
@@ -622,6 +762,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument(
         "--no-pull", action="store_true", help="Skip the git pull before running the command."
+    )
+    p_run.add_argument(
+        "--fail-grace",
+        type=float,
+        default=30,
+        metavar="MIN",
+        help="If the command fails, keep the pod up for debugging and stop it after MIN "
+        "minutes with nobody connected (default: 30; 0 stops at once, like a success).",
     )
     p_run.add_argument(
         "command", nargs=argparse.REMAINDER, help="Command to run (put it after --)."

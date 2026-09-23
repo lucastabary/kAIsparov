@@ -22,8 +22,15 @@ if [ ! -d "$REPO_DIR/.git" ]; then
 fi
 cd "$REPO_DIR"
 
-echo ">> creating venv on the volume"
-python -m venv .venv
+# The venv links to the image's Python: if the pod now runs another image, that
+# interpreter is gone and the venv is dead weight — rebuild it from scratch.
+if [ -d .venv ] && ! .venv/bin/python -c 'import sys' >/dev/null 2>&1; then
+  echo ">> the existing venv's Python is gone (pod image changed?); recreating it"
+  python -m venv --clear .venv
+else
+  echo ">> creating venv on the volume"
+  python -m venv .venv
+fi
 source .venv/bin/activate
 python -m pip install --upgrade pip
 

@@ -49,7 +49,8 @@ it is a much smaller share, and the Python engine dominates. So:
 plus your system `ssh`, so you can start, stop, shell into, and run jobs on the pod
 without touching the RunPod web UI. Its headline trick: **run one command and have the pod
 power itself off the moment the command finishes** (starting the pod first if it was
-stopped), so you never pay for idle GPU time. No tmux required — jobs run detached.
+stopped), so you never pay for idle GPU time. Jobs run detached (`setsid`); the
+interactive shell lives in **tmux**, so a lost connection never kills it.
 
 ```bash
 pip install -r scripts/runpod/requirements.txt   # installs the runpod SDK
@@ -89,7 +90,8 @@ python scripts/runpod/manage_pod.py status           # status + SSH command + ru
 python scripts/runpod/manage_pod.py start            # resume the pod, wait for SSH, git pull
 python scripts/runpod/manage_pod.py pull             # git pull the repo on the running pod
 python scripts/runpod/manage_pod.py stop             # stop it (GPU billing ends; volume persists)
-python scripts/runpod/manage_pod.py ssh              # interactive shell on the pod
+python scripts/runpod/manage_pod.py ssh              # resumable shell (tmux) on the pod
+python scripts/runpod/manage_pod.py ssh --plain      # plain shell, no tmux
 python scripts/runpod/manage_pod.py ssh -- nvidia-smi  # or a one-off command
 python scripts/runpod/manage_pod.py logs             # re-attach to a running job's output
 
@@ -102,8 +104,20 @@ python scripts/runpod/manage_pod.py run -- kaisparov train --config \
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
 
+`ssh` opens (or re-attaches to) a tmux session named `main`, started in the repo with the
+venv active. If the connection drops, it reconnects to the same session by itself; if you
+close the terminal, running `ssh` again resumes it where you left it (`Ctrl-b d` detaches
+on purpose). tmux is reinstalled each session — the container disk is wiped on stop — from
+.deb files cached on the volume (`/workspace/.cache/tmux-debs`), so only the first install
+needs apt. If it can't be installed, `ssh` falls back to a plain shell and says so.
+
+When the command **fails**, `run` does not stop the pod: it keeps it up so you can `ssh` in
+and debug, and stops it once nobody has been connected (no SSH shell, no running job) for
+`--fail-grace` minutes (default 30; `0` stops at once). `Ctrl-C` during that wait leaves the
+pod running for good. A success still stops the pod straight away.
+
 `run` builds the repo's `.venv` on first use (it runs `setup_pod.sh` automatically if the
-venv is missing), then executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with that
+venv is missing, or broken — a venv whose Python vanished with a change of pod image), then executes from `RUNPOD_REPO_DIR` (`/workspace/kAIsparov`) with that
 venv activated, so relative paths (`config/...`) and the `kaisparov` entry point work
 directly. `kaisparov train` writes checkpoints and TensorBoard metrics under `runs/<id>/`
 on the volume — exactly as it does locally — which `pull_runs.ps1` then brings home.
