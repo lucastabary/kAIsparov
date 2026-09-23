@@ -149,6 +149,9 @@ pytest                                          # tests, in parallel (-n0 to deb
   a `.py` file Claude edits is ruff-formatted right away; a `git commit` by Claude first
   runs the five CI steps and is **blocked** if one fails (~1.5 min; a Markdown-only
   change skips them); after a commit, `graphify update .` runs in the background.
+- **Skills** (`.claude/skills/`): `/ship` (branch → commits → fast-forward → push once
+  the user says yes), `/new-bench-problem` and `/new-backend` (the recipes of
+  *Gotchas* above, step by step). Keep them in step with the rules they encode.
 - **Permissions**: the read-only git commands and the checks run without prompting;
   reading `credentials.txt` / `.env.local`, force-pushing, `git clean` and deleting
   `runs/` or `data/` are denied — even in bypass mode.
