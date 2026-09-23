@@ -510,7 +510,7 @@ ruff check . && ruff format --check .   # lint + format (notebooks excluded)
 mypy src/kaisparov                       # static types (game_interface excluded)
 lint-imports                             # architecture contracts (pyproject.toml)
 pytest                                    # the suite, in parallel (xdist; -n0 to debug)
-pre-commit install                        # run the above on commit
+pre-commit install                        # ruff on commit + Conventional Commit messages
 ```
 
 CI (`.github/workflows/ci.yml`) runs ruff + mypy + import contracts + pytest on CPU

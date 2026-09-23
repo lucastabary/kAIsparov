@@ -94,9 +94,11 @@ pytest                                          # tests, in parallel (-n0 to deb
 ## Git
 
 - **Commits**: Conventional Commits — `type(scope): imperative subject`, lowercase and
-  concise. Types in use: `feat`, `fix`, `perf`, `docs`, `tooling`; the scope is the
-  package touched (`core`, `model`, `training`, `train`, `types`, …). One logical change
-  per commit; add a body explaining the *why* when it isn't obvious from the subject.
+  concise. Types: `feat`, `fix`, `perf`, `refactor`, `docs`, `tooling`, `test`, `build`,
+  `revert`; the scope is the package touched (`core`, `model`, `training`, `train`,
+  `types`, …). One logical change per commit; add a body explaining the *why* when it
+  isn't obvious from the subject. A `commit-msg` hook rejects any other message
+  (`.pre-commit-config.yaml`; run `pre-commit install` once per clone).
 - **Branches**: do the work on a short-lived branch off `main` (`fix/…`, `feat/…`), then
   merge back — fast-forward to keep history linear (no merge commit unless a real branch
   topology needs one). `main` is the integration branch and stays green.

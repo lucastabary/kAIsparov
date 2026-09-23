@@ -1,17 +1,30 @@
-# Run `pre-commit install` once, then hooks run automatically on `git commit`.
+# Run `pre-commit install` once, then hooks run automatically on `git commit`: the
+# checks below on the staged files, and the commit message against Conventional Commits.
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]  # only the message check runs at commit-msg
+exclude: ^\.claude/skills/graphify/  # installed and managed by graphify
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.5  # same as requirements-dev.txt
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
         args: [--maxkb=1024]
+
+  # `type(scope): subject`, with the types CLAUDE.md lists (Git section).
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, perf, refactor, docs, tooling, test, build, revert]
