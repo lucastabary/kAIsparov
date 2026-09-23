@@ -1,0 +1,47 @@
+# high_entropy v4 — phase 0 · won endgames (K + 3 majors vs a bare king)
+#   run it through the recipe:  kaisparov train --config config/experiments/high_entropy_all.yaml
+#
+# Only this stage's own settings are here: the ones shared by the whole curriculum
+# (width, reward, rollout/eval shape, ...) live in high_entropy_all.yaml. Run this
+# file on its own and you get the defaults instead of those — go through the recipe.
+#
+# Why this phase: with checkmate_only, the balanced 4-piece boards of phase 1a almost
+# never end in mate (~1.5% of games in the first high_entropy run), so PPO had nothing
+# to learn from. Here every position is a forced win — the learner always plays the
+# side with three queens/rooks against a lone king — so mates happen from the start
+# and the policy and the critic both get a signal before the board gets balanced.
+# Low entropy: the goal is to *learn* to mate, not to explore.
+#
+# Sized on random play (400 games, a random mover on the strong side): K + 2 majors
+# against the usual material-heavy pool mates in 6% of games — the lone king takes
+# every piece left hanging, and the game dies as insufficient material. K + 3 majors
+# against a random king mates in 16%; the rest are mostly stalemates and games cut
+# at the ply limit, i.e. exactly what the model has to learn to avoid.
+
+title: "high_entropy v4 - phase 0 (won endgames)"
+
+epochs: 200             # short: a warm-up, not the curriculum
+
+curriculum:
+  name: "won endgames: K + 3 majors vs K"
+  max_pieces_per_side: 4    # the learner's side: king + three queens/rooks
+  defender_pieces: 1        # the opponent: a bare king; the learner always plays the strong side
+  allow_major: true
+  allow_minor: false        # KB/KN vs K cannot mate: majors only, every position is won
+  allow_pawns: false
+  ensure_kings_safe: true   # never start with a side in check
+
+rollout:
+  pool:                     # a random king: a material one grabs every hung piece -> draw
+    opponents:
+      - {kind: random, weight: 1.0}
+  max_steps_per_episode: 100 # room to find the mate; phase 1a goes back to 60
+
+ppo:
+  learning_rate: 0.0005     # v3/v4's setting; 1e-3 was too hot
+  # Very low. At 0.01, with ~60 legal moves (entropy ~3.6), the entropy term was still
+  # ~30x the policy loss, and 40 epochs showed no learning (win rate flat at ~15%).
+  entropy_coef: 0.003
+
+eval:
+  max_plies: 120

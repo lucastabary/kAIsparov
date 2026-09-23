@@ -13,19 +13,22 @@
 # set from the previous run. So each phase file holds only what changes from the
 # phase before it.
 #
-# Same curriculum as scratch_v4 (opponents DEFEND from epoch 1 via avoid_king_suicide
-# in config/pools.yaml; pure outcome reward, no shaping), but wider and pushed toward
-# more exploration: hidden_dim 32->64, entropy_coef x4, more epochs at every stage.
+# Same curriculum as scratch_v4 (pure outcome reward, no shaping), but wider, with a
+# won-endgame warm-up first, and pushed toward more exploration once the model can
+# mate: hidden_dim 32->64, low entropy through phases 0-1 (a checkmate-only reward is
+# too sparse to learn under a big entropy bonus), then entropy_coef x4 from phase 2.
 # Goal: a more robust, less exploitable, more "creative" policy than v4.
 
-title: "high_entropy v4 - full curriculum (phases 1a -> 3)"
+title: "high_entropy v4 - full curriculum (phases 0 -> 3)"
 description: >
-  Sound play from 4-piece endgames to the full game, with hidden_dim 64 and 4x the
-  entropy bonus of scratch_v4: wider, more exploratory, less brittle final policy.
+  From won endgames to the full game, with hidden_dim 64: learn to mate at low
+  entropy, then explore with 4x the entropy bonus of scratch_v4 — wider, more
+  exploratory, less brittle final policy.
 
 stages:
-  - high_entropy_phase1-1.yaml   # 4 pieces/side, no pawns — force a sound king capture
-  - high_entropy_phase1-2.yaml   # same, but opponents defend their king
+  - high_entropy_phase0.yaml     # won endgames: K + 3 majors vs a bare king
+  - high_entropy_phase1-1.yaml   # 4 pieces/side, no pawns — mate on a balanced board
+  - high_entropy_phase1-2.yaml   # same, but opponents never walk into a mate in one
   - high_entropy_phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool
   - high_entropy_phase3.yaml     # standard starting position, defending self-play
 

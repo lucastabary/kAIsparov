@@ -10,6 +10,12 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **Won-endgame curriculum**: `curriculum.defender_pieces` gives the side the learner
+  plays against fewer pieces (`1` = a bare king), and seats the learner on the strong
+  side. `high_entropy` opens with such a phase 0 (K + 3 majors vs K), and runs phases
+  0–1 at low entropy: its first run, checkmate-only at `entropy_coef: 0.08`, mated in
+  ~1.5% of games and learned nothing.
+
 - **Chain configs carry the shared settings**: besides its `stages:` list, a chain
   config may hold any training setting, applied to every stage under the stage's own
   values. The `high_entropy` phases now hold only what changes from one phase to the

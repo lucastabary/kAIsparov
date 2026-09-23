@@ -1,18 +1,22 @@
-# high_entropy v4 — phase 1a/4 · sound play from the start (4-piece endgames)
-#   run it through the recipe:  kaisparov train --config config/experiments/high_entropy_all.yaml
-#   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
+# high_entropy v4 — phase 1a · checkmate on balanced 4-piece boards
+#   part of high_entropy_all.yaml; to run it alone:
+#   1) run phase0, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_phase1-1.yaml
 #
-# Only this stage's own settings are here: the ones shared by the whole curriculum
-# (width, reward, rollout/eval shape, ...) live in high_entropy_all.yaml. Run this
-# file on its own and you get the defaults instead of those — go through the recipe.
+# Only what changes from phase 0 is here; everything else is inherited from it.
 #
-# Stage goal (unchanged from v4): in tiny 4-piece (per side) piece-only endgames,
-# learn to force a *sound* king capture against defenders, over a horizon short
-# enough for the sparse +/-1 to propagate and the critic to fit it.
+# Stage goal: the model can mate a bare king (phase 0); now both sides get up to 4
+# pieces, so it has to *make* the winning position before it can mate, over a horizon
+# short enough for the sparse +/-1 to propagate and the critic to fit it. Entropy stays
+# low, as in phase 0: with a reward this sparse, a high entropy bonus drowned the
+# policy gradient (0.08 in the first run: ~100x the policy loss, nothing learned).
+
+resume_from_run: PASTE_PHASE0_RUN_ID_HERE
 
 title: "high_entropy v4 - phase 1a (4 pieces)"
 
-epochs: 500             # 5x v4's 100 — wider net + higher entropy needs more iterations to settle
+epochs: 500             # 5x v4's 100: mates are rare on a balanced board, the signal is slow
 
 curriculum:
   name: "4 pieces/side, no pawns"
@@ -20,15 +24,16 @@ curriculum:
   allow_major: true
   allow_minor: true
   allow_pawns: false
-  ensure_kings_safe: true   # no free ply-0 king capture
+  ensure_kings_safe: true   # never start with a side in check
+  defender_pieces: null     # balanced again (phase 0 gave the opponent a bare king)
 
 rollout:
   pool: v4_phase1-1         # random + material, both avoid_king_suicide: false; no snapshots
-  max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
+  max_steps_per_episode: 60 # short endgames; a mate is reachable fast
 
 ppo:
   learning_rate: 0.0005     # v3/v4's setting; 1e-3 was too hot
-  entropy_coef: 0.08        # v4 x4 (0.02 -> 0.08): push exploration harder for a more creative policy
+  entropy_coef: 0.003       # very low, as phase 0: learn to mate first, explore from phase 2
 
 eval:
   max_plies: 120

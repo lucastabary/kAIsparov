@@ -1,4 +1,4 @@
-# high_entropy v4 — phase 2/4 · 10 pieces + pawns, snapshots defend
+# high_entropy v4 — phase 2 · 10 pieces + pawns, snapshots defend
 #   part of high_entropy_all.yaml; to run it alone:
 #   1) run phase1-2, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
@@ -8,7 +8,7 @@
 #
 # Same stage goal as scratch_v4 stage2: real material and pawns appear, and the
 # snapshot stream (past-selves) joins the pool. Every opponent defends its own king
-# (avoid_king_suicide, in v4_phase2), so the model must keep forcing sound captures
+# (avoid_king_suicide, in v4_phase2), so the model must keep forcing sound mates
 # as it scales up to a bigger board — no free one-ply rush.
 
 resume_from_run: PASTE_PHASE1_2_RUN_ID_HERE
@@ -18,7 +18,7 @@ description: |
   Continue phase 1 up to 10 pieces per side WITH all piece types and pawns, longer
   games. Pure outcome reward kept. Pool switched to v4_phase2: all opponents defend
   their king, snapshot stream added. LR dropped to 3e-4. Entropy kept pushed up
-  (x4 vs scratch_v4) and more epochs for a more robust, creative policy.
+  from here on (x4 vs scratch_v4) and more epochs for a more robust, creative policy.
 
 # v4 used 240 — the biggest distribution jump of the curriculum (4 pieces / no pawns
 # -> 10 pieces + pawns), now fully guarded, plus a wider net and higher entropy to settle.
@@ -35,7 +35,7 @@ rollout:
 
 ppo:
   learning_rate: 0.0003            # fine-tune, not restart
-  entropy_coef: 0.048              # v4 x4 (0.012 -> 0.048): anneal down from phase 1's 0.08, but still well above v4
+  entropy_coef: 0.048              # v4 x4 (0.012 -> 0.048): up from phase 1's 0.003 now that it can mate
 
 eval:
   max_plies: 160                   # longer games with more material

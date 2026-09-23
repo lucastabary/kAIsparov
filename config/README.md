@@ -101,6 +101,7 @@ learning easier.
 | `allow_major` | bool | `false` | Allow queens and rooks to be placed. |
 | `allow_minor` | bool | `true` | Allow bishops and knights. |
 | `allow_pawns` | bool | `true` | Allow pawns. |
+| `defender_pieces` | int \| null | `null` | Pieces (king included) of the side the learner plays **against**. `null` = balanced (`max_pieces_per_side` each, the learner's colour drawn at random). Set it and the learner always plays the strong side: `1` with majors only (`allow_minor: false`, `allow_pawns: false`) is a won endgame, K + queens/rooks vs a bare king (`high_entropy_phase0.yaml`). A resumed stage inherits it, so the next phase sets it back to `null`. |
 
 > Positions are **randomised**, not the standard opening. For denser, harder
 > positions raise `max_pieces_per_side` and enable all piece types (e.g. `16` with
@@ -200,6 +201,7 @@ title: "high_entropy v4 - full curriculum"
 description: "4-piece endgames -> the full game, wider net + more entropy."
 
 stages:
+  - high_entropy_phase0.yaml
   - high_entropy_phase1-1.yaml
   - high_entropy_phase1-2.yaml
   - high_entropy_phase2.yaml
