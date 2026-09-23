@@ -1,0 +1,42 @@
+# high_entropy v4 — phase 0b · bridge 1: K + 3 majors vs K + 1 major
+#   part of high_entropy_all.yaml; to run it alone:
+#   1) run phase0-1, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_phase0-2.yaml
+#
+# Only what changes from phase 0a is here; everything else is inherited from it.
+#
+# Why a bridge: phase 0a teaches the mate against a bare king, where nothing can be
+# captured. Put straight on balanced boards (phase 1a), that model lost its pieces to
+# the material opponent and drew by insufficient material: 1% wins, and in 155 of 186
+# draws it was behind in material. checkmate_only puts no price on a lost piece, so
+# the lesson has to come from positions where keeping pieces is how you still mate.
+# Here the defender has one queen/rook: the win is still forced, but a hung piece
+# now gets taken. The phase-0a model wins 30% of these (100 games vs this pool) —
+# plenty of signal.
+
+resume_from_run: PASTE_PHASE0_1_RUN_ID_HERE
+
+title: "high_entropy v4 - phase 0b (K + 3 majors vs K + 1 major)"
+
+epochs: 200
+
+curriculum:
+  name: "won, defended: K + 3 majors vs K + 1 major"
+  max_pieces_per_side: 4    # the learner's side: king + three queens/rooks
+  defender_pieces: 2        # the opponent: king + one queen/rook
+  allow_major: true
+  allow_minor: false
+  allow_pawns: false
+  ensure_kings_safe: true
+
+rollout:
+  pool: v4_phase1-1         # random + material: the material one takes every hung piece
+  max_steps_per_episode: 80
+
+ppo:
+  # 0.003 was right for phase 0a (entropy 3.6 -> 0.9 while the win rate went 14% -> 92%)
+  # but froze the policy on phase 1a (0.70 -> 0.25) into a line that draws. From here
+  # the model has to find new play again: a bit more exploration, still small next to
+  # the policy loss at these entropies (0.01 x ~0.5-1).
+  entropy_coef: 0.01

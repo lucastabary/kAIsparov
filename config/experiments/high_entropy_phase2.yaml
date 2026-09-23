@@ -35,7 +35,7 @@ rollout:
 
 ppo:
   learning_rate: 0.0003            # fine-tune, not restart
-  entropy_coef: 0.048              # v4 x4 (0.012 -> 0.048): up from phase 1's 0.003 now that it can mate
+  entropy_coef: 0.048              # v4 x4 (0.012 -> 0.048): up from phase 1's 0.01 now that it can mate
 
 eval:
   max_plies: 160                   # longer games with more material

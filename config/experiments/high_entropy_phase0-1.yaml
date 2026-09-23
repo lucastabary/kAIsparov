@@ -1,4 +1,4 @@
-# high_entropy v4 — phase 0 · won endgames (K + 3 majors vs a bare king)
+# high_entropy v4 — phase 0a · won endgames (K + 3 majors vs a bare king)
 #   run it through the recipe:  kaisparov train --config config/experiments/high_entropy_all.yaml
 #
 # Only this stage's own settings are here: the ones shared by the whole curriculum
@@ -18,7 +18,7 @@
 # against a random king mates in 16%; the rest are mostly stalemates and games cut
 # at the ply limit, i.e. exactly what the model has to learn to avoid.
 
-title: "high_entropy v4 - phase 0 (won endgames)"
+title: "high_entropy v4 - phase 0a (won endgames)"
 
 epochs: 200             # short: a warm-up, not the curriculum
 

@@ -14,9 +14,10 @@
 # phase before it.
 #
 # Same curriculum as scratch_v4 (pure outcome reward, no shaping), but wider, with a
-# won-endgame warm-up first, and pushed toward more exploration once the model can
-# mate: hidden_dim 32->64, low entropy through phases 0-1 (a checkmate-only reward is
-# too sparse to learn under a big entropy bonus), then entropy_coef x4 from phase 2.
+# won-endgame warm-up and two bridge phases first (a piece up against a defender that
+# can capture), and pushed toward more exploration once the model can mate:
+# hidden_dim 32->64, low entropy through phases 0-1 (a checkmate-only reward is too
+# sparse to learn under a big entropy bonus), then entropy_coef x4 from phase 2.
 # Goal: a more robust, less exploitable, more "creative" policy than v4.
 
 title: "high_entropy v4 - full curriculum (phases 0 -> 3)"
@@ -26,7 +27,9 @@ description: >
   exploratory, less brittle final policy.
 
 stages:
-  - high_entropy_phase0.yaml     # won endgames: K + 3 majors vs a bare king
+  - high_entropy_phase0-1.yaml   # won endgames: K + 3 majors vs a bare king
+  - high_entropy_phase0-2.yaml   # bridge: K + 3 majors vs K + 1 major (hung pieces get taken)
+  - high_entropy_phase0-3.yaml   # bridge: K + 3 vs K + 2, minors too
   - high_entropy_phase1-1.yaml   # 4 pieces/side, no pawns — mate on a balanced board
   - high_entropy_phase1-2.yaml   # same, but opponents never walk into a mate in one
   - high_entropy_phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool

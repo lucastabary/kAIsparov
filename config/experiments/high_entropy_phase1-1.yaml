@@ -1,18 +1,20 @@
 # high_entropy v4 — phase 1a · checkmate on balanced 4-piece boards
 #   part of high_entropy_all.yaml; to run it alone:
-#   1) run phase0, then:  kaisparov runs list   (copy its run id)
+#   1) run phase0-3, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
 #   3) kaisparov train --config config/experiments/high_entropy_phase1-1.yaml
 #
-# Only what changes from phase 0 is here; everything else is inherited from it.
+# Only what changes from phase 0c is here; everything else is inherited from it.
 #
-# Stage goal: the model can mate a bare king (phase 0); now both sides get up to 4
-# pieces, so it has to *make* the winning position before it can mate, over a horizon
-# short enough for the sparse +/-1 to propagate and the critic to fit it. Entropy stays
-# low, as in phase 0: with a reward this sparse, a high entropy bonus drowned the
-# policy gradient (0.08 in the first run: ~100x the policy loss, nothing learned).
+# Stage goal: the model can mate a bare king (phase 0a) and keep its pieces while a
+# piece up (bridges 0b, 0c); now the board is balanced, so it has to *make* the winning
+# position before it can mate, over a horizon short enough for the sparse +/-1 to
+# propagate and the critic to fit it. Entropy stays low: with a reward this sparse, a
+# high bonus drowns the policy gradient (0.08 in the first run: ~100x the policy loss,
+# nothing learned) — but not so low that the policy freezes (0.003 on these boards:
+# entropy 0.70 -> 0.25, stuck at 5% wins).
 
-resume_from_run: PASTE_PHASE0_RUN_ID_HERE
+resume_from_run: PASTE_PHASE0_3_RUN_ID_HERE
 
 title: "high_entropy v4 - phase 1a (4 pieces)"
 
@@ -25,7 +27,7 @@ curriculum:
   allow_minor: true
   allow_pawns: false
   ensure_kings_safe: true   # never start with a side in check
-  defender_pieces: null     # balanced again (phase 0 gave the opponent a bare king)
+  defender_pieces: null     # balanced again (phases 0a-0c gave the opponent fewer pieces)
 
 rollout:
   pool: v4_phase1-1         # random + material, both avoid_king_suicide: false; no snapshots
@@ -33,7 +35,7 @@ rollout:
 
 ppo:
   learning_rate: 0.0005     # v3/v4's setting; 1e-3 was too hot
-  entropy_coef: 0.003       # very low, as phase 0: learn to mate first, explore from phase 2
+  entropy_coef: 0.01        # low, as the bridges: learn to mate first, explore from phase 2
 
 eval:
   max_plies: 120

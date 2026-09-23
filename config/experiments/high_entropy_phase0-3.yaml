@@ -1,0 +1,24 @@
+# high_entropy v4 — phase 0c · bridge 2: K + 3 pieces vs K + 2 pieces
+#   part of high_entropy_all.yaml; to run it alone:
+#   1) run phase0-2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_phase0-3.yaml
+#
+# Only what changes from phase 0b is here; everything else is inherited from it.
+#
+# Halfway to the balanced boards of phase 1a: every piece type but pawns on both
+# sides, and the defender now has two pieces, so it can trade and counter-attack. The
+# learner is still a piece up. (The phase-0a model won 6% of these, against 1% on
+# phase 1a's boards; phase 0b should start it well above that.)
+
+resume_from_run: PASTE_PHASE0_2_RUN_ID_HERE
+
+title: "high_entropy v4 - phase 0c (K + 3 vs K + 2)"
+
+epochs: 250
+
+curriculum:
+  name: "a piece up: K + 3 vs K + 2, no pawns"
+  max_pieces_per_side: 4    # the learner's side: king + three pieces
+  defender_pieces: 3        # the opponent: king + two pieces
+  allow_minor: true         # bishops and knights join, on both sides
