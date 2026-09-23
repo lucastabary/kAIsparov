@@ -2,7 +2,6 @@
 # checks below on the staged files, and the commit message against Conventional Commits.
 default_install_hook_types: [pre-commit, commit-msg]
 default_stages: [pre-commit]  # only the message check runs at commit-msg
-exclude: ^\.claude/skills/graphify/  # installed and managed by graphify
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

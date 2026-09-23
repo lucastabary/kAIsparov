@@ -19,7 +19,6 @@
       "Bash(./.env/Scripts/python.exe -m mypy *)",
       "Bash(./.env/Scripts/python.exe -m pytest *)",
       "Bash(./.env/Scripts/lint-imports.exe *)",
-      "Bash(py -3.13 -m graphify *)",
       "PowerShell(git status *)",
       "PowerShell(git diff *)",
       "PowerShell(git log *)",
@@ -47,24 +46,6 @@
   },
   "hooks": {
     "PreToolUse": [
-      {
-        "matcher": "Bash|Grep",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "graphify hook-guard search"
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Glob",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "graphify hook-guard read"
-          }
-        ]
-      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -98,28 +79,6 @@
             "type": "command",
             "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/format_py.py\"",
             "timeout": 30
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "Bash(git commit *)",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && py -3.13 -m graphify update . >/dev/null 2>&1 || true",
-            "async": true
-          }
-        ]
-      },
-      {
-        "matcher": "PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "if": "PowerShell(git commit *)",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && py -3.13 -m graphify update . >/dev/null 2>&1 || true",
-            "async": true
           }
         ]
       }

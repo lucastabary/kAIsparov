@@ -110,8 +110,7 @@ pytest                                          # tests, in parallel (-n0 to deb
   means*, not every commit: add an entry for a change someone would need explained.
 - **Before committing / merging**: `ruff check . && ruff format --check .`, `mypy
   src/kaisparov`, `lint-imports` and `pytest` must pass — all five are CI steps
-  (`.github/workflows/ci.yml`), and mypy is the easy one to forget. After code changes, also run `graphify update .`
-  (see below).
+  (`.github/workflows/ci.yml`), and mypy is the easy one to forget.
 - **Releases**: the version comes from the `vX.Y.Z` tag (setuptools-scm) — never write
   one into a file. Rename `[Unreleased]` in `CHANGELOG.md` to `[X.Y.Z] - <date>`, commit,
   push the tag; the Release workflow publishes that section.
@@ -150,20 +149,10 @@ pytest                                          # tests, in parallel (-n0 to deb
 - **Hooks** (`settings.json`, scripts in `.claude/hooks/`, run with the `.env` venv):
   a `.py` file Claude edits is ruff-formatted right away; a `git commit` by Claude first
   runs the five CI steps and is **blocked** if one fails (~1.5 min; a Markdown-only
-  change skips them); after a commit, `graphify update .` runs in the background.
+  change skips them). It checks the checkout the shell is in, so a worktree works.
 - **Skills** (`.claude/skills/`): `/ship` (branch → commits → fast-forward → push once
   the user says yes), `/new-bench-problem` and `/new-backend` (the recipes of
   *Gotchas* above, step by step). Keep them in step with the rules they encode.
 - **Permissions**: the read-only git commands and the checks run without prompting;
   reading `credentials.txt` / `.env.local`, force-pushing, `git clean` and deleting
   `runs/` or `data/` are denied — even in bypass mode.
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
