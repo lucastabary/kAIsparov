@@ -76,7 +76,7 @@ endgame_starter:
 
 
 # ---------------------------------------------------------------- scratch v4 curriculum
-# Three presets, one per stage of config/experiments/scratch_v4_stage{1,2,3}.yaml.
+# One preset per phase of config/experiments/scratch_v4/.
 #
 # Design: EVERY opponent defends its own king (avoid_king_suicide) in all three phases,
 # so no "rush the enemy king" free win is ever learnable. The guard only removes free

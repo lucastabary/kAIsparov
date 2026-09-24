@@ -444,7 +444,8 @@ reproducibility.
 - `config/default.yaml` — the documented defaults.
 - `config/experiments/smoke.yaml` — a ~1-minute CPU sanity run.
 - `config/experiments/resume_example.yaml` — how to continue a run from a config.
-- Keep **one YAML per experiment** under `config/experiments/`.
+- Under `config/experiments/`, a single run is **one YAML**; a multi-phase recipe is
+  **a folder**: `all.yaml` (the chain to run) + `phase1.yaml`, `phase2.yaml`, …
 
 **Documenting a run.** `title` and `description` fields let you record the intent of
 each experiment; they're stored in `run.json` and shown by `kaisparov runs`.

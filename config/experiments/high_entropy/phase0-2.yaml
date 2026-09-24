@@ -1,8 +1,8 @@
 # high_entropy v4 — phase 0b · bridge 1: K + 3 majors vs K + 1 major
-#   part of high_entropy_all.yaml; to run it alone:
+#   part of all.yaml; to run it alone:
 #   1) run phase0-1, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/high_entropy_phase0-2.yaml
+#   3) kaisparov train --config config/experiments/high_entropy/phase0-2.yaml
 #
 # Only what changes from phase 0a is here; everything else is inherited from it.
 #

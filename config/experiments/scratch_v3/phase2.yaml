@@ -1,7 +1,7 @@
 # scratch v3 — stage 2/3 · 12 pieces + pawns, lower LR
 #   1) run stage 1, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/scratch_v3_stage2.yaml
+#   3) kaisparov train --config config/experiments/scratch_v3/phase2.yaml
 #
 # Inherits architecture (rgcn/hidden_dim=32), reward (checkmate_only) and any field
 # not overridden here from the stage-1 parent. Only the deltas below change.

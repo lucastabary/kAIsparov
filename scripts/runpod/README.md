@@ -97,10 +97,7 @@ python scripts/runpod/manage_pod.py logs             # re-attach to a running jo
 
 # Start (if needed) → git pull → train → power off at the end. The job runs detached
 # on the pod (so it survives an SSH drop) and its output is streamed here live:
-python scripts/runpod/manage_pod.py run -- kaisparov train --config \
-  config/experiments/scratch_v4_stage1.yaml \
-  config/experiments/scratch_v4_stage2.yaml \
-  config/experiments/scratch_v4_stage3.yaml
+python scripts/runpod/manage_pod.py run -- kaisparov train --config config/experiments/high_entropy/all.yaml
 python scripts/runpod/manage_pod.py run --keep -- kaisparov eval --games 60   # don't stop after
 ```
 
@@ -135,10 +132,7 @@ the pod yourself.
 Easiest is to drive it from your machine (starts, streams, and stops the pod for you):
 
 ```bash
-python scripts/runpod/manage_pod.py run -- kaisparov train --config \
-  config/experiments/scratch_v4_stage1.yaml \
-  config/experiments/scratch_v4_stage2.yaml \
-  config/experiments/scratch_v4_stage3.yaml
+python scripts/runpod/manage_pod.py run -- kaisparov train --config config/experiments/high_entropy/all.yaml
 ```
 
 If you'd rather work on the pod directly (RunPod web terminal or SSH), launch it detached
@@ -146,8 +140,7 @@ so it survives a disconnect, and tail the log:
 
 ```bash
 cd /workspace/kAIsparov && git pull --ff-only && source .venv/bin/activate
-setsid bash -c 'kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
-  config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml \
+setsid bash -c 'kaisparov train --config config/experiments/high_entropy/all.yaml \
   > runs/train.log 2>&1' &
 tail -f runs/train.log
 ```

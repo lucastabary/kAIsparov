@@ -7,8 +7,11 @@ document lists **every parameter**, its type, default, and what it does.
 - CLI flags override the file (see [Overrides](#cli-overrides)).
 - The **resolved** config (all defaults filled in) is saved to `runs/<id>/config.yaml`
   and `run.json`, so every run is fully reproducible.
-- Start from [`default.yaml`](default.yaml); keep one file per experiment under
-  [`experiments/`](experiments/).
+- Start from [`default.yaml`](default.yaml); experiments live under
+  [`experiments/`](experiments/): a single run is one file there (`smoke.yaml`), a
+  multi-phase recipe is a folder of its own — `all.yaml`, the entry point that chains
+  the phases (see [Chaining stages](#chaining-stages)), and `phase1.yaml`,
+  `phase2.yaml`, … (`experiments/high_entropy/`, `experiments/scratch_v4/`, …).
 - Benchmark suites are a different kind of config and live in
   [`benchmarks/`](benchmarks/) (`kaisparov bench run config/benchmarks/smoke.yaml`);
   reward presets are in [`rewards.yaml`](rewards.yaml).
@@ -105,7 +108,7 @@ learning easier.
 | `allow_major` | bool | `false` | Allow queens and rooks to be placed. |
 | `allow_minor` | bool | `true` | Allow bishops and knights. |
 | `allow_pawns` | bool | `true` | Allow pawns. |
-| `defender_pieces` | int \| null | `null` | Pieces (king included) of the side the learner plays **against**. `null` = balanced (`max_pieces_per_side` each, the learner's colour drawn at random). Set it and the learner always plays the strong side: `1` with majors only (`allow_minor: false`, `allow_pawns: false`) is a won endgame, K + queens/rooks vs a bare king (`high_entropy_phase0-1.yaml`); `2`, `3` leave the defender pieces to fight with (the bridge phases `0-2`, `0-3`). A resumed stage inherits it, so the next phase sets it back to `null`. |
+| `defender_pieces` | int \| null | `null` | Pieces (king included) of the side the learner plays **against**. `null` = balanced (`max_pieces_per_side` each, the learner's colour drawn at random). Set it and the learner always plays the strong side: `1` with majors only (`allow_minor: false`, `allow_pawns: false`) is a won endgame, K + queens/rooks vs a bare king (`high_entropy/phase0-1.yaml`); `2`, `3` leave the defender pieces to fight with (the bridge phases `0-2`, `0-3`). A resumed stage inherits it, so the next phase sets it back to `null`. |
 
 > Positions are **randomised**, not the standard opening. For denser, harder
 > positions raise `max_pieces_per_side` and enable all piece types (e.g. `16` with
@@ -191,7 +194,7 @@ each stage after the first **resumes from the run the previous one produced** �
 run id to copy by hand (any `resume_from_run:` in those files is overridden):
 
 ```bash
-kaisparov train --config   config/experiments/scratch_v3_stage1.yaml   config/experiments/scratch_v3_stage2.yaml   config/experiments/scratch_v3_stage3.yaml
+kaisparov train --config   config/experiments/scratch_v3/phase1.yaml   config/experiments/scratch_v3/phase2.yaml   config/experiments/scratch_v3/phase3.yaml
 ```
 
 To name a recipe once, write a **chain config**: a YAML holding a `stages:` list.
@@ -200,18 +203,18 @@ in it is **shared by every stage**, so each stage file keeps only what changes f
 the stage before it (a resumed stage inherits the rest from the previous run).
 
 ```yaml
-# config/experiments/high_entropy_all.yaml
+# config/experiments/high_entropy/all.yaml
 title: "high_entropy v4 - full curriculum"
 description: "4-piece endgames -> the full game, wider net + more entropy."
 
 stages:
-  - high_entropy_phase0-1.yaml
-  - high_entropy_phase0-2.yaml
-  - high_entropy_phase0-3.yaml
-  - high_entropy_phase1-1.yaml
-  - high_entropy_phase1-2.yaml
-  - high_entropy_phase2.yaml
-  - high_entropy_phase3.yaml
+  - phase0-1.yaml
+  - phase0-2.yaml
+  - phase0-3.yaml
+  - phase1-1.yaml
+  - phase1-2.yaml
+  - phase2.yaml
+  - phase3.yaml
 
 # shared by every stage; a stage that sets the same key wins
 hidden_dim: 64
@@ -221,14 +224,14 @@ ppo:
 ```
 
 ```bash
-kaisparov train --config config/experiments/high_entropy_all.yaml
+kaisparov train --config config/experiments/high_entropy/all.yaml
 ```
 
 | Rule | Detail |
 |------|--------|
 | Shared settings | Every key but `stages:` and `title` / `description` / `notes` (which document the recipe) applies to each stage, **under** the stage's own values; nested sections (`ppo:`, `rollout:`) merge key by key. A stage run on its own, outside the chain, does not get them — so the first stage is meant to be run through the recipe. |
 | Paths | Resolved next to the chain file first, then against the working directory — a recipe can sit beside its stages and still run from anywhere. |
-| Globs | An entry may be a pattern (`high_entropy_phase*.yaml`), expanded in **sorted** order. Prefer an explicit list when the order doesn't sort. |
+| Globs | An entry may be a pattern (`phase*.yaml`), expanded in **sorted** order. Prefer an explicit list when the order doesn't sort. |
 | Nesting | A stage may itself be a chain; it is expanded in place, its shared settings on top of the outer chain's. Loops are refused. |
 | Mixing | Chains and plain configs can be combined in one `--config` (`--config warmup.yaml recipe_all.yaml`). |
 
@@ -304,4 +307,4 @@ reward: aggressive
 **Fast CPU sanity run:** see [`experiments/smoke.yaml`](experiments/smoke.yaml).
 **Resuming:** see [`experiments/resume_example.yaml`](experiments/resume_example.yaml).
 **A whole curriculum in one command:** see
-[`experiments/high_entropy_all.yaml`](experiments/high_entropy_all.yaml).
+[`experiments/high_entropy/all.yaml`](experiments/high_entropy/all.yaml).

@@ -10,6 +10,11 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **One folder per recipe** in `config/experiments/`: `high_entropy/`, `scratch_v2/`,
+  `scratch_v3/`, `scratch_v4/`, each with an `all.yaml` entry point (new for the
+  scratch ones) and `phase1.yaml`, `phase2.yaml`, …; the single-run configs stay at the
+  top. `high_entropy_all.yaml` is now `high_entropy/all.yaml`, and so on.
+
 - **Entropy thermostat**: `ppo.target_entropy` makes the entropy coefficient adapt after
   every epoch to hold the policy's entropy at a fraction of its maximum (`log(n_legal)`
   per position) — SAC's automatic temperature. A fixed coefficient meant something

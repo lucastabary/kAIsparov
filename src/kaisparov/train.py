@@ -9,15 +9,15 @@ each stage after the first resumes from the run the previous stage produced (its
 latest checkpoint), so a whole recipe runs end to end without hand-copying run ids::
 
     python -m kaisparov.train --config \
-        config/experiments/scratch_stage1.yaml \
-        config/experiments/scratch_stage2.yaml \
-        config/experiments/scratch_stage3.yaml
+        config/experiments/scratch_v2/phase1.yaml \
+        config/experiments/scratch_v2/phase2.yaml \
+        config/experiments/scratch_v2/phase3.yaml
 
 Or name the recipe once: a config holding a ``stages:`` list is an entry point that
 expands to exactly that chain, and any other setting in it is shared by every stage
 (see :mod:`kaisparov.training.chain`)::
 
-    python -m kaisparov.train --config config/experiments/high_entropy_all.yaml
+    python -m kaisparov.train --config config/experiments/high_entropy/all.yaml
 """
 
 from __future__ import annotations

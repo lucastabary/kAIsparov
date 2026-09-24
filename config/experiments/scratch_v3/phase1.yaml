@@ -1,5 +1,5 @@
 # scratch v3 — stage 1/3 · "victory is the only thing that matters"
-#   kaisparov train --config config/experiments/scratch_v3_stage1.yaml
+#   kaisparov train --config config/experiments/scratch_v3/phase1.yaml
 #   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
 #
 # Philosophy vs v2: NO reward shaping. King-capture only (+/-1). The model must learn

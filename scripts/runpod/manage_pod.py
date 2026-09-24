@@ -37,10 +37,9 @@ Examples
     python scripts/runpod/manage_pod.py logs            # re-attach to a running job's output
     python scripts/runpod/manage_pod.py stop
 
-    # Start (if needed), git pull, run the v4 curriculum, then power the pod off at the end:
+    # Start (if needed), git pull, run a whole curriculum, then power the pod off at the end:
     python scripts/runpod/manage_pod.py run -- \
-        kaisparov train --config config/experiments/scratch_v4_stage1.yaml \
-        config/experiments/scratch_v4_stage2.yaml config/experiments/scratch_v4_stage3.yaml
+        kaisparov train --config config/experiments/high_entropy/all.yaml
 
 Notes
 -----

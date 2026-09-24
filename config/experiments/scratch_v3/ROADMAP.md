@@ -36,7 +36,7 @@ pressure to not blunder comes from the **opponent pool**, not from the reward.
 | hidden_dim | **32 (fixed across all stages)** | 32 | 32 |
 | epochs | 100 | 180 | 150 |
 
-Config files: `scratch_v3_stage{1,2,3}.yaml`. Stages 2–3 resume the previous stage's
+Config files: `phase{1,2,3}.yaml` in this folder (`all.yaml` runs the three). Stages 2–3 resume the previous stage's
 run id (paste it into `resume_from_run`). Architecture and reward are inherited; each
 stage overrides curriculum / pool / LR / entropy. North-star metric:
 `eval/winrate_vs_material`. (Historical: checkpoints were selected on

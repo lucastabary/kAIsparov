@@ -1,7 +1,7 @@
 # scratch v4 — stage 3/3 · the real game (standard starting position)
 #   1) run stage 2, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/scratch_v4_stage3.yaml
+#   3) kaisparov train --config config/experiments/scratch_v4/phase3.yaml
 #
 # Inherits architecture (rgcn/hidden_dim=32) and reward (checkmate_only) from the
 # stage-2 parent. `curriculum: null` disables the piece-count curriculum, so games start

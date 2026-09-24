@@ -1,5 +1,5 @@
 # scratch v4 — stage 1/3 · sound play from the start (4-piece endgames)
-#   kaisparov train --config config/experiments/scratch_v4_stage1.yaml
+#   kaisparov train --config config/experiments/scratch_v4/all.yaml
 #   tensorboard --logdir runs/   (watch eval/winrate_vs_material — vs_random saturates)
 #
 # v4 vs v3: the opponents now DEFEND their own king from epoch 1 (avoid_king_suicide),
@@ -35,7 +35,7 @@ curriculum:
 rollout:
   opponent: pool
   num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
-  pool: v4_phase1-1         # random + material, both avoid_king_suicide; no snapshots
+  pool: v4_phase1-2         # random + material, both avoid_king_suicide; no snapshots
   episodes_per_epoch: 16    # less noisy PPO gradient than 8
   max_steps_per_episode: 60 # short endgames; a king capture is reachable fast
 

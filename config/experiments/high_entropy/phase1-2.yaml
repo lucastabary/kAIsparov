@@ -1,8 +1,8 @@
 # high_entropy v4 — phase 1b · opponents start defending (4-piece endgames)
-#   part of high_entropy_all.yaml; to run it alone:
+#   part of all.yaml; to run it alone:
 #   1) run phase1-1, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/high_entropy_phase1-2.yaml
+#   3) kaisparov train --config config/experiments/high_entropy/phase1-2.yaml
 #
 # Only what changes from phase 1a is here; everything else is inherited from it.
 # The pool switches to opponents that defend their own king (avoid_king_suicide:

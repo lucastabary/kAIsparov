@@ -1,8 +1,8 @@
 # high_entropy v4 — phase 1a · checkmate on balanced 4-piece boards
-#   part of high_entropy_all.yaml; to run it alone:
+#   part of all.yaml; to run it alone:
 #   1) run phase0-3, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/high_entropy_phase1-1.yaml
+#   3) kaisparov train --config config/experiments/high_entropy/phase1-1.yaml
 #
 # Only what changes from phase 0c is here; everything else is inherited from it.
 #

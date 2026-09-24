@@ -4,15 +4,15 @@ A normal config describes one run. A **chain config** describes a recipe: a
 ``stages:`` list of other config files, so a multi-phase curriculum gets one
 memorable entry point instead of a long command line::
 
-    # config/experiments/high_entropy_all.yaml
+    # config/experiments/high_entropy/all.yaml
     title: "high_entropy v4 — full curriculum"
     stages:
-      - high_entropy_phase1-1.yaml
-      - high_entropy_phase1-2.yaml
-      - high_entropy_phase2.yaml
-      - high_entropy_phase3.yaml
+      - phase1-1.yaml
+      - phase1-2.yaml
+      - phase2.yaml
+      - phase3.yaml
 
-    kaisparov train --config config/experiments/high_entropy_all.yaml
+    kaisparov train --config config/experiments/high_entropy/all.yaml
 
 which is exactly equivalent to passing the four files by hand: each stage after the
 first resumes from the run the previous one produced (see :mod:`kaisparov.train`).
@@ -21,7 +21,7 @@ Rules:
 
 - Entries are resolved **relative to the chain file** first, then to the working
   directory, so a recipe can sit next to its stages and still be run from anywhere.
-- An entry may be a glob (``high_entropy_phase*.yaml``); matches are expanded in
+- An entry may be a glob (``phase*.yaml``); matches are expanded in
   sorted order. Prefer an explicit list when the order matters and doesn't sort.
 - A stage may itself be a chain — it is expanded in place (loops are refused).
 - Any other key is a **shared setting**: it applies to every stage, under the stage's

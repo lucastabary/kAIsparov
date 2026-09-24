@@ -1,5 +1,5 @@
 # high_entropy v4 — the whole curriculum in one command
-#   kaisparov train --config config/experiments/high_entropy_all.yaml
+#   kaisparov train --config config/experiments/high_entropy/all.yaml
 #   tensorboard --logdir runs/
 #
 # This file is the *entry point* of the recipe. It lists the stages to run, in order,
@@ -30,13 +30,13 @@ description: >
   exploratory, less brittle final policy.
 
 stages:
-  - high_entropy_phase0-1.yaml   # won endgames: K + 3 majors vs a bare king
-  - high_entropy_phase0-2.yaml   # bridge: K + 3 majors vs K + 1 major (hung pieces get taken)
-  - high_entropy_phase0-3.yaml   # bridge: K + 3 vs K + 2, minors too
-  - high_entropy_phase1-1.yaml   # 4 pieces/side, no pawns — mate on a balanced board
-  - high_entropy_phase1-2.yaml   # same, but opponents never walk into a mate in one
-  - high_entropy_phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool
-  - high_entropy_phase3.yaml     # standard starting position, defending self-play
+  - phase0-1.yaml   # won endgames: K + 3 majors vs a bare king
+  - phase0-2.yaml   # bridge: K + 3 majors vs K + 1 major (hung pieces get taken)
+  - phase0-3.yaml   # bridge: K + 3 vs K + 2, minors too
+  - phase1-1.yaml   # 4 pieces/side, no pawns — mate on a balanced board
+  - phase1-2.yaml   # same, but opponents never walk into a mate in one
+  - phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool
+  - phase3.yaml     # standard starting position, defending self-play
 
 # ---------------------------------------------------------------- shared by every stage
 model: rgcn

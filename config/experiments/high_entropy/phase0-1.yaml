@@ -1,8 +1,8 @@
 # high_entropy v4 — phase 0a · won endgames (K + 3 majors vs a bare king)
-#   run it through the recipe:  kaisparov train --config config/experiments/high_entropy_all.yaml
+#   run it through the recipe:  kaisparov train --config config/experiments/high_entropy/all.yaml
 #
 # Only this stage's own settings are here: the ones shared by the whole curriculum
-# (width, reward, rollout/eval shape, ...) live in high_entropy_all.yaml. Run this
+# (width, reward, rollout/eval shape, ...) live in all.yaml. Run this
 # file on its own and you get the defaults instead of those — go through the recipe.
 #
 # Why this phase: with checkmate_only, the balanced 4-piece boards of phase 1a almost

@@ -1,8 +1,8 @@
 # high_entropy v4 — phase 3 · the real game (standard starting position)
-#   part of high_entropy_all.yaml; to run it alone:
+#   part of all.yaml; to run it alone:
 #   1) run phase2, then:  kaisparov runs list   (copy its run id)
 #   2) paste it below as resume_from_run
-#   3) kaisparov train --config config/experiments/high_entropy_phase3.yaml
+#   3) kaisparov train --config config/experiments/high_entropy/phase3.yaml
 #
 # Only what changes from phase 2 is here; everything else (including its 400 epochs)
 # is inherited from it. `curriculum: null` disables the piece-count curriculum, so
