@@ -10,29 +10,32 @@
 # to play.
 #
 # Same stage goal as scratch_v4 stage3: full game, sound play. Pool switched to
-# v4_phase3: defending self-play (snapshots) dominates (weighted above the
-# baselines) and every opponent defends its own king. This phase still gets more
-# exploration room than v4 did, for a less brittle, more creative final policy.
+# he_phase3: defending self-play (snapshots) dominates (weighted above the
+# baselines), blundering 5% of its moves, and every opponent defends its own king.
+# This phase still gets more exploration room than v4 did (0.006), for a less
+# brittle, more creative final policy.
 
 resume_from_run: PASTE_PHASE2_RUN_ID_HERE
 
 title: "high_entropy v4 - phase 3 (real game)"
 description: |
   Final phase: full standard starting position, longest games. Pure outcome reward
-  kept. Pool tilts toward defending self-play; every opponent defends its king.
-  Lowest LR (1e-4) of the curriculum; entropy still x4 vs scratch_v4 and more
-  epochs, aiming for a more robust/creative final policy rather than pure sharpening.
+  kept. Pool tilts toward defending, fallible self-play; every opponent defends its
+  king. Lowest LR (1e-4) of the curriculum; entropy above scratch_v4's but in
+  proportion to the policy loss, aiming for a robust/creative final policy.
 
 # Disable the curriculum -> start from the normal chess position ("vraie partie").
 curriculum: null
 
 rollout:
-  pool: v4_phase3                  # material + random + snapshots (weighted up), all guarded
+  pool: he_phase3                  # material + heuristic + random + fallible snapshots (weighted up)
   max_steps_per_episode: 150
 
 ppo:
   learning_rate: 0.0001            # refinement only
-  entropy_coef: 0.024              # v4 x4 (0.006 -> 0.024): sharpen less than v4, keep some exploration alive
+  # 0.024 (v4 x4) made the entropy term ~60x the policy loss (entropy ~2.7,
+  # |policy| ~0.001): entropy rose, 2-5% wins. 0.01, still above v4's 0.006.
+  entropy_coef: 0.01
 
 eval:
   max_plies: 200

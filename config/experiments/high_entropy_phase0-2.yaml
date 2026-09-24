@@ -12,8 +12,9 @@
 # draws it was behind in material. checkmate_only puts no price on a lost piece, so
 # the lesson has to come from positions where keeping pieces is how you still mate.
 # Here the defender has one queen/rook: the win is still forced, but a hung piece
-# now gets taken. The phase-0a model wins 30% of these (100 games vs this pool) —
-# plenty of signal.
+# now gets taken. The phase-0a model won 30% of these (100 games vs material x3 +
+# random) — plenty of signal; the heuristic minimax added since defends better, so
+# expect it to start lower.
 
 resume_from_run: PASTE_PHASE0_1_RUN_ID_HERE
 
@@ -31,7 +32,7 @@ curriculum:
   ensure_kings_safe: true
 
 rollout:
-  pool: v4_phase1-1         # random + material: the material one takes every hung piece
+  pool: he_phase1           # material + heuristic minimax + random: hung pieces get taken
   max_steps_per_episode: 80
 
 ppo:

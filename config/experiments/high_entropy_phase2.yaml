@@ -7,21 +7,23 @@
 # Only what changes from phase 1b is here; everything else is inherited from it.
 #
 # Same stage goal as scratch_v4 stage2: real material and pawns appear, and the
-# snapshot stream (past-selves) joins the pool. Every opponent defends its own king
-# (avoid_king_suicide, in v4_phase2), so the model must keep forcing sound mates
-# as it scales up to a bigger board — no free one-ply rush.
+# snapshot stream (past-selves) joins the pool, blundering 10% of its moves (a
+# stronger opponent that can still be beaten on its slips). Every opponent defends its
+# own king (avoid_king_suicide, in he_phase2), so the model must keep forcing sound
+# mates as it scales up to a bigger board — no free one-ply rush.
 
 resume_from_run: PASTE_PHASE1_2_RUN_ID_HERE
 
 title: "high_entropy v4 - phase 2 (10 pieces + pawns)"
 description: |
   Continue phase 1 up to 10 pieces per side WITH all piece types and pawns, longer
-  games. Pure outcome reward kept. Pool switched to v4_phase2: all opponents defend
-  their king, snapshot stream added. LR dropped to 3e-4. Entropy kept pushed up
-  from here on (x4 vs scratch_v4) and more epochs for a more robust, creative policy.
+  games. Pure outcome reward kept. Pool switched to he_phase2: all opponents defend
+  their king, fallible snapshot stream added. LR dropped to 3e-4. Entropy back up
+  from phase 1, within reason of the policy loss, and more epochs for a more robust,
+  creative policy.
 
 # v4 used 240 — the biggest distribution jump of the curriculum (4 pieces / no pawns
-# -> 10 pieces + pawns), now fully guarded, plus a wider net and higher entropy to settle.
+# -> 10 pieces + pawns), now fully guarded, plus a wider net to settle.
 epochs: 400
 
 curriculum:                        # the other curriculum keys are inherited from phase 1
@@ -30,12 +32,16 @@ curriculum:                        # the other curriculum keys are inherited fro
   allow_pawns: true
 
 rollout:
-  pool: v4_phase2                  # material + random + snapshots, all avoid_king_suicide
+  pool: he_phase2                  # material + heuristic + random + fallible snapshots, all guarded
   max_steps_per_episode: 100       # longer games with more material
 
 ppo:
   learning_rate: 0.0003            # fine-tune, not restart
-  entropy_coef: 0.048              # v4 x4 (0.012 -> 0.048): up from phase 1's 0.01 now that it can mate
+  # Above phase 1's 0.01 now that it can mate, but kept in proportion: 0.048 (v4 x4)
+  # made the entropy term 20-40x the policy loss (entropy ~2.2, |policy| ~0.004),
+  # entropy rose instead of falling and the win rate fell (20% -> 9%). 0.015 puts the
+  # term at ~0.033, ~8x the policy loss, and falling as the policy sharpens.
+  entropy_coef: 0.015
 
 eval:
   max_plies: 160                   # longer games with more material

@@ -30,7 +30,7 @@ curriculum:
   defender_pieces: null     # balanced again (phases 0a-0c gave the opponent fewer pieces)
 
 rollout:
-  pool: v4_phase1-1         # random + material, both avoid_king_suicide: false; no snapshots
+  pool: he_phase1           # material + heuristic minimax + random, unguarded; no snapshots
   max_steps_per_episode: 60 # short endgames; a mate is reachable fast
 
 ppo:

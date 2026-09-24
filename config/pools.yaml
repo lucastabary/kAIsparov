@@ -115,6 +115,57 @@ v4_phase3:
     - {kind: snapshot, weight: 6.0, count: 8, every: 15, params: {depth: 1, avoid_king_suicide: true}}
 
 
+# ---------------------------------------------------------------- high_entropy curriculum
+# The v4 pools, plus a heuristic minimax (material + piece placement, 2 plies) at the
+# material baseline's weight: `material` only grabs what hangs, this one also develops,
+# keeps its own pieces defended and refuses a poisoned capture — a better opponent next
+# to the cheap one. From phase 2 on, the past-selves blunder now and then
+# (random_move_prob): strong, but beatable by punishing their slips. The rate is sized
+# on game length, ~3-4 random moves per game: 10% of ~37 snapshot moves in phase 2
+# (~75 plies), 5% of ~70 in phase 3 (~140). Cost: the heuristic search is ~40 ms/move on
+# phase-1 boards, ~70 in phase 2, ~90 from the standard start (CPU).
+
+# Bridges 0b/0c and phase 1a: no guard, as v4_phase1-1.
+he_phase1:
+  opponents:  # 43% / 43% / 14%
+    - {kind: material, weight: 3.0}
+    - {kind: minimax,  weight: 3.0, params: {evaluator: heuristic, depth: 2}}
+    - {kind: random,   weight: 1.0}
+
+# Phase 1b: everyone refuses moves that walk into mate in one, as v4_phase1-2.
+he_phase1-2:
+  opponents:  # 43% / 43% / 14%
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: minimax,  weight: 3.0, params: {evaluator: heuristic, depth: 2, avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+
+# Phase 2: the snapshot stream joins, blundering 10% of its moves.
+he_phase2:
+  opponents:  # 31% / 31% / 10% / 28%
+    - {kind: material, weight: 9.0, params: {avoid_king_suicide: true}}
+    - {kind: minimax,  weight: 9.0, params: {evaluator: heuristic, depth: 2, avoid_king_suicide: true}}
+    - {kind: random,   weight: 3.0, params: {avoid_king_suicide: true}}
+    - kind: snapshot
+      weight: 8.0
+      count: 6
+      every: 15
+      random_move_prob: 0.10
+      params: {depth: 1, avoid_king_suicide: true}
+
+# Phase 3: snapshots weighted up, blundering 5% of their (twice as many) moves.
+he_phase3:
+  opponents:  # 23% / 23% / 8% / 46%
+    - {kind: material, weight: 3.0, params: {avoid_king_suicide: true}}
+    - {kind: minimax,  weight: 3.0, params: {evaluator: heuristic, depth: 2, avoid_king_suicide: true}}
+    - {kind: random,   weight: 1.0, params: {avoid_king_suicide: true}}
+    - kind: snapshot
+      weight: 6.0
+      count: 8
+      every: 15
+      random_move_prob: 0.05
+      params: {depth: 1, avoid_king_suicide: true}
+
+
 # Example: train against a strong FIXED teacher frozen from a past run — a genuinely
 # sound defender from epoch 1, not a weak early past-self. Point `checkpoint` at a
 # checkpoint of the SAME architecture (model + hidden_dim). Uncomment and set the path.

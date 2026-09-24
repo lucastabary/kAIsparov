@@ -17,7 +17,10 @@
 # won-endgame warm-up and two bridge phases first (a piece up against a defender that
 # can capture), and pushed toward more exploration once the model can mate:
 # hidden_dim 32->64, low entropy through phases 0-1 (a checkmate-only reward is too
-# sparse to learn under a big entropy bonus), then entropy_coef x4 from phase 2.
+# sparse to learn under a big entropy bonus), then above scratch_v4's from phase 2 —
+# but in proportion to the policy loss (v4 x4 drowned it: 20-60x, nothing learned).
+# Opponents: a heuristic minimax next to the material baseline from phase 0b, and
+# past-selves that blunder now and then (random_move_prob) from phase 2.
 # Goal: a more robust, less exploitable, more "creative" policy than v4.
 
 title: "high_entropy v4 - full curriculum (phases 0 -> 3)"

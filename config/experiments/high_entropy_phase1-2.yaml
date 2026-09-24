@@ -19,4 +19,4 @@ description: |
   entropy kept low so the model can still learn from a sparse reward.
 
 rollout:
-  pool: v4_phase1-2         # random + material, both avoid_king_suicide: true; no snapshots
+  pool: he_phase1-2         # material + heuristic minimax + random, all guarded; no snapshots

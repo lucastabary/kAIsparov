@@ -24,6 +24,11 @@ package version is read off the tag, and the Release workflow publishes that sec
   `random_move_prob` (default 0) — the chance, on each move, that it plays a random
   legal move instead of its own. A strong but fallible opponent, e.g. a checkpoint's
   minimax at 0.1.
+- **high_entropy, phases 2–3**: `entropy_coef` 0.048 → 0.015 and 0.024 → 0.01. At v4 x4
+  the entropy term was 20–60x the policy loss: entropy rose, the win rate fell. The
+  pools (`he_*` presets) add a heuristic minimax at the material baseline's weight from
+  phase 0b, and past-selves that play a random move 10% (phase 2) / 5% (phase 3) of
+  the time — about 3–4 slips a game.
 
 - **Won-endgame curriculum**: `curriculum.defender_pieces` gives the side the learner
   plays against fewer pieces (`1` = a bare king), and seats the learner on the strong
