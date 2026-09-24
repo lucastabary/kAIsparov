@@ -26,8 +26,8 @@
 title: "high_entropy v4 - full curriculum (phases 0 -> 3)"
 description: >
   From won endgames to the full game, with hidden_dim 64: learn to mate at low
-  entropy, then explore with 4x the entropy bonus of scratch_v4 — wider, more
-  exploratory, less brittle final policy.
+  entropy, then explore with more entropy than scratch_v4 (in proportion to the
+  policy loss) — wider, more exploratory, less brittle final policy.
 
 stages:
   - phase0-1.yaml   # won endgames: K + 3 majors vs a bare king
