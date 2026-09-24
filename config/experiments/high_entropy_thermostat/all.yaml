@@ -1,0 +1,67 @@
+# high_entropy thermostat — the whole curriculum in one command
+#   kaisparov train --config config/experiments/high_entropy_thermostat/all.yaml
+#   tensorboard --logdir runs/
+#
+# This file is the *entry point* of the recipe. It lists the stages to run, in order,
+# and holds the settings that are the same in every one of them. Each stage after
+# the first automatically resumes from the run the previous one produced, so the
+# `resume_from_run: PASTE_..._HERE` placeholders inside the phase files are
+# overridden with the real run ids — you never copy a run id by hand.
+#
+# How a stage's config is built: the settings below, then the stage file on top
+# (a stage that sets a key wins). A resumed stage also inherits every key it doesn't
+# set from the previous run. So each phase file holds only what changes from the
+# phase before it.
+#
+# high_entropy (same curriculum, same pools) with the entropy thermostat: each phase
+# sets how much the policy should still hesitate — `target_entropy`, a fraction of the
+# maximum entropy log(n_legal) — and the entropy coefficient adapts every epoch to hold
+# it there, instead of being a fixed number to re-tune per phase. With a fixed one,
+# high_entropy saw both failures: too high, it drowned the checkmate-only signal (the
+# policy drifted toward random play); too low, the policy froze into a line that draws.
+# The coefficient starts in phase 0a and carries over from phase to phase (it is saved
+# with the checkpoint); watch `entropy_coef` and `entropy_norm` in the logs.
+# Opponents: a heuristic minimax next to the material baseline from phase 0b, and
+# past-selves that blunder now and then (random_move_prob) from phase 2.
+# Goal: a more robust, less exploitable, more "creative" policy than v4.
+
+title: "high_entropy thermostat - full curriculum (phases 0 -> 3)"
+description: >
+  high_entropy with the entropy thermostat: each phase holds the policy's entropy
+  at a target (a fraction of its maximum) instead of fixing the coefficient — low
+  while it learns to mate, higher from phase 2 — with hidden_dim 64, heuristic
+  minimax opponents and fallible past-selves.
+
+stages:
+  - phase0-1.yaml   # won endgames: K + 3 majors vs a bare king
+  - phase0-2.yaml   # bridge: K + 3 majors vs K + 1 major (hung pieces get taken)
+  - phase0-3.yaml   # bridge: K + 3 vs K + 2, minors too
+  - phase1-1.yaml   # 4 pieces/side, no pawns — mate on a balanced board
+  - phase1-2.yaml   # same, but opponents never walk into a mate in one
+  - phase2.yaml     # 10 pieces + pawns, snapshot stream joins the pool
+  - phase3.yaml     # standard starting position, defending self-play
+
+# ---------------------------------------------------------------- shared by every stage
+model: rgcn
+hidden_dim: 64          # fixed for the WHOLE curriculum (resume requires matching width); v4 used 32
+seed: 0
+device: auto            # -> CPU on this machine
+checkpoint_every: 20
+
+# Pure outcome. All shaping terms (check, step_penalty) are OFF.
+reward: checkmate_only
+
+rollout:
+  opponent: pool
+  num_workers: 1            # serial: parallel rollout's IPC (pickling graph transitions) outweighed the gain here
+  episodes_per_epoch: 16    # less noisy PPO gradient than 8
+
+ppo:
+  update_epochs: 2          # less overfitting of each small batch
+  # The thermostat's speed and range; each phase sets its own target_entropy.
+  entropy_lr: 0.5           # a gap of 0.1 to the target moves the coefficient ~5%/epoch
+  entropy_coef_min: 0.001
+  entropy_coef_max: 0.05
+
+eval:
+  enabled: false

@@ -1,0 +1,22 @@
+# high_entropy thermostat — phase 1b · opponents start defending (4-piece endgames)
+#   part of all.yaml; to run it alone:
+#   1) run phase1-1, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_thermostat/phase1-2.yaml
+#
+# Only what changes from phase 1a is here; everything else is inherited from it.
+# The pool switches to opponents that defend their own king (avoid_king_suicide:
+# true: they never walk into a mate in one) — the model can no longer win on the
+# opponent's blunders, it has to force the mate. Same length, board and PPO settings
+# (low entropy) as phase 1a.
+
+resume_from_run: PASTE_PHASE1_1_RUN_ID_HERE
+
+title: "high_entropy thermostat - phase 1b (4 pieces, defending opponents)"
+description: |
+  Continue phase 1a with opponents that defend their own king. Pure outcome reward
+  kept. Same pool/rollout shape as scratch_v4 stage1-2, just wider (hidden_dim=64);
+  entropy kept low so the model can still learn from a sparse reward.
+
+rollout:
+  pool: he_phase1-2         # material + heuristic minimax + random, all guarded; no snapshots

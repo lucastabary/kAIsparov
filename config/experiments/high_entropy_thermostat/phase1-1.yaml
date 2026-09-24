@@ -1,0 +1,41 @@
+# high_entropy thermostat — phase 1a · checkmate on balanced 4-piece boards
+#   part of all.yaml; to run it alone:
+#   1) run phase0-3, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_thermostat/phase1-1.yaml
+#
+# Only what changes from phase 0c is here; everything else is inherited from it.
+#
+# Stage goal: the model can mate a bare king (phase 0a) and keep its pieces while a
+# piece up (bridges 0b, 0c); now the board is balanced, so it has to *make* the winning
+# position before it can mate, over a horizon short enough for the sparse +/-1 to
+# propagate and the critic to fit it. Entropy stays low: with a reward this sparse, a
+# high bonus drowns the policy gradient (0.08 in the first run: ~100x the policy loss,
+# nothing learned) — but not so low that the policy freezes (0.003 on these boards:
+# entropy 0.70 -> 0.25, stuck at 5% wins).
+
+resume_from_run: PASTE_PHASE0_3_RUN_ID_HERE
+
+title: "high_entropy thermostat - phase 1a (4 pieces)"
+
+epochs: 500             # 5x v4's 100: mates are rare on a balanced board, the signal is slow
+
+curriculum:
+  name: "4 pieces/side, no pawns"
+  max_pieces_per_side: 4
+  allow_major: true
+  allow_minor: true
+  allow_pawns: false
+  ensure_kings_safe: true   # never start with a side in check
+  defender_pieces: null     # balanced again (phases 0a-0c gave the opponent fewer pieces)
+
+rollout:
+  pool: he_phase1           # material + heuristic minimax + random, unguarded; no snapshots
+  max_steps_per_episode: 60 # short endgames; a mate is reachable fast
+
+ppo:
+  learning_rate: 0.0005     # v3/v4's setting; 1e-3 was too hot
+  target_entropy: 0.35  # as the bridges: learn to mate first, explore from phase 2
+
+eval:
+  max_plies: 120

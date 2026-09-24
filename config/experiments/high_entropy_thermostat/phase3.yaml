@@ -1,0 +1,41 @@
+# high_entropy thermostat — phase 3 · the real game (standard starting position)
+#   part of all.yaml; to run it alone:
+#   1) run phase2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_thermostat/phase3.yaml
+#
+# Only what changes from phase 2 is here; everything else (including its 400 epochs)
+# is inherited from it. `curriculum: null` disables the piece-count curriculum, so
+# games start from the normal chess position — the actual task the model is meant
+# to play.
+#
+# Same stage goal as scratch_v4 stage3: full game, sound play. Pool switched to
+# he_phase3: defending self-play (snapshots) dominates (weighted above the
+# baselines), blundering 5% of its moves, and every opponent defends its own king.
+# This phase still gets more exploration room than v4 did (0.006), for a less
+# brittle, more creative final policy.
+
+resume_from_run: PASTE_PHASE2_RUN_ID_HERE
+
+title: "high_entropy thermostat - phase 3 (real game)"
+description: |
+  Final phase: full standard starting position, longest games. Pure outcome reward
+  kept. Pool tilts toward defending, fallible self-play; every opponent defends its
+  king. Lowest LR (1e-4) of the curriculum; entropy held at 0.40 of its maximum,
+  aiming for a robust/creative final policy.
+
+# Disable the curriculum -> start from the normal chess position ("vraie partie").
+curriculum: null
+
+rollout:
+  pool: he_phase3                  # material + heuristic + random + fallible snapshots (weighted up)
+  max_steps_per_episode: 150
+
+ppo:
+  learning_rate: 0.0001            # refinement only
+  # The fixed 0.024 of v4 let the entropy climb to ~80% of its maximum — near-random
+  # play — for 2-5% wins. A little less than phase 2: longer games, sparser signal.
+  target_entropy: 0.4   # a little less than phase 2
+
+eval:
+  max_plies: 200

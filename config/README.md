@@ -308,3 +308,5 @@ reward: aggressive
 **Resuming:** see [`experiments/resume_example.yaml`](experiments/resume_example.yaml).
 **A whole curriculum in one command:** see
 [`experiments/high_entropy/all.yaml`](experiments/high_entropy/all.yaml).
+**The same with the entropy thermostat** (a `target_entropy` per phase instead of a
+fixed coefficient): [`experiments/high_entropy_thermostat/all.yaml`](experiments/high_entropy_thermostat/all.yaml).

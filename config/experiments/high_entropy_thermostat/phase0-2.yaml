@@ -1,0 +1,42 @@
+# high_entropy thermostat — phase 0b · bridge 1: K + 3 majors vs K + 1 major
+#   part of all.yaml; to run it alone:
+#   1) run phase0-1, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_thermostat/phase0-2.yaml
+#
+# Only what changes from phase 0a is here; everything else is inherited from it.
+#
+# Why a bridge: phase 0a teaches the mate against a bare king, where nothing can be
+# captured. Put straight on balanced boards (phase 1a), that model lost its pieces to
+# the material opponent and drew by insufficient material: 1% wins, and in 155 of 186
+# draws it was behind in material. checkmate_only puts no price on a lost piece, so
+# the lesson has to come from positions where keeping pieces is how you still mate.
+# Here the defender has one queen/rook: the win is still forced, but a hung piece
+# now gets taken. The phase-0a model won 30% of these (100 games vs material x3 +
+# random) — plenty of signal; the heuristic minimax added since defends better, so
+# expect it to start lower.
+
+resume_from_run: PASTE_PHASE0_1_RUN_ID_HERE
+
+title: "high_entropy thermostat - phase 0b (K + 3 majors vs K + 1 major)"
+
+epochs: 200
+
+curriculum:
+  name: "won, defended: K + 3 majors vs K + 1 major"
+  max_pieces_per_side: 4    # the learner's side: king + three queens/rooks
+  defender_pieces: 2        # the opponent: king + one queen/rook
+  allow_major: true
+  allow_minor: false
+  allow_pawns: false
+  ensure_kings_safe: true
+
+rollout:
+  pool: he_phase1           # material + heuristic minimax + random: hung pieces get taken
+  max_steps_per_episode: 80
+
+ppo:
+  # A fixed 0.003 froze the policy on the balanced boards (entropy down to ~a tenth of
+  # its maximum, a line that draws). From here the model has to find new play again:
+  # hold it at a real hesitation between a few moves.
+  target_entropy: 0.35  # the thermostat raises the coefficient if the policy freezes

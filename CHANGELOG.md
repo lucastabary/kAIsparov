@@ -10,6 +10,11 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **`high_entropy_thermostat` recipe**: `high_entropy`'s curriculum and pools with the
+  entropy thermostat — each phase sets a `target_entropy` (0.25 in the won endgames,
+  0.35 through phase 1, 0.45 / 0.40 in phases 2–3) and the coefficient, started at
+  0.003, carries over from phase to phase.
+
 - **One folder per recipe** in `config/experiments/`: `high_entropy/`, `scratch_v2/`,
   `scratch_v3/`, `scratch_v4/`, each with an `all.yaml` entry point (new for the
   scratch ones) and `phase1.yaml`, `phase2.yaml`, …; the single-run configs stay at the

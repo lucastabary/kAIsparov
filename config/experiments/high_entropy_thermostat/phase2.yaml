@@ -1,0 +1,47 @@
+# high_entropy thermostat — phase 2 · 10 pieces + pawns, snapshots defend
+#   part of all.yaml; to run it alone:
+#   1) run phase1-2, then:  kaisparov runs list   (copy its run id)
+#   2) paste it below as resume_from_run
+#   3) kaisparov train --config config/experiments/high_entropy_thermostat/phase2.yaml
+#
+# Only what changes from phase 1b is here; everything else is inherited from it.
+#
+# Same stage goal as scratch_v4 stage2: real material and pawns appear, and the
+# snapshot stream (past-selves) joins the pool, blundering 10% of its moves (a
+# stronger opponent that can still be beaten on its slips). Every opponent defends its
+# own king (avoid_king_suicide, in he_phase2), so the model must keep forcing sound
+# mates as it scales up to a bigger board — no free one-ply rush.
+
+resume_from_run: PASTE_PHASE1_2_RUN_ID_HERE
+
+title: "high_entropy thermostat - phase 2 (10 pieces + pawns)"
+description: |
+  Continue phase 1 up to 10 pieces per side WITH all piece types and pawns, longer
+  games. Pure outcome reward kept. Pool switched to he_phase2: all opponents defend
+  their king, fallible snapshot stream added. LR dropped to 3e-4. Entropy held at a
+  higher target than phase 1 (0.45 of its maximum), and more epochs for a more
+  robust, creative policy.
+
+# v4 used 240 — the biggest distribution jump of the curriculum (4 pieces / no pawns
+# -> 10 pieces + pawns), now fully guarded, plus a wider net to settle.
+epochs: 400
+
+curriculum:                        # the other curriculum keys are inherited from phase 1
+  name: "10 pieces/side, all types + pawns"
+  max_pieces_per_side: 10
+  allow_pawns: true
+
+rollout:
+  pool: he_phase2                  # material + heuristic + random + fallible snapshots, all guarded
+  max_steps_per_episode: 100       # longer games with more material
+
+ppo:
+  learning_rate: 0.0003            # fine-tune, not restart
+  # More exploration now that it can mate — the recipe's point. The fixed 0.048 of
+  # high_entropy v4 pushed the other way: entropy rose to ~60% of its maximum, the
+  # entropy term drowned the policy loss (20-40x), and the win rate fell (20% -> 9%).
+  # A target holds the exploration where it is wanted, whatever the coefficient.
+  target_entropy: 0.45  # more than phase 1, less than where v4 drifted
+
+eval:
+  max_plies: 160                   # longer games with more material
