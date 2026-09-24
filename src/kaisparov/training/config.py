@@ -26,6 +26,17 @@ class PPOSettings:
     clip_eps: float = 0.2
     value_coef: float = 0.25  # keep the critic term from dominating the shared trunk
     entropy_coef: float = 0.01
+    # Entropy thermostat. Set `target_entropy` (a fraction of the maximum entropy,
+    # log(n_legal) per position: 0 = a certain policy, 1 = uniform) and the entropy
+    # coefficient adapts after every epoch to hold the policy there — up when it gets
+    # too sure of itself, down when too random (training/ppo.adapt_entropy_coef).
+    # `entropy_coef` is then only where it starts; `entropy_lr` is how fast it moves
+    # (a gap of 0.1 moves it by ~5% an epoch at 0.5), within [min, max]. A resumed run
+    # continues from the coefficient its parent had reached. None = a fixed coefficient.
+    target_entropy: float | None = None
+    entropy_lr: float = 0.5
+    entropy_coef_min: float = 0.001
+    entropy_coef_max: float = 0.05
     max_grad_norm: float = 0.5
     update_epochs: int = 4
     self_play: bool = True

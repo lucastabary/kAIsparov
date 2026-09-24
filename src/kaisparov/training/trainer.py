@@ -16,6 +16,7 @@ from kaisparov.models.factory import build_agent, load_backend, load_backend_spe
 from kaisparov.tracking.run import RunManager
 from kaisparov.training.config import TrainConfig
 from kaisparov.training.curriculum import PhaseConfig, PieceCountCurriculum
+from kaisparov.training.ppo import adapt_entropy_coef
 from kaisparov.training.reward import make_reward_fn
 
 
@@ -84,6 +85,13 @@ class Trainer:
                 self.architecture, self.device, config.rollout, config.seed
             )
 
+        # The entropy coefficient in use: fixed, or moved by the thermostat each epoch
+        # (ppo.target_entropy), in which case a resume continues from the saved one.
+        self.entropy_coef = config.ppo.entropy_coef
+        target = config.ppo.target_entropy
+        if target is not None and not 0.0 < target < 1.0:
+            raise ValueError(f"ppo.target_entropy must be in (0, 1), got {target}")
+
         # Resume: load weights, optimizer + RNG state, and continue epoch numbering.
         self.start_epoch = 0
         if config.resume_from is not None:
@@ -118,6 +126,7 @@ class Trainer:
         return {
             "epoch": epoch,
             "optimizer": self.optimizer.state_dict(),
+            "entropy_coef": self.entropy_coef,
             "rng": {
                 "torch": torch.get_rng_state(),
                 "numpy": np.random.get_state(),
@@ -138,6 +147,12 @@ class Trainer:
             for key, value in opt_state.items():
                 if isinstance(value, torch.Tensor):
                     opt_state[key] = value.to(self.device)
+        if self.config.ppo.target_entropy is not None and "entropy_coef" in state:
+            ppo = self.config.ppo
+            self.entropy_coef = min(
+                max(float(state["entropy_coef"]), ppo.entropy_coef_min), ppo.entropy_coef_max
+            )
+            print(f"Entropy thermostat resumes at coef={self.entropy_coef:.4f}")
         rng = state.get("rng", {})
         if rng:
             torch.set_rng_state(rng["torch"])
@@ -259,9 +274,11 @@ class Trainer:
                     update_epochs=cfg.ppo.update_epochs,
                     clip_eps=cfg.ppo.clip_eps,
                     value_coef=cfg.ppo.value_coef,
-                    entropy_coef=cfg.ppo.entropy_coef,
+                    entropy_coef=self.entropy_coef,
                     max_grad_norm=cfg.ppo.max_grad_norm,
                 )
+                metrics["entropy_coef"] = self.entropy_coef  # the one this epoch used
+                self._adapt_entropy_coef(metrics)
                 self.run.log_metrics(epoch, metrics, section="train")
                 if rollout_stats:
                     self.run.log_metrics(epoch, rollout_stats, section="rollout")
@@ -293,6 +310,20 @@ class Trainer:
         print(f"Done. Artifacts in {self.run.dir}")
         return self.run.run_id
 
+    def _adapt_entropy_coef(self, metrics: dict[str, float]) -> None:
+        """Move the entropy coefficient for the next epoch, if the thermostat is on."""
+        ppo = self.config.ppo
+        if ppo.target_entropy is None or not metrics.get("steps"):
+            return  # a fixed coefficient, or an empty batch (nothing measured)
+        self.entropy_coef = adapt_entropy_coef(
+            self.entropy_coef,
+            metrics.get("entropy_norm", 0.0),
+            ppo.target_entropy,
+            ppo.entropy_lr,
+            ppo.entropy_coef_min,
+            ppo.entropy_coef_max,
+        )
+
     # ---------------------------------------------------------------- evaluation
     def evaluate(self) -> dict[str, float]:
         from kaisparov.agents.neural_agent import NeuralAgent
@@ -320,6 +351,8 @@ class Trainer:
             f"policy={metrics.get('policy_loss', 0):+.4f} "
             f"value={metrics.get('value_loss', 0):.4f} "
             f"entropy={metrics.get('entropy', 0):.3f} "
+            f"({metrics.get('entropy_norm', 0):.2f} of max, coef "
+            f"{metrics.get('entropy_coef', 0):.4f}) "
             f"| checkmate={rollout_stats.get('checkmate_rate', 0):.0%} "
             f"plies={rollout_stats.get('avg_plies', 0):.0f}"
         )

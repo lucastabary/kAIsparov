@@ -65,7 +65,10 @@ Proximal Policy Optimization hyperparameters.
 | `gae_lambda` | float | `0.95` | GAE bias/variance trade-off (0–1; higher = lower bias, more variance). |
 | `clip_eps` | float | `0.2` | PPO clipping range on the probability ratio — limits how far the policy moves per update. |
 | `value_coef` | float | `0.5` | Weight of the value (critic) loss in the total loss. |
-| `entropy_coef` | float | `0.01` | Weight of the entropy bonus — higher keeps the policy more exploratory. |
+| `entropy_coef` | float | `0.01` | Weight of the entropy bonus — higher keeps the policy more exploratory. With `target_entropy` set, only its starting value. |
+| `target_entropy` | float \| null | `null` | Turns on the **entropy thermostat**: the entropy coefficient adapts after every epoch to hold the policy's entropy at this fraction of its maximum (`log(n_legal)` per position; 0 = certain, 1 = uniform) — up when the policy gets too sure of itself, down when too random. `0.3` ≈ "still hesitates between a few moves". A resumed run continues from the coefficient its parent reached. `null` = a fixed `entropy_coef`. |
+| `entropy_lr` | float | `0.5` | How fast the thermostat moves the coefficient: a gap of 0.1 to the target changes it by ~5% an epoch. |
+| `entropy_coef_min` / `entropy_coef_max` | float | `0.001` / `0.05` | Bounds on the thermostat's coefficient, so a phase with no signal cannot push it to an extreme. |
 | `max_grad_norm` | float | `0.5` | Gradient-norm clipping (training stability). |
 | `update_epochs` | int | `4` | How many optimization passes over the collected buffer each epoch. |
 | `self_play` | bool | `true` | `true` = negamax self-play advantage (a move that lets the opponent win is penalized). `false` = plain single-agent GAE. |

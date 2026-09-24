@@ -13,6 +13,7 @@ Design notes
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import torch
@@ -103,6 +104,29 @@ class PPOBuffer:
             self.returns[t] = gae + self.values[t]
 
 
+def adapt_entropy_coef(
+    coef: float,
+    entropy_norm: float,
+    target: float,
+    lr: float,
+    low: float,
+    high: float,
+) -> float:
+    """One step of the entropy thermostat: the coefficient for the next epoch.
+
+    ``entropy_norm`` is the policy's entropy as a fraction of its maximum
+    (``log(n_legal)``, averaged over the batch): 0 is a certain policy, 1 a uniform one.
+    Below ``target`` the policy is getting too sure of itself, so the coefficient goes
+    up; above, it is too random, so it goes down — in log space, so the change is
+    proportional (a gap of 0.1 at ``lr`` 0.5 moves it by ~5%) and it stays positive.
+    This is SAC's automatic temperature: the coefficient is the Lagrange multiplier of
+    the constraint "entropy >= target". Clamped to ``[low, high]``, so a phase with no
+    signal cannot send it to an extreme.
+    """
+    coef = coef * math.exp(lr * (target - entropy_norm))
+    return min(max(coef, low), high)
+
+
 def train_one_epoch(
     agent: torch.nn.Module,
     buffer: PPOBuffer,
@@ -118,13 +142,17 @@ def train_one_epoch(
 ) -> dict[str, float]:
     """Run several PPO update passes over the collected buffer.
 
-    Returns a dict of scalar metrics (loss components + diagnostics).
+    Returns a dict of scalar metrics (loss components + diagnostics), among them
+    ``entropy_norm``: the entropy as a fraction of its maximum, ``log(n_legal)``, per
+    position — comparable across phases whatever the number of legal moves (what the
+    entropy thermostat, :func:`adapt_entropy_coef`, steers on).
     """
     if buffer.is_empty():
         return {
             "policy_loss": 0.0,
             "value_loss": 0.0,
             "entropy": 0.0,
+            "entropy_norm": 0.0,
             "loss": 0.0,
             "steps": 0.0,
             "nonfinite_skips": 0.0,
@@ -150,7 +178,13 @@ def train_one_epoch(
     if normalize_advantages and advantages.numel() > 1:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-    metrics = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "loss": 0.0}
+    metrics = {
+        "policy_loss": 0.0,
+        "value_loss": 0.0,
+        "entropy": 0.0,
+        "entropy_norm": 0.0,
+        "loss": 0.0,
+    }
     nonfinite_skips = 0
     for _ in range(update_epochs):
         action_scores, values = agent(batch)
@@ -159,6 +193,7 @@ def train_one_epoch(
 
         log_probs: list[Tensor] = []
         entropies: list[Tensor] = []
+        normalized: list[float] = []  # entropy / log(n_legal); positions with one move skip
         for i, scores in enumerate(per_graph_scores):
             # Move-level distribution (edges of one (src,dst) move combined), matching
             # how process_output selected the stored action. `actions[i]` is a move key.
@@ -169,6 +204,9 @@ def train_one_epoch(
             pos = (move_keys == actions[i]).nonzero(as_tuple=True)[0][0]
             log_probs.append(dist.log_prob(pos))
             entropies.append(dist.entropy())
+            n_moves = int(move_logits.numel())
+            if n_moves > 1:
+                normalized.append(float(entropies[-1].detach()) / math.log(n_moves))
         new_log_probs = torch.stack(log_probs)
         entropy = torch.stack(entropies).mean()
 
@@ -199,6 +237,7 @@ def train_one_epoch(
         metrics["policy_loss"] = float(policy_loss.item())
         metrics["value_loss"] = float(value_loss.item())
         metrics["entropy"] = float(entropy.item())
+        metrics["entropy_norm"] = sum(normalized) / len(normalized) if normalized else 0.0
         metrics["loss"] = float(loss.item())
 
     metrics["steps"] = float(len(buffer))
@@ -206,4 +245,4 @@ def train_one_epoch(
     return metrics
 
 
-__all__ = ["PPOBuffer", "train_one_epoch"]
+__all__ = ["PPOBuffer", "adapt_entropy_coef", "train_one_epoch"]

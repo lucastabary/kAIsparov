@@ -10,6 +10,13 @@ package version is read off the tag, and the Release workflow publishes that sec
 
 ## [Unreleased]
 
+- **Entropy thermostat**: `ppo.target_entropy` makes the entropy coefficient adapt after
+  every epoch to hold the policy's entropy at a fraction of its maximum (`log(n_legal)`
+  per position) — SAC's automatic temperature. A fixed coefficient meant something
+  different in every phase: 0.08 drowned the checkmate-only signal, 0.003 froze the
+  policy. The coefficient used and `entropy_norm` are logged each epoch, and the
+  coefficient is saved with the checkpoint, so a chained phase carries on from it.
+
 - **Pool weights are shares**: each opponent's `weight` in a pool is now its share of
   the games (`weight / sum`); the snapshot entry's weight is the share of the whole
   past-self stream. `group_weights` is gone (a config still using it is refused with a

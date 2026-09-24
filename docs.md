@@ -267,7 +267,19 @@ loss     = L_policy + c_v·L_value − c_e·entropy      (+ gradient clipping)
 ```
 
 Advantages are normalized per update; returns metrics (`policy_loss`, `value_loss`,
-`entropy`, `loss`, `steps`).
+`entropy`, `entropy_norm`, `loss`, `steps`). `entropy_norm` is the entropy as a fraction
+of its maximum, `log(n_legal)` per position: 0 is a certain policy, 1 a uniform one, and
+it reads the same whatever the number of legal moves.
+
+**Entropy thermostat.** A fixed `c_e` means something different in every phase — its
+pull depends on how strong the reward signal is and on how many moves are legal: on a
+checkmate-only reward, 0.08 drowned the policy gradient, 0.003 let the policy freeze.
+Set `ppo.target_entropy` and `c_e` becomes a variable instead, moved after each epoch
+by `adapt_entropy_coef`: `c_e ← c_e · exp(lr · (target − entropy_norm))`, clamped to
+`[entropy_coef_min, entropy_coef_max]`. Too sure of itself, the policy gets more bonus;
+too random, less. (SAC's automatic temperature: `c_e` is the Lagrange multiplier of
+"entropy ≥ target".) The coefficient each epoch used is logged as `entropy_coef`, and
+saved with the checkpoint so a resumed run carries on from it.
 
 ### Rollout (`rollout.py`) — batched self-play
 
