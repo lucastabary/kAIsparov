@@ -42,3 +42,6 @@ lightning_logs/
 
 # Datasets / generated data
 data/
+
+# Claude Code worktrees (one checkout per parallel session)
+.claude/worktrees/
